@@ -66,6 +66,11 @@ on the page.
 
 ### 2. Search for the BEHAVIOUR, not for one implementation of it
 
+**This rule is not only about kanban entries — it has broken checkers and tests too, twice
+by an author who had just read it here.** `.claude/skills/house-static-checker/SKILL.md`
+carries the tell for that neighbourhood (a checker's "Writing the scan" section) and two
+more instances; both write-ups point at each other rather than duplicating.
+
 This is the absence half, and it fails differently: cycle 70 wrote "no plant has idle motion,
 verified unbuilt" after enumerating every `create_tween()` call on every plant and finding all
 eight event-driven. The enumeration was complete, correct, and **about the wrong set** —

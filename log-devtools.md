@@ -10246,3 +10246,30 @@ is likely to be at least as productive.
     --offline` already exists beside the live verb — even a partial one covering the budgets
     whose inputs (STAT_READOUTS, panel constants, viewport floors) are pure data with no live
     node needed, which is most of the ones this session hit.
+
+## 2026-08-29 — owl6: the twelve gaps were already reconciled, twice
+
+- Value: **overkill** — `gap_ledger.py` plus a per-id `grep` answered the whole bead without
+  opening a single harness file.
+  - Expected: twelve ids to individually re-open (`addons/godot_selftest/dev_tools.gd`,
+    `tools/devtools.py`) and re-check against the installed 0.38.0 client.
+  - Got: `python tools/gap_ledger.py` already lists G-014, G-016, G-018, G-019, G-025, G-029,
+    G-030, G-033, G-046, G-047, G-049 as `fixed` on their LAST mention, and G-044 as `open`
+    on its last mention — the exact 11-fixed/1-open split owl6 asks for. Full per-id history
+    (`grep -n "^\s*- \[G-xxx\] status:"`) shows this was not a guess: G-014/016/018/019/025/
+    029/046/047/049 were reconciled at cycle 37 (line ~3969, "cited in templates/ code",
+    G-019 additionally re-verified in full against `dev_tools.gd`); G-030 was reconciled
+    separately at cycle 37 as a project-bug root cause (line 1861); G-033 was reconciled at a
+    later cycle once harness 0.33.0 actually shipped the fix (line 3263); and G-044 was
+    RE-confirmed still-open at cycle 152 (line 8850), newer than this bead's own cycle-173
+    source, with a note explaining exactly why the installed mitigation doesn't count as fixed.
+  - Found: owl6's own premise is stale. It was filed from a cycle-173 kanban read of a
+    newer (>=0.60.0) external `harness-version` scan that reported these 12 as "open in this
+    project's log" — but this project's own log had already carried a `fixed` (or
+    re-confirmed `open`) status line for every one of them since cycle 37/152, both earlier
+    than cycle 173. The external scanner's claim was about a stale copy of the log, not this
+    one. No status line was stale; nothing needed a new entry.
+  - Cheaper: this — `gap_ledger.py` plus one grep per id — was already the cheap version.
+    Reading the harness source itself would have re-derived a conclusion the log already
+    states, correctly, twice.
+- Gap: **no gaps this turn.**
