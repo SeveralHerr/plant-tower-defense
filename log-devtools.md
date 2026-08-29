@@ -10435,3 +10435,44 @@ is likely to be at least as productive.
   `.claude/skills/cycle/references/fan-out.md`'s lane-death section instead, so the next
   parent checks the actual worktree files before assuming a bad report means bad or
   missing work.
+
+## 2026-08-29 — reconciling [G-141] (absolute mouse position) against the installed harness (plant-tower-defense-pvcs)
+
+- Value: **warranted** — `gap-reconcile` said to open the installed source instead of
+  trusting the pinned version, and doing so answered the question outright instead of
+  needing a live game at all.
+  - Expected: the bead named 0.60.0 as the version to check; `harness-version --client`
+    on this machine actually reports the plugin cache and marketplace clone at **0.66.0**,
+    newer still, so the reconciliation target moved before I even opened a file.
+  - Got: `templates/tools/devtools.py` in the installed 0.66.0 cache
+    (`C:\Users\gotmi\.claude\plugins\cache\godot-selftest-harness\godot-selftest-harness\0.66.0`)
+    has `cmd_mouse_move` accepting `--position X,Y` as sufficient on its own — the
+    `--relative`-only refusal this gap reported is gone — and its own comment cites this
+    project's gap by name: `# plant-tower-defense:G-141: either alone is enough now.`
+    The game-side handler, `templates/addons/godot_selftest/dev_tools.gd`'s
+    `_cmd_mouse_move` (line 2630), does exactly what the bead's "THE FIX" section asked
+    for: it computes `rel` as the delta from the current cursor position when only
+    `position` is given, then sets `ev.position = pos` and `ev.global_position = pos` on
+    the real `InputEventMouseMotion` before calling `Input.parse_input_event(ev)` — so a
+    handler reading `motion.position` now sees a real value, not `(0, 0)`. The function's
+    own docstring comment names this exact gap (`plant-tower-defense:G-141`) as the reason
+    for the change, which means this project's own gap report is the one that produced the
+    upstream fix.
+  - Found: the gap is closed upstream, and closed more completely than the bead's fix
+    sketch asked for — `--position` alone now works (no separate `--relative` needed),
+    which is a strictly easier call shape than "relative defaulting to the delta" implied.
+    This project is still pinned at 0.38.0 (`tools/devtools.py` here has no `position`
+    handling), so nothing in the running project changes yet — only `/scaffold-godot-harness`
+    brings it in, and that pin bead carries the consequence per `gap-reconcile`'s own note.
+  - Cheaper: nothing — this was the cheap path already (two file reads against the
+    installed cache, no game launch needed).
+
+- [G-141] status: fixed | seen: 2 | harness: 0.66.0 | note: `cmd_mouse_move` (installed
+  `templates/tools/devtools.py`) and `_cmd_mouse_move` (installed
+  `templates/addons/godot_selftest/dev_tools.gd:2630`) in the 0.66.0 plugin-cache/
+  marketplace install both take `position` alone now, and the game-side handler sets
+  `ev.position`/`ev.global_position` on the real `InputEventMouseMotion` — the exact fix
+  the gap asked for. Not yet available in this project (pinned 0.38.0); a
+  `/scaffold-godot-harness` refresh is what brings it in. No upstream issue filed —
+  already fixed, filing one would duplicate a change the maintainer already shipped
+  citing this project's own gap number.
