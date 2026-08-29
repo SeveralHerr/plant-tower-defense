@@ -16,6 +16,30 @@ were 90% identical; cycle 102 wrote five and they were 90% identical to those. W
 between lanes is four things — the bead, the owned files, the tests, the acceptance — and
 everything else is boilerplate that is expensive to omit and free to include.
 
+## -1. Check whether a peer session already claimed the bead you're about to claim
+
+`bd ready` and `git worktree list` don't warn you that another live Claude session is
+working this same repo right now. Measured directly: a fan-out found `git worktree list`
+showing four `locked` worktrees (`git worktree list --porcelain` names the locking pid) on
+branches `lane/<bead-id>` for beads that were *already* `in_progress` in `bd list
+--status=in_progress` — a peer interactive session (visible via `ListAgents`, a `busy`
+peer with the same project name in its title) had fanned out on them minutes earlier.
+Before claiming anything:
+
+```bash
+bd list --status=in_progress          # someone (you, in a stale session, or a peer) already claimed these
+git worktree list --porcelain | grep -B2 locked   # locked = an agent is actively in it right now
+```
+
+A `locked` worktree with a recent commit on `lane/<bead-id>` and a matching `in_progress`
+bead means SKIP that bead for this fan-out — pick a different one. Don't re-claim it, don't
+spawn a duplicate lane on it, and don't assume the lock is stale just because your own
+session didn't create it (`ListAgents` showing a `busy` peer session is the confirming
+signal, not proof by itself — a peer whose title doesn't match this project could still
+hold a lock here if repos are shared across worktree trees). This is a different question
+from §0's drift check: §0 asks whether your OWN lane's worktree base is stale; this asks
+whether the bead itself is spoken for by someone else entirely.
+
 ## 0. Check the worktree base before you trust a single lane report
 
 `isolation: "worktree"` branches from **`origin/main`**, not from your local `HEAD`. This
@@ -158,6 +182,13 @@ The worktrees live INSIDE the repo (`.claude/worktrees/`), and that costs twice.
   `.claude/worktrees/` before believing any of it.
 - **Clean the worktrees up when the lanes land** (`git worktree remove`), or the next
   cycle's tree-walkers inherit the same ambiguity.
+- **On Windows, `git worktree remove --force` can fail with `Permission denied` even right
+  after a lane reports done.** The directory unregisters from `git worktree list` (and its
+  branch becomes deletable) but the folder itself can survive on disk, held by the agent
+  process's own file handles for a beat after its "completed" notification lands. Retrying
+  `--force --force` immediately doesn't fix a live handle; it's a timing issue, not a stale
+  lock, so leaving the empty-but-undeleted directory for a later pass is fine — it's inert
+  once `git worktree list` no longer names it. Don't loop retrying in place.
 
 **A lane can die mid-flight, and the worktree it leaves looks like a finished one.**
 Cycle 137's four lanes all terminated a minute in — `Agent terminated early due to an API
@@ -263,3 +294,18 @@ edits. Do NOT fan out:
 
 Say in the cycle's close which lanes ran together and why they were safe — **and what the
 merge cost**, because that is the number that decides whether to do it again.
+
+**A "check the installed harness, append one log line" bead is still worth a lane, but
+expect it to look identical to its siblings.** Measured: two beads whose whole acceptance
+was `.claude/skills/gap-reconcile/SKILL.md` (check `harness-version --client`, read the
+installed source, append a `[G-NNN]` status line — explicitly forbidden from touching the
+harness-managed tool file itself) produced two lane prompts that differed only in the gap
+number and the file, and both correctly concluded "already fixed upstream, no repo code
+change" independently. That's not wasted parallelism — the worktree isolation cost nothing
+because neither lane touched a shared file except the expected `log-devtools.md` append —
+but it's a sign this shape of bead (owns zero code files, acceptance is a log line or an
+upstream filing) could just as cheaply run sequentially in the parent's own shell without
+a worktree at all, if there's no other reason to keep it isolated from a code-touching
+sibling lane running at the same time. Fan it out anyway when it's running alongside lanes
+that DO touch code — the uniform lane treatment costs nothing there and keeps the merge
+process one shape instead of two.
