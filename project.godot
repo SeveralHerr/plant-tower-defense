@@ -25,6 +25,26 @@ config/icon="res://icon.svg"
 ; test_web_playback_type_is_stream in test/unit/test_selftest.gd.
 general/default_playback_type.web=0
 
+; Mobile is a phone running the Web build, and the line above is why it needed this one.
+; Stream playback means the ENGINE mixes, in WASM; `variant/thread_support=false` in
+; export_presets.cfg means that mixer's ring buffer is refilled from the main loop, once
+; per rendered frame. Desktop at 60fps refills Godot's 50ms web default every 16.7ms and
+; never notices. A phone at 25-30fps refills every 33-40ms, and one hitch -- a wave
+; spawning, a volley landing, ambience plus a music bed plus eight Sfx voices in the same
+; frame -- puts a refill past the buffer's own length. An underrun is heard as crackle and
+; as drift, which is what a mobile player reported: distorted and laggy. 140ms is four
+; frames at the 30fps this project's harness already gates on -- long frames arrive in
+; bursts, so the headroom has to cover a burst rather than one overrun. It is a real trade:
+; a button now sounds up to 90ms later than it did, and it buys back sound that was
+; arriving broken. The floor is DERIVED from `fps_min` by the test below, which is what
+; caught an earlier 120 here as too small -- retune it there, not by eye.
+; The move that costs no latency is `variant/thread_support=true`, which mixes off the main
+; thread; it needs SharedArrayBuffer, so it needs COOP/COEP headers from the host, and a
+; host that does not send them serves a game that will not boot. Deploy-coupled, so not here.
+; Comments here do not survive an editor settings save -- the test does. See
+; test_web_audio_output_latency_has_mobile_headroom in test/unit/test_selftest.gd.
+driver/output_latency.web=140
+
 [autoload]
 
 DevTools="*res://addons/godot_selftest/dev_tools.gd"

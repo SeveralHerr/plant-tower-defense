@@ -23931,6 +23931,79 @@ func test_only_the_two_documented_buses_are_created_at_runtime() -> String:
 	return err
 
 
+
+## The web audio buffer must hold more than Godot's default, because Stream playback made
+## the buffer a function of FRAME TIME and mobile's frame time is not desktop's.
+##
+## The setting above chose the engine's own mixer over the browser's bus graph, and the
+## cost of that choice is paid here: Stream mixes in WASM, `variant/thread_support=false`
+## in export_presets.cfg puts that mixing on the main loop, and a ring buffer refilled once
+## per rendered frame underruns the moment a frame takes longer than the buffer. Godot's
+## web default of 50ms is two slow phone frames. It crackled, and a mobile player heard it
+## as distortion and lag.
+##
+## ASSERTED AS A FLOOR, NOT AS 120. The claim worth defending is "there is headroom for
+## several slow frames", not one tuned integer, and a test pinned to the exact value fails
+## on a retune that is still correct. The floor is derived from the frame budget the
+## harness itself gates on (`fps_min` in devtools_config.json, 30) rather than from a
+## second number typed here: a project that later demands 60fps should not silently keep a
+## buffer sized for 30.
+##
+## Read as the raw `.web` override for the same reason the playback-type test above does --
+## this suite runs on desktop, where the suffix is inert, so reading the resolved value
+## would pass no matter what the override said.
+func test_web_audio_output_latency_has_mobile_headroom() -> String:
+	var key := "audio/driver/output_latency.web"
+	var err: String = _T.assert_true(ProjectSettings.has_setting(key),
+		"project.godot declares the web output-latency override at all")
+	if err != "":
+		return err
+	var latency: int = int(ProjectSettings.get_setting(key))
+	# The gated frame budget, read off the harness config the same way
+	# `test_every_devtools_entry_point_names_a_method_that_exists` reads it -- so the
+	# floor below moves with the fps this project actually gates on, and there is no
+	# second copy of `30` to fall out of step with the first.
+	var file := FileAccess.open("res://addons/godot_selftest/devtools_config.json",
+		FileAccess.READ)
+	err = _T.assert_true(file != null, "the devtools config is readable")
+	if err != "":
+		return err
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	err = _T.assert_true(parsed is Dictionary, "and is a JSON object")
+	if err != "":
+		return err
+	var fps_min: float = float((parsed as Dictionary).get("fps_min", 0))
+	err = _T.assert_true(fps_min > 0.0,
+		"fps_min is a real frame budget to derive from, got %s" % fps_min)
+	if err != "":
+		return err
+	var slow_frame_ms: float = 1000.0 / fps_min
+	# Four of them. One frame of buffer underruns on the first frame that runs long, and
+	# a phone's long frames arrive in bursts (a wave spawning, a volley landing), so the
+	# headroom has to cover a burst rather than a single overrun.
+	var floor_ms: int = int(ceil(slow_frame_ms * 4.0))
+	err = _T.assert_true(latency >= floor_ms,
+		"web audio buffer is %dms, at least %dms (four %.1fms frames at the gated"
+		% [latency, floor_ms, slow_frame_ms]
+		+ " %.0f fps) -- at Godot's 50ms default the engine mixer, refilled once per"
+		% fps_min
+		+ " main-loop iteration because thread_support is off, underruns on mobile"
+		+ " and is heard as crackle")
+	if err == "":
+		# A buffer this large stops being latency and starts being a delay line: at a
+		# quarter-second a player hears their own click as an echo of itself.
+		err = _T.assert_true(latency <= 250,
+			"and it is %dms, not so deep that a cue reads as detached from the press"
+			% latency)
+	if err == "":
+		err = _T.assert_true(
+			int(ProjectSettings.get_setting("audio/driver/output_latency")) < latency,
+			"while the base value stays low -- this is a web-only tax, and desktop,"
+			+ " which mixes on its own audio thread, must not pay it")
+	return err
+
+
 # -- Arming a plant: the cue, the escape, and the ghost under the finger
 #    (plant-tower-defense-vvmy) -----------------------------------------------
 
