@@ -4485,7 +4485,10 @@ func test_the_next_wave_button_pulses_once_it_is_pressable() -> String:
 		err = _T.assert_true(game.hud._next_wave_pulse_active, "so the pulse flag is armed")
 	if err == "":
 		err = _T.assert_true(button.modulate.is_equal_approx(Color.WHITE),
-			"headless never pumps the tween, so the button starts fully opaque")
+			"headless never pumps the tween, so the button starts at its resting face")
+	if err == "":
+		err = _T.assert_true(button.scale.is_equal_approx(Vector2.ONE),
+			"and at its resting size -- the breath swells it, it does not live swollen")
 	if err == "":
 		game._wave_live = true
 		game._refresh()
@@ -4496,10 +4499,53 @@ func test_the_next_wave_button_pulses_once_it_is_pressable() -> String:
 		err = _T.assert_true(button.modulate.is_equal_approx(Color.WHITE),
 			"and leaves it at full opacity, not wherever the pulse left it")
 	if err == "":
+		# The half of the reset that only exists since the breath grew a size
+		# channel (plant-tower-defense-2b8r): a button frozen 6% swollen would
+		# sit over its neighbour for the whole of a live wave.
+		err = _T.assert_true(button.scale.is_equal_approx(Vector2.ONE),
+			"and at its resting size, not wherever the swell left it")
+	if err == "":
 		game._wave_live = false
 		game._refresh()
 		err = _T.assert_true(game.hud._next_wave_pulse_active, "and re-arms once pressable again")
 	_T.free_ui(game)
+	return err
+
+
+## The breath's far end (plant-tower-defense-2b8r), which is the only part of an
+## animation this suite can hold: headless pumps no frames and runs with
+## animations off, so what the tween ARRIVES at is unreachable and what it was
+## ARMED with is not. See .claude/skills/assert-an-animation.
+##
+## Pinned to absolute numbers rather than to NEXT_WAVE_PULSE_LIFT and
+## NEXT_WAVE_PULSE_SWELL themselves: a claim written in terms of the amplitude
+## survives that amplitude being set to zero, which is the exact regression this
+## bead was filed about -- a cue too small to see is a cue that is not there.
+func test_the_next_wave_breath_swells_far_enough_to_be_seen() -> String:
+	var peak: Dictionary = Hud.next_wave_pulse_peak()
+	var lit: Color = peak["modulate"] as Color
+	var swell: Vector2 = peak["scale"] as Vector2
+	var err: String = _T.assert_true(lit.r >= 1.1,
+		"the breath drives the paper ABOVE its own colour (got %.3f)" % lit.r)
+	if err == "":
+		err = _T.assert_true(is_equal_approx(lit.r, lit.g) and is_equal_approx(lit.g, lit.b),
+			"neutrally, so the cue costs nothing to a colourblind player")
+	if err == "":
+		err = _T.assert_true(is_equal_approx(lit.a, 1.0),
+			"and at full alpha: a light coming up, not the button going away")
+	if err == "":
+		# 1.08 of NEXT_WAVE_BUTTON_SIZE's 130px width is 10px of travel, ~5px per
+		# edge. Below that the swell is a couple of pixels and the cue is back to
+		# being one a player has to already be looking at.
+		err = _T.assert_true(swell.x >= 1.08 and is_equal_approx(swell.x, swell.y),
+			"and swells it evenly by enough to move an edge (got %s)" % swell)
+	if err == "":
+		# The other side of the same measurement: the button's right edge sits
+		# 15px inside the window at rest, so ~23% of its 130px width is where the
+		# swell starts growing off-screen. Anything near that has to move the
+		# row's budget first, not just this constant.
+		err = _T.assert_true(swell.x <= 1.2,
+			"but not so far it grows out of the row it is budgeted into (got %s)" % swell)
 	return err
 
 

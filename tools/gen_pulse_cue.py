@@ -104,12 +104,23 @@ def render(name: str, target: str, seconds: float, dim: float, why: str) -> dict
     }
 
 
-# The golden fixture: jlsc's own hand-authored hud.gd is the ground truth this
-# tool must reproduce byte-for-byte for the FUNC block (the part with the most
-# ways to get a rename wrong) when fed jlsc's own real parameters. CONST/VAR
-# differ from the shipped code only in their doc comments, which are
-# necessarily hand-authored per cue -- so those two are checked structurally
-# (right names, right values) rather than byte-for-byte.
+# The golden fixture: jlsc's next-wave cue AS FIRST WRITTEN is the ground truth
+# this tool must reproduce byte-for-byte for the FUNC block (the part with the
+# most ways to get a rename wrong) when fed jlsc's own real parameters. CONST/VAR
+# differ from it only in their doc comments, which are necessarily hand-authored
+# per cue -- so those two are checked structurally (right names, right values)
+# rather than byte-for-byte.
+#
+# FROZEN, not tracking hud.gd. The shipped _set_next_wave_pulse_active has since
+# grown a second channel -- the breath swells the button as well as lighting it
+# (plant-tower-defense-2b8r), because the alpha dip alone measured 11% of
+# luminance and read as nothing in the running game. Diffing this text against
+# hud.gd today is therefore expected to differ, and that is not drift: what this
+# tool emits is the PATTERN's base shape, one Control and one property, and a cue
+# that needs a second property is a hand edit on top of the generated block. If a
+# third cue ever wants the two-channel form, teach the template an optional
+# --swell rather than re-copying the shipped function by eye, which is the exact
+# failure this file exists to remove.
 _GOLDEN_FUNC = '''## Starts or stops _next_wave_button's next wave pulse, edge-detected -- see
 ## _next_wave_pulse_active's own comment for why that guard is load-bearing here.
 func _set_next_wave_pulse_active(active: bool) -> void:
