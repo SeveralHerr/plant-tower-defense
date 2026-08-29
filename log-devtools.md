@@ -10716,3 +10716,38 @@ is likely to be at least as productive.
   `fan-out.md` (already carries three lessons from this session; this one is "commit
   `.beads/*.jsonl` in the same commit as any `bd create`," not really fan-out-specific)
   so a future session reads it without another skill-file edit.
+
+## 2026-08-29 — Web audio investigation: runtime buses build a feedback cycle in WebAudio
+
+- Value: **warranted** — the defect is invisible to every static gate and to every headless
+  test; it only exists in the browser's own audio graph, and only after ~20s of accumulation.
+  - Expected: either a mute flag stuck on, a stream that failed to load, or the browser
+    autoplay policy leaving the AudioContext suspended.
+  - Got: all three ruled out (Options screen reads `Sound effects On / Music On / 100% /
+    100%`; console has zero `Music: no audio stream` warnings; `AudioContext.state` reaches
+    `running` after one click). What the live graph actually shows is a cycle:
+    `Gain#0 -> Gain#1 -> Gain#2 -> Gain#4 -> Gain#5 -> Gain#6 -> Gain#0`, every gain 1.0,
+    plus `Gain#2 -> Gain#7` and `Gain#9 -> Gain#4`. Measured at the master output on the
+    deployed build: peak `1.18` at t=18s, `50.5` at t=131s, `78.8` (RMS `28.3`, 671 zero
+    crossings) at t=140s — real audio, 78x full scale, growing without bound.
+  - Found: the root cause. `audio/general/default_playback_type.web = 1` (Sample) means
+    web plays every AudioStreamPlayer through the browser graph, and
+    `Sfx.ensure_bus()` builds the `Sfx`/`Music` buses at runtime because
+    `res://default_bus_layout.tres` does not exist. The runtime bus additions mirror into
+    WebAudio with a backwards edge, closing a unity-gain loop.
+  - Cheaper: nothing. No gate in this repo can see a WebAudio graph, and the symptom needs
+    ~20s of wall-clock accumulation in a real browser before it is even measurable.
+
+- Gap: **no harness verb, gate or test can observe the exported Web build's audio at all**
+  — everything in `/verify` runs against a desktop or headless instance, where
+  `default_playback_type` is `0` (Stream) and the browser graph does not exist. The whole
+  class "correct on desktop, silent or clipped on web" is unreachable from this project's
+  checks. The workaround was hand-built: seed a same-origin iframe with
+  `document.write` after patching `AudioNode.prototype.connect` and `window.AudioContext`
+  on its `contentWindow`, then tap every node feeding `AudioDestinationNode` with an
+  `AnalyserNode` and read `getFloatTimeDomainData` over time.
+  - [G-081] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: a `tools/web_audio_check.py` that serves `bin/` locally, drives a headless
+    Chrome with that same connect-hook, and fails when (a) any cycle exists among the
+    nodes reaching `AudioDestinationNode`, or (b) the master peak exceeds 1.0. Both are
+    cheap, deterministic, and would have caught this the day `ensure_bus` landed.

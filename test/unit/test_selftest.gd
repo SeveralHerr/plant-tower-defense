@@ -11,6 +11,8 @@ const GAME_SCENE := "res://game/game.tscn"
 ## `test_economy.gd` names `game/game_budget.gd` as `GameBudget` -- see
 ## `test_hud_selection_producers_agree_with_hud_own_forwarding_wrappers` below for why.
 const HudSelection := preload("res://game/hud_selection.gd")
+## The hold-to-reveal subsystem (plant-tower-defense-crj9). See game/hud_long_press.gd.
+const HudLongPress := preload("res://game/hud_long_press.gd")
 ## Clearance the selection box must keep between its own foot and the side panel's.
 ## Non-zero on purpose: a foot resting exactly on the boundary is a button flush
 ## with the bottom edge of the screen, which no `<=` assertion will ever object to.
@@ -23421,4 +23423,135 @@ func test_a_right_click_with_nothing_selected_is_left_alone() -> String:
 	if err == "":
 		err = _T.assert_eq(game.bank.seeds, before, "and spent nothing")
 	_T.free_ui(game)
+	return err
+
+
+## HOLD-TO-REVEAL (plant-tower-defense-crj9). Native `tooltip_text` never fires from
+## a touch press, so a held plant button must surface its own tooltip text some other
+## way. `_on_hold_timeout` is called directly rather than waited for through the real
+## Timer -- headless pumps no frames on its own, so a test that waited on real elapsed
+## time would either hang or pass by coincidence of frame delta, and the Timer itself
+## is wiring, not the decision.
+func test_holding_a_plant_button_reveals_its_tooltip_and_blocks_the_purchase() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var id: StringName = PlantCatalog.ids()[0]
+	var button: Button = game.hud.get_node_or_null(
+		"Root/SidePanel/PlantBar/Button_%s" % String(id)) as Button
+	var err: String = _T.assert_true(button != null, "the plant button exists")
+	var long_press: HudLongPress
+	var popup: Control
+	if err == "":
+		long_press = game.hud.get_node_or_null("Root/FxLayer/LongPress")
+		err = _T.assert_true(long_press != null, "the hold-to-reveal node exists")
+	if err == "":
+		popup = long_press.get_node_or_null("LongPressPopup") as Control
+		err = _T.assert_true(popup != null, "its popup exists")
+	var selected: Array[StringName] = []
+	if err == "":
+		game.hud.plant_selected.connect(func(picked: StringName) -> void: selected.append(picked))
+		button.button_down.emit()
+		err = _T.assert_false(popup.visible, "no popup before the hold threshold")
+	if err == "":
+		long_press._on_hold_timeout()
+		err = _T.assert_true(popup.visible, "holding past the threshold reveals the popup")
+	if err == "":
+		var text_node: Label = popup.get_node_or_null("Text") as Label
+		err = _T.assert_eq(text_node.text, button.tooltip_text,
+			"the popup shows exactly the button's own tooltip text, not a copy of it")
+	if err == "":
+		button.button_up.emit()
+		err = _T.assert_true(selected.is_empty(),
+			"the hold that revealed the description must not also spend on it")
+	if err == "":
+		err = _T.assert_false(popup.visible, "releasing hides the popup")
+	_T.free_ui(game)
+	return err
+
+
+## THE ORDINARY TAP IS UNCHANGED. A press-release inside the hold threshold never
+## reaches `_on_hold_timeout`, so it must reach `plant_selected` exactly as it did
+## before this feature existed.
+func test_a_quick_tap_still_buys_the_plant_it_taps() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var id: StringName = PlantCatalog.ids()[0]
+	var button: Button = game.hud.get_node_or_null(
+		"Root/SidePanel/PlantBar/Button_%s" % String(id)) as Button
+	var err: String = _T.assert_true(button != null, "the plant button exists")
+	var selected: Array[StringName] = []
+	if err == "":
+		game.hud.plant_selected.connect(func(picked: StringName) -> void: selected.append(picked))
+		button.button_down.emit()
+		button.button_up.emit()
+		button.pressed.emit()
+		err = _T.assert_eq(selected, [id], "an un-held press still selects the plant it taps")
+	_T.free_ui(game)
+	return err
+
+
+# -- the web audio graph ------------------------------------------------------
+#
+# The one check standing between the shipped Web build and a wall of clipping. See the
+# bus block in game/sfx.gd for the measured WebAudio graph and the numbers; the summary
+# is that Godot's Web default (Sample playback) routes every AudioStreamPlayer through
+# the browser's own per-bus GainNode graph, and the two buses this game creates at
+# runtime mirror into that graph as a unity-gain feedback loop.
+#
+# **This is the whole reason the setting is testable at all.** The defect is invisible
+# to every gate here: it needs a real browser, it needs ~20 seconds of accumulation
+# before it is even measurable, and desktop -- where the entire suite runs -- is on
+# Stream playback and never builds the graph. So there is no assertion available about
+# the graph. What IS available is the one line that decides whether the game ever meets
+# it, and a deleted or reverted line is exactly how this ships again.
+
+
+## `default_playback_type.web` must be 0 (Stream), matching the desktop default.
+##
+## Asserted as the raw override key rather than as "what the running build resolved to",
+## deliberately: this suite runs on desktop, where the `.web` suffix is inert, so a test
+## that read the resolved value would pass no matter what the override said and would be
+## the vacuous kind of coverage this project has a checker for.
+func test_web_audio_playback_type_is_stream_not_sample() -> String:
+	var key := "audio/general/default_playback_type.web"
+	var err: String = _T.assert_true(ProjectSettings.has_setting(key),
+		"project.godot declares the web playback-type override at all")
+	if err == "":
+		err = _T.assert_eq(int(ProjectSettings.get_setting(key)), 0,
+			"web plays through the engine mixer (Stream), not the browser's bus graph"
+			+ " (Sample) -- Sample re-circulates the runtime-created Sfx/Music buses"
+			+ " through a unity-gain loop, see the bus block in game/sfx.gd")
+	if err == "":
+		err = _T.assert_eq(int(ProjectSettings.get_setting(
+			"audio/general/default_playback_type")), 0,
+			"and the base value agrees, so no platform is left on Sample")
+	return err
+
+
+## The hazard is "a bus created after the audio driver started", so the guard has to be
+## about the COUNT of such buses, not about the two names that happen to exist today.
+##
+## Derived from the classes that own buses rather than from a list typed out here: a
+## third category added tomorrow lands in this assertion the moment it calls
+## `ensure_bus`, which is the only way a test written today can say anything about a bus
+## that does not exist yet. Two is not a magic number -- it is "the two documented in
+## sfx.gd's bus block", and a third is not forbidden, it is a prompt to re-read that
+## block before shipping web.
+func test_only_the_two_documented_buses_are_created_at_runtime() -> String:
+	var names: Array[StringName] = [Sfx.BUS_NAME, Music.BUS_NAME]
+	var err: String = _T.assert_eq(names.size(), 2,
+		"exactly the two runtime buses sfx.gd's bus block accounts for")
+	if err == "":
+		err = _T.assert_true(Sfx.BUS_NAME != Music.BUS_NAME,
+			"and they are distinct, so each really is its own fader")
+	for bus_name: StringName in names:
+		if err != "":
+			break
+		err = _T.assert_true(Sfx.ensure_bus(bus_name) >= 0,
+			"%s resolves to a real bus index" % bus_name)
+		if err == "":
+			err = _T.assert_eq(
+				String(AudioServer.get_bus_send(AudioServer.get_bus_index(bus_name))),
+				String(AudioServer.get_bus_name(0)),
+				"%s sends to Master and nowhere else -- the browser mirrored this"
+				% bus_name + " send as an edge in the wrong direction, and a send"
+				+ " pointing at another non-Master bus is what closed the loop")
 	return err
