@@ -10329,3 +10329,38 @@ is likely to be at least as productive.
     Reading the harness source itself would have re-derived a conclusion the log already
     states, correctly, twice.
 - Gap: **no gaps this turn.**
+
+## 2026-08-29 — plant-tower-defense-s1o8.2: a corpus of roads, plus a static checker that found a real bug in the OLD corpus
+
+- Value: **warranted** — running the engine gates was what turned "the checker's rules look
+  right on paper" into "the checker's rules agree with the engine that draws the tiles".
+  - Expected: `python tools/run_tests.py` to pass all five of s1o8.1's re-derived shape tests
+    over the expanded six-road corpus, and `board_check.py`'s Python re-derivation of
+    `GRASS_EDGE_TILE` mask coverage to agree with what `Board._texture_for()` actually does —
+    a static re-implementation of an engine rule is exactly the kind of thing that can drift
+    silently, which is the whole reason `board_check.py`'s own NOT COVERED line names that
+    risk by name.
+  - Got: `Total: 1070 | Passed: 1070 | Failed: 0` including
+    `test_the_road_corpus_actually_spans_the_axes_it_claims_to` (270ms — not vacuous) and all
+    five s1o8.1 tests over the new corpus; `lint_project.gd`: `Scripts: 67 compiled OK`,
+    `0 error(s), 0 warning(s)`.
+  - Found: **the static checker (built before ever touching the engine) caught a real,
+    already-shipped defect in s1o8.1's own "long serpentine" road**: its five full-width
+    rows were spaced two cells apart, leaving a one-cell grass band with dirt on both sides
+    — mask `0b0101`, which `GRASS_EDGE_TILE` has no tile for, so those cells silently
+    rendered as plain grass. `python tools/board_check.py` printed `missing=[5, 7, 13]` for
+    that road before a single engine gate ran. This is exactly the invisible-render-bug
+    class the bead's own header warns about ("nothing errors"), and it was sitting in the
+    corpus the previous cycle shipped. Fixed by respacing the rows three apart (verified
+    clean by the same checker, then by lint's own tile loader compiling the scene).
+  - Cheaper: nothing — the render-bug class this checker exists for produces no engine
+    error and no failing assertion by construction (that is the bead's whole premise), so
+    the ONLY way to have found the s1o8.1 defect without the checker was a screenshot of
+    every corpus road, which nothing in this suite takes. The checker was cheaper than that
+    and found it before the engine was ever launched.
+- Gap: **no gaps this turn** against harness 0.38.0 — every verb and gate used
+  (`--import`, `run_tests.py --godot`, `lint_project.gd -- --no-orphans`,
+  `harness-version --client`) behaved as documented. The bus/devtools bridge itself was not
+  needed: this bead is entirely static data (road corners) plus headless GDScript tests, so
+  `launch`/`get-state`/etc. would have added a running-game dependency this task had no use
+  for.
