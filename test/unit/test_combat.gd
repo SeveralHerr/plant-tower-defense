@@ -396,10 +396,23 @@ func test_every_wave_in_the_table_sends_someone() -> String:
 func test_the_waves_get_harder() -> String:
 	var director := WaveDirector.new()
 	var first: int = WaveDirector.pests_in_wave(1)
-	var last: int = WaveDirector.pests_in_wave(director.wave_count())
+	# HEADCOUNT, so the wave it asks about has to be one where headcount means something.
+	# `wave_count()` is the Cutworm's solo row (plant-tower-defense-rn4p), which is one
+	# pest and fifteen cells of it; measured that way the campaign would read as having
+	# got four-fifths emptier. `last_swarm_wave` is the last row this claim can be made
+	# of, and it is derived rather than written as 26.
+	var swarm: int = WaveDirector.last_swarm_wave()
+	var last: int = WaveDirector.pests_in_wave(swarm)
+	var err: String = _T.assert_gt(last, first * 2,
+		"the last swarm wave %d (%d pests) is more than twice the first (%d)"
+			% [swarm, last, first])
+	if err == "":
+		# And the thing after it is a step up on the measure that DOES apply to it.
+		err = _T.assert_gt(WaveDirector.threat_for(director.wave_count()),
+			WaveDirector.threat_for(swarm),
+			"and the finale after it still prices above the swarm it follows")
 	director.free()
-	return _T.assert_gt(last, first * 2,
-		"the last wave (%d pests) is more than twice the first (%d)" % [last, first])
+	return err
 
 
 func test_a_started_wave_schedules_exactly_the_pests_the_table_promises() -> String:
@@ -2113,14 +2126,36 @@ func test_the_threat_readout_prices_the_composition_ramp_exactly() -> String:
 	# a lighter one, so the tint and the readout cannot invert against the board.
 	var previous: float = 0.0
 	var ranked: int = 0
+	var spiked: int = 0
 	for wave: int in range(1, 301):
 		var threat: float = WaveDirector.threat_for(wave)
+		if WaveDirector.boss_solo_wave(wave):
+			# The Cutworm's row (plant-tower-defense-rn4p). `_raw_threat` is count x
+			# health, which is the wrong ruler for a body with damage zones — 1800 points
+			# of one animal against 424 points of forty. `WaveDirector.boss_solo_wave` has
+			# the argument in full.
+			#
+			# NOT SIMPLY SKIPPED: it must still price ABOVE the wave before it, so a boss
+			# finale that got quietly cheaper than the swarm it follows still fails here.
+			# What is conceded is only the fall on the far side of it, back into endless.
+			err = _T.assert_gt(threat, previous,
+				("the solo-boss wave %d (x%.2f) still prices above wave %d (x%.2f) --"
+					+ " it is exempt from the RUNNING ramp, not from being a step up")
+					% [wave, threat, wave - 1, previous])
+			if err != "":
+				return err
+			spiked += 1
+			continue
 		err = _T.assert_gt(threat, previous,
 			"wave %d (x%.2f) never prices below wave %d (x%.2f)" % [wave, threat, wave - 1, previous])
 		if err != "":
 			return err
 		previous = threat
 		ranked += 1
+	if err == "":
+		err = _T.assert_eq(spiked, 1,
+			("exactly one wave took the exemption; a second would mean the ramp has holes"
+				+ " nobody argued for, got %d") % spiked)
 	if err == "":
 		err = _T.assert_gt(ranked, 100, "the ranking sweep ran (%d waves)" % ranked)
 	if err == "":
@@ -2215,12 +2250,19 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# to a row shows up here as a number a human has to agree with. The property
 	# assertions below (unscaled health, speed and mutation rate; the finale's group
 	# shape) are the other half the skill asks for.
+	#
+	# Wave 27 is the Cutworm, appended after the coda (plant-tower-defense-rn4p), and it
+	# is ONE. Not a typo and not a row that lost its swarm: the boss's own body occupies
+	# fifteen of the road's thirty-two cells, so anything walking with it would be walking
+	# inside it. It is the first entry in this list whose headcount says nothing about how
+	# hard the wave is, which is why `test_the_waves_get_harder` now asks
+	# `last_swarm_wave()` and why `WaveDirector.boss_solo_wave` exists at all.
 	var expected: Array[int] = [
 		5, 9, 9, 14, 13, 24, 25, 21, 26, 32, 30, 23, 35, 29, 37,
-		37, 33, 32, 31, 36, 38, 36, 39, 34, 33, 34,
+		37, 33, 32, 31, 36, 38, 36, 39, 34, 33, 34, 1,
 	]
 	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
-		"the campaign is still twenty-six waves long")
+		"the campaign is still twenty-seven waves long")
 	if err != "":
 		return err
 	for wave: int in range(1, expected.size() + 1):
@@ -2274,12 +2316,20 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 		compared += 1
 	err = _T.assert_gt(compared, 0, "there were groups to compare, not an empty table passing quietly")
 	if err == "":
-		err = _T.assert_eq(WaveDirector.peak_simultaneous_pests(WaveDirector.WAVES.size()),
+		# THE LAST SWARM WAVE, not the finale. The finale is the Cutworm and it peaks at
+		# one, so asking the ceiling question of it would assert 1 == 40. Wave 26 is still
+		# the wave that spends the road budget; what changed is only that it is no longer
+		# the last row (plant-tower-defense-rn4p).
+		err = _T.assert_eq(WaveDirector.peak_simultaneous_pests(WaveDirector.last_swarm_wave()),
 			WaveDirector.SIMULTANEOUS_PEST_CEILING,
-			("and the campaign finale is sized to land ON the ceiling rather than under it —"
+			("and the last swarm wave is sized to land ON the ceiling rather than under it —"
 				+ " it is the wave that spends the road budget now (see"
 				+ " SIMULTANEOUS_PEST_CEILING), so a row edited without re-checking the peak"
 				+ " shows up here first"))
+	if err == "":
+		err = _T.assert_eq(WaveDirector.peak_simultaneous_pests(WaveDirector.WAVES.size()), 1,
+			("and the finale after it spends none of that budget at all — one body, fifteen"
+				+ " cells of it, which is the entire point of the row"))
 	return err
 
 
@@ -7251,7 +7301,13 @@ func test_an_aloe_mends_slower_than_one_pest_eats() -> String:
 
 
 func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale() -> String:
-	var finale: int = WaveDirector.WAVES.size()
+	# THE LAST SWARM WAVE, which was `WAVES.size()` until the Cutworm was appended after
+	# it (plant-tower-defense-rn4p). The bound below is a claim about how much SWARM the
+	# campaign may end on before endless stops out-pricing it, and the boss's 1800 points
+	# of one zoned body is not that quantity — see `WaveDirector.boss_solo_wave`. Wave 26
+	# is still the row with no road slack and the least health headroom.
+	var finale: int = WaveDirector.last_swarm_wave()
+	var seam: int = WaveDirector.WAVES.size() + 1
 	var waves: Dictionary = _shieldbug_waves()
 	var err: String = _T.assert_gt(waves.size(), 0,
 		"there are Shield Bug waves to check (a zero here is a vacuous pass)")
@@ -7267,14 +7323,21 @@ func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale()
 	# The headroom itself, computed the way test_economy.gd's seam test does, so the
 	# two cannot disagree about what the bound is.
 	var seam_health: float = 0.0
-	for group: Dictionary in WaveDirector.groups_for(finale + 1):
+	for group: Dictionary in WaveDirector.groups_for(seam):
 		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	# THE LAST SWARM WAVE'S health (plant-tower-defense-rn4p). Any SCALES above stay keyed
+	# to `WAVES.size()`, because the seam really is between the last row and the first
+	# endless one and the campaign ramp's last value is what the endless ramp multiplies —
+	# that cancellation is the mechanism, and it does not care what the last row contains.
+	# What the last row CONTAINS is the other half, and there the Cutworm's 1800 points of
+	# one zoned body is not a swarm's base health and cannot be compared with one. See
+	# `WaveDirector.boss_solo_wave`.
 	var finale_health: float = 0.0
-	for group: Dictionary in WaveDirector.groups_for(finale):
+	for group: Dictionary in WaveDirector.groups_for(WaveDirector.last_swarm_wave()):
 		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
 	err = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
 	if err == "":
-		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
+		err = _T.assert_gt(finale_health, 0.0, "and so does the last swarm wave")
 	if err != "":
 		return err
 	# The finale's own health scale belongs in the campaign multiplier since
@@ -7285,10 +7348,10 @@ func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale()
 	# scales cancel here and the bound stays 436.7.
 	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
 		* WaveDirector.health_scale_for(finale)
-	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(finale + 1) \
+	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(seam) \
 		* WaveDirector.MUTATION_THREAT_WEIGHT
-	var seam_scales: float = WaveDirector.health_scale_for(finale + 1) \
-		* WaveDirector.speed_scale_for(finale + 1)
+	var seam_scales: float = WaveDirector.health_scale_for(seam) \
+		* WaveDirector.speed_scale_for(seam)
 	var bound: float = seam_health * seam_mult * seam_scales / campaign_mult
 	# Derived, not a literal 18.7: the claim is that the headroom is still worth more
 	# than the thing it was NOT spent on, so the choice above stays a choice rather
@@ -7669,12 +7732,19 @@ func test_the_nurse_beetle_was_paid_for_in_beetles_rather_than_out_of_the_finale
 	var seam_health: float = 0.0
 	for group: Dictionary in WaveDirector.groups_for(finale + 1):
 		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	# THE LAST SWARM WAVE'S health (plant-tower-defense-rn4p). Any SCALES above stay keyed
+	# to `WAVES.size()`, because the seam really is between the last row and the first
+	# endless one and the campaign ramp's last value is what the endless ramp multiplies —
+	# that cancellation is the mechanism, and it does not care what the last row contains.
+	# What the last row CONTAINS is the other half, and there the Cutworm's 1800 points of
+	# one zoned body is not a swarm's base health and cannot be compared with one. See
+	# `WaveDirector.boss_solo_wave`.
 	var finale_health: float = 0.0
-	for group: Dictionary in WaveDirector.groups_for(finale):
+	for group: Dictionary in WaveDirector.groups_for(WaveDirector.last_swarm_wave()):
 		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
 	err = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
 	if err == "":
-		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
+		err = _T.assert_gt(finale_health, 0.0, "and so does the last swarm wave")
 	if err != "":
 		return err
 	# The finale's own health scale belongs in the campaign multiplier since
@@ -7855,8 +7925,20 @@ func test_a_lone_locust_is_the_slowest_ordinary_bug_and_gets_no_crowd_bonus() ->
 			"zero neighbours is the identity multiplier")
 	if err == "":
 		var locust_speed: float = float(Pest.SPECIES[Pest.LOCUST]["speed"])
+		# ORDINARY, which is the word in this test's own name and was doing no work until
+		# the Cutworm arrived at 20 px/s (plant-tower-defense-rn4p). The claim is about
+		# what a wave of ordinary bugs feels like; a boss is not one of those, and the
+		# Cutworm is deliberately the slowest thing that has ever walked this road.
+		#
+		# The filter is derived from `is_boss`, not a name list, and it is checked in both
+		# directions below: it must exclude something, and it must not be quietly hiding
+		# an ordinary bug that has drifted under the Locust.
+		var skipped: int = 0
 		for which: StringName in Pest.SPECIES:
 			if which == Pest.LOCUST:
+				continue
+			if Pest.is_boss(which):
+				skipped += 1
 				continue
 			var other_speed: float = float(Pest.SPECIES[which]["speed"])
 			err = _T.assert_gte(other_speed, locust_speed,
@@ -7865,6 +7947,18 @@ func test_a_lone_locust_is_the_slowest_ordinary_bug_and_gets_no_crowd_bonus() ->
 					% [which, other_speed, locust_speed])
 			if err != "":
 				break
+		if err == "":
+			err = _T.assert_eq(skipped, Pest.boss_species().size(),
+				("the boss filter skipped every boss and nothing else -- a species that"
+					+ " slipped through it would make this claim about ordinary bugs"
+					+ " while measuring something else"))
+	if err == "":
+		# The one boss slower than the Locust is the Cutworm, and it is slower ON PURPOSE
+		# (Pest.SPECIES[CUTWORM] has the reasoning). Asserted rather than merely excluded,
+		# so "a boss may be slower" stays a stated exception instead of a hole.
+		err = _T.assert_true(float(Pest.SPECIES[Pest.CUTWORM]["speed"])
+				< float(Pest.SPECIES[Pest.LOCUST]["speed"]),
+			"the Cutworm is the exception the filter above exists for, and it is real")
 	if err == "":
 		# The cap is derived, not guessed: a fully massed column tops out at exactly
 		# the aphid's own speed, the fastest anything else in this game moves.
@@ -8295,9 +8389,29 @@ func test_the_second_act_never_lets_the_threat_curve_fall() -> String:
 	if err != "":
 		return err
 	var walked: int = 0
+	var exempt: int = 0
 	var previous: float = WaveDirector.threat_for(1)
 	for wave: int in range(2, 301):
 		var threat: float = WaveDirector.threat_for(wave)
+		if WaveDirector.boss_solo_wave(wave):
+			# The Cutworm's finale (plant-tower-defense-rn4p). `_raw_threat` is
+			# `count x health`, and against a body with damage zones that is not the
+			# quantity this curve is about — 1800 points of one animal, most of which the
+			# board's fire meets at `Cutworm.ZONE_HIDE`, against 424 points of forty
+			# ordinary bugs. `WaveDirector.boss_solo_wave` carries the argument in full.
+			#
+			# WHAT IS CONCEDED, exactly: the FALL on the far side of this row, back into
+			# endless. Everything else still holds — the boss still has to price above the
+			# swarm it follows, and the wave after it still has to price above the swarm,
+			# both asserted here. The campaign ends on a wall by design; endless resumes
+			# the ramp from where the swarms left it.
+			err = _T.assert_gt(threat, previous,
+				("the solo-boss wave %d (x%.2f) must still step up from wave %d (x%.2f)")
+					% [wave, threat, wave - 1, previous])
+			if err != "":
+				return err
+			exempt += 1
+			continue
 		err = _T.assert_gt(threat, previous,
 			("wave %d (x%.2f) must price above wave %d (x%.2f). The campaign health"
 				+ " ramp multiplies the finale, so the seam is the pair to look at"
@@ -8308,7 +8422,13 @@ func test_the_second_act_never_lets_the_threat_curve_fall() -> String:
 			return err
 		previous = threat
 		walked += 1
-	return _T.assert_gt(walked, 250, "the sweep actually walked the curve (%d pairs)" % walked)
+	if err == "":
+		err = _T.assert_eq(exempt, 1,
+			("exactly one wave in three hundred took the exemption. A second means the"
+				+ " ramp has a hole nobody argued for, got %d") % exempt)
+	if err == "":
+		err = _T.assert_gt(walked, 250, "the sweep actually walked the curve (%d pairs)" % walked)
+	return err
 
 
 ## The bead's actual complaint, as a gate: no wave in the second act steps by
@@ -8413,12 +8533,19 @@ func test_the_second_act_costs_the_seam_bound_nothing() -> String:
 	var seam_health: float = 0.0
 	for group: Dictionary in WaveDirector.groups_for(first_endless):
 		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	# THE LAST SWARM WAVE'S health (plant-tower-defense-rn4p). Any SCALES above stay keyed
+	# to `WAVES.size()`, because the seam really is between the last row and the first
+	# endless one and the campaign ramp's last value is what the endless ramp multiplies —
+	# that cancellation is the mechanism, and it does not care what the last row contains.
+	# What the last row CONTAINS is the other half, and there the Cutworm's 1800 points of
+	# one zoned body is not a swarm's base health and cannot be compared with one. See
+	# `WaveDirector.boss_solo_wave`.
 	var finale_health: float = 0.0
-	for group: Dictionary in WaveDirector.groups_for(finale):
+	for group: Dictionary in WaveDirector.groups_for(WaveDirector.last_swarm_wave()):
 		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
 	err = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
 	if err == "":
-		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
+		err = _T.assert_gt(finale_health, 0.0, "and so does the last swarm wave")
 	if err != "":
 		return err
 	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \

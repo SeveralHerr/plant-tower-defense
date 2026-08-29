@@ -411,7 +411,22 @@ func _resettle(pest: Pest) -> void:
 	if not pest.has_meta(META_BASE_SPEED):
 		return
 	pest.speed = slowed_speed(float(pest.get_meta(META_BASE_SPEED)),
-		strongest_factor_for(pest))
+		resisted_factor(strongest_factor_for(pest), pest.slow_resistance()))
+
+
+## Pure: a slow factor after the pest's own resistance to it.
+##
+## A resistance of 1.0 returns the factor untouched, which is every species but one, so
+## this is a no-op for the whole board as it stood. The Cutworm answers 0.5: a boss
+## already on the road for 153 s and then stretched by the full 0.55 would make a
+## four-minute wave, and the Sundew has to stay worth buying without becoming the whole
+## answer to a fight it was never priced against.
+##
+## Written as "how much of the CUT is taken" rather than as a second factor multiplied
+## in, because the two disagree at exactly the interesting end: a naive `factor * 2` on
+## 0.55 is 1.10, i.e. a Sundew that speeds the boss up.
+static func resisted_factor(factor: float, resistance: float) -> float:
+	return 1.0 - (1.0 - factor) * clampf(resistance, 0.0, 1.0)
 
 
 ## Pure: how much longer the same stretch of road takes to cross once it is

@@ -238,7 +238,11 @@ func detonate() -> void:
 				continue
 			# Blasted: a corpse this kills lies tilted off its facing, because a bomb
 			# throws the body off the line it was walking (plant-tower-defense-f5z6).
-			pest.take_damage(dealt, Pest.DEATH_BLASTED)
+			# The blast's own centre, not the pest's: `damage_at` has already scaled the
+			# damage by how far this pest sat from it, and on the Cutworm the same point
+			# decides WHICH PART of it the blast caught. A seed landing on the band is
+			# worth two and a half times one landing on the trunk beside it.
+			pest.take_damage(dealt, Pest.DEATH_BLASTED, Vector2.ZERO, global_position)
 			# Same split Kernel documents: a kill already has the corpse swap and
 			# Sfx.PEST_KILLED, so the flash is only for the ones that survived —
 			# and on a blast that is most of them, which is exactly when "did that

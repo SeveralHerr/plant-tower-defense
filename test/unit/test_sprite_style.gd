@@ -42,6 +42,13 @@ const EXPECTED_SIZE := {
 	# (towerDefense_tile050.png is a flat #BB8044) and why that rules out the brown family
 	# every other bramble would be drawn in.
 	"bramble": 64,
+	# The Cutworm's head, and the second sprite in this table drawn against the ROAD
+	# rather than the lawn — for the same reason the Bramble is, arrived at by the same
+	# measurement. Pest red on the road's #BB8044 is 1.14:1 and the kit's sand #ECDCB8
+	# is 2.47:1; a 64px bug survives the first ratio and a 953px body does not.
+	# art_src/pest_cutworm.svg's header carries it. Only the HEAD is a sprite — the
+	# trunk is swept along the road's spine by cutworm.gd and never rasterised.
+	"pest_cutworm": 64,
 	# The Bramble's two damage frames (plant-tower-defense-a180). One drawing at three
 	# states; every step REMOVES rather than redraws, and all three share a painted base so
 	# the swap does not make the plant jump. Damage is taken symmetrically because this
