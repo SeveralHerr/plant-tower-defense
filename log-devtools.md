@@ -11051,3 +11051,42 @@ letting both stand as open.
   `mark_script_reached` shape in CLAUDE.md, and the voice pool gave a better answer than a
   direct call would have: it proves the game's own call path ran, not just that a function
   returns the right string.
+
+
+## 2026-08-29 — the Chomp waits until a pest is past it (plant-tower-defense-q9h4)
+
+- Value: **warranted** — and the sharpest thing the bridge did this turn was refuse to
+  agree with a stage I had set up wrong.
+  - Expected: a confirming read. The rule is two pure statics with a four-heading sweep
+    over them, so the geometry was already nailed down headless; the live pass was meant
+    to say only *where on the road* the grab now lands.
+  - Got: my first attempt teleported the beetle to `x=200` and the flower ate it
+    immediately, which looked like the rule not working at all. Reading the state instead
+    of trusting the setup: `find-nodes --class Pest --call travel_direction` came back
+    `{"x": -1.0, "y": 4.37e-08}` with `_leg=1`. The teleport had put the bug PAST its own
+    next waypoint, `_update_facing` had turned it round, and the flower was correctly
+    grabbing a bug that was now walking the other way. The rule was right and my stage was
+    nonsense.
+    Re-run properly — fresh spawn, real road, `step-time` in 0.2s slices — the flower sits
+    at `x=224` and the mouth closes at `x=240.33`, 16.3 px past it, which is `GRAB_LEAD`
+    plus one frame of travel. The beetle walked 189.0, 196.6, 204.2, 211.8, 220.1, 227.7,
+    235.9 with `is_busy()=false` the whole way, including straight through 187.7, which is
+    where the old leading-edge rule would have bitten.
+  - Found: (1) the bad stage above; (2) **17 tests staged their prey level with the
+    flower**, and the ones that stayed GREEN were the worse half —
+    `test_a_busy_chomp_ignores_everything_else_in_reach` went on passing while the flower
+    grabbed neither pest, so "the second bug walks past an occupied mouth" was true of a
+    mouth that was never occupied, and the winged test passed for two reasons instead of
+    the one it names; (3) **the playtest sweep cannot see this change at all** — `RunSim`
+    ranks placements by `Game.engagement_reach` coverage (`tools/run_sim.gd:718`) and never
+    simulates a grab, so an edit to WHEN a plant engages is invisible to it on every board
+    and every difficulty. It ran green and that green means nothing here.
+  - Cheaper: the headless half carried most of the confidence and cost seconds — the
+    four-heading cross product, and two mutations of `GRAB_LEAD` (0.60 cells closes the
+    window; 0.47 leaves it open at 2.4 frames) that each went red with the message they
+    were written for. Nothing cheaper could have given the road position, and nothing
+    cheaper would have caught the bad stage.
+
+- Gap: **no devtools-harness gap this turn.** The one thing that cost time was a stage I
+  built wrong, and the bridge diagnosed it in one read; `find-nodes --call` on a zero-arg
+  getter is exactly the verb for "what does this node think is true", and it worked.

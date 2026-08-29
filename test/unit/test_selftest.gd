@@ -78,6 +78,19 @@ func _pest(species: StringName, at: Vector2) -> Pest:
 	return pest
 
 
+## Stage a pest where a Chomp will actually close on it.
+##
+## Since plant-tower-defense-q9h4 a Chomp refuses anything it has not yet let PAST
+## (`ChompFlower.GRAB_LEAD`), and `_pest()` above walks every pest +X. So a test that
+## stages its prey level with the flower is now a test of an idle plant: it does not fail
+## honestly, it passes or fails for a reason it never meant to state, which is worse.
+##
+## This offsets along that same heading by the lead plus a margin and changes nothing
+## else. Where a test's claim IS a distance, it stages by hand instead and says so.
+func _prey(species: StringName, at: Vector2) -> Pest:
+	return _pest(species, at + Vector2(ChompFlower.GRAB_LEAD + 4.0, 0.0))
+
+
 func _grass(game: Game) -> Vector2i:
 	for y: int in range(Board.ROWS):
 		for x: int in range(Board.COLS):
@@ -251,7 +264,9 @@ func test_an_armoured_pest_takes_twice_as_long_to_chew() -> String:
 
 func test_a_winged_pest_flies_over_a_chomps_reach() -> String:
 	var chomp := ChompFlower.new()
-	var pest: Pest = _pest(Pest.APHID, Vector2(0, -Board.CELL))
+	# `_prey` and not `_pest`: staged level with the stem this test would pass because
+	# the bug had not gone by yet, which is a second reason and not the one it names.
+	var pest: Pest = _prey(Pest.APHID, Vector2(0, -Board.CELL))
 	pest.apply_mutation(Pest.MUTATION_WINGED)
 	var host: Node2D = _host([chomp, pest])
 	await _T.instantiate_scene(host)
@@ -523,7 +538,7 @@ func test_game_removes_a_plant_once_its_health_reaches_zero() -> String:
 func test_a_chewing_chomp_releases_its_meal_if_the_flower_itself_is_destroyed() -> String:
 	var chomp := ChompFlower.new()
 	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
 	var host: Node2D = _host([chomp, beetle])
 	await _T.instantiate_scene(host)
 
@@ -548,7 +563,7 @@ func test_a_chomps_sprite_swaps_while_its_mouth_is_full() -> String:
 	# a real physics tick and grab the in-range aphid before anything else in
 	# this test gets a turn. Grabbing the idle texture up front sidesteps it.
 	var idle_texture: Texture2D = chomp._sprite.texture
-	var aphid: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var aphid: Pest = _prey(Pest.APHID, Vector2.ZERO)
 	var host: Node2D = _host([chomp, aphid])
 	await _T.instantiate_scene(host)
 
@@ -577,7 +592,7 @@ func test_a_chomps_sprite_swaps_while_its_mouth_is_full() -> String:
 func test_a_beetle_shows_the_late_bite_frame_past_60_percent_chew() -> String:
 	var chomp := ChompFlower.new()
 	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
 	var host: Node2D = _host([chomp, beetle])
 	await _T.instantiate_scene(host)
 
@@ -606,7 +621,7 @@ func test_a_beetle_shows_the_late_bite_frame_past_60_percent_chew() -> String:
 func test_the_late_bite_frame_is_showing_by_the_time_any_chew_finishes() -> String:
 	var chomp := ChompFlower.new()
 	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var aphid: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var aphid: Pest = _prey(Pest.APHID, Vector2.ZERO)
 	var host: Node2D = _host([chomp, aphid])
 	await _T.instantiate_scene(host)
 
@@ -19803,7 +19818,7 @@ func test_the_chomps_shop_line_is_true_of_the_chew_table() -> String:
 		# cannot grab, and a cue that vanished would report a busy mouth as a free one.
 		var chomp := ChompFlower.new()
 		chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-		var pest: Pest = _pest(Pest.APHID, Vector2(0, Board.CELL))
+		var pest: Pest = _prey(Pest.APHID, Vector2(0, Board.CELL))
 		var host: Node2D = _host([chomp, pest])
 		await _T.instantiate_scene(host)
 		chomp._act(0.016, [pest])

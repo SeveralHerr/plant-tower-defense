@@ -57,6 +57,19 @@ func _pest(species: StringName, at: Vector2) -> Pest:
 	return pest
 
 
+## Stage a pest where a Chomp will actually close on it.
+##
+## Since plant-tower-defense-q9h4 a Chomp refuses anything it has not yet let PAST
+## (`ChompFlower.GRAB_LEAD`), and `_pest()` above walks every pest +X. So a test that
+## stages its prey level with the flower is now a test of an idle plant: it does not fail
+## honestly, it passes or fails for a reason it never meant to state, which is worse.
+##
+## This offsets along that same heading by the lead plus a margin and changes nothing
+## else. Where a test's claim IS a distance, it stages by hand instead and says so.
+func _prey(species: StringName, at: Vector2) -> Pest:
+	return _pest(species, at + Vector2(ChompFlower.GRAB_LEAD + 4.0, 0.0))
+
+
 # -- Chomp Flower -----------------------------------------------------------
 
 
@@ -73,15 +86,31 @@ func test_a_chomp_can_reach_the_lane_it_is_planted_beside() -> String:
 	## Regression: a Chomp stands on grass, the pest walks the middle of the road,
 	## so the nearest they ever get is exactly one cell. A grab radius under CELL
 	## makes the plant inert — and inert looks exactly like "no pest in range".
+	##
+	## The floor moved with plant-tower-defense-q9h4 and this test moved with it. A pest
+	## has to be GRAB_LEAD past the stem before the mouth will close, and that lead is
+	## spent along the road while the cell of separation is spent across it — so the
+	## reach a working Chomp actually needs is the hypotenuse of the two, not CELL. Staged
+	## by hand rather than through `_prey()` because that hypotenuse is this test's claim.
 	var chomp := ChompFlower.new()
-	var pest: Pest = _pest(Pest.APHID, Vector2(0, -Board.CELL))
+	var across: float = float(Board.CELL)
+	var along: float = ChompFlower.GRAB_LEAD + 4.0
+	var pest: Pest = _pest(Pest.APHID, Vector2(along, -across))
 	var host: Node2D = _host([chomp, pest])
 	await _T.instantiate_scene(host)
 
 	var pests: Array[Pest] = [pest]
 	chomp._act(0.016, pests)
+	var needed: float = sqrt(across * across + along * along)
 	var err: String = _T.assert_true(chomp.is_busy(),
-		"a pest one full cell away (%d px) is inside a %.0f px reach" % [Board.CELL, ChompFlower.GRAB_RADIUS])
+		("a pest one full cell across the lane (%d px) and %.0f px past the stem is %.1f "
+			+ "px away, inside a %.0f px reach") % [Board.CELL, along, needed,
+				ChompFlower.GRAB_RADIUS])
+	if err == "":
+		err = _T.assert_true(ChompFlower.GRAB_RADIUS > needed,
+			("and the reach clears that hypotenuse with room, not by a hair — %.1f "
+				+ "against %.1f. Under it the plant is inert, and inert looks exactly "
+				+ "like 'no pest in range'") % [ChompFlower.GRAB_RADIUS, needed])
 	if err == "":
 		err = _T.assert_true(ChompFlower.GRAB_RADIUS < Board.CELL * 2.0,
 			"but not so far it eats out of the lane two cells over")
@@ -91,7 +120,7 @@ func test_a_chomp_can_reach_the_lane_it_is_planted_beside() -> String:
 
 func test_a_chewing_chomp_holds_the_pest_still() -> String:
 	var chomp := ChompFlower.new()
-	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
 	var host: Node2D = _host([chomp, beetle])
 	await _T.instantiate_scene(host)
 
@@ -111,15 +140,22 @@ func test_a_chewing_chomp_holds_the_pest_still() -> String:
 
 func test_a_busy_chomp_ignores_everything_else_in_reach() -> String:
 	var chomp := ChompFlower.new()
-	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
-	var aphid: Pest = _pest(Pest.APHID, Vector2(6, 0))
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
+	var aphid: Pest = _prey(Pest.APHID, Vector2(6, 0))
 	var host: Node2D = _host([chomp, beetle, aphid])
 	await _T.instantiate_scene(host)
 
 	var pests: Array[Pest] = [beetle, aphid]
 	chomp._act(0.016, pests)
 	chomp._act(0.016, pests)
-	var err: String = _T.assert_true(aphid.held_by == null,
+	# Staged through `_prey` rather than `_pest`, and that is not cosmetic: with both
+	# bugs level with the stem this test went on PASSING after q9h4 while the flower
+	# grabbed neither of them, so "the second pest walks past an occupied mouth" was
+	# true of a mouth that was never occupied.
+	var err: String = _T.assert_true(chomp.held_pest() == beetle,
+		"the nearer bug is in the mouth, so there IS an occupied mouth to test")
+	if err == "":
+		err = _T.assert_true(aphid.held_by == null,
 		"the second pest walks straight past an occupied mouth — this is the whole cost of a Chomp")
 	if err == "":
 		err = _T.assert_true(aphid.is_alive(), "and is still alive to prove it")
@@ -129,7 +165,7 @@ func test_a_busy_chomp_ignores_everything_else_in_reach() -> String:
 
 func test_a_chomp_swallows_its_meal_and_frees_up() -> String:
 	var chomp := ChompFlower.new()
-	var aphid: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var aphid: Pest = _prey(Pest.APHID, Vector2.ZERO)
 	var host: Node2D = _host([chomp, aphid])
 	await _T.instantiate_scene(host)
 
@@ -148,7 +184,7 @@ func test_a_pest_shot_out_of_the_mouth_does_not_wedge_the_flower_shut() -> Strin
 	## call back into release(), the flower would stay busy forever with a freed
 	## instance — a bug that looks exactly like "that plant stopped working".
 	var chomp := ChompFlower.new()
-	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
 	var host: Node2D = _host([chomp, beetle])
 	await _T.instantiate_scene(host)
 
@@ -6622,8 +6658,11 @@ func test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past() -> String:
 	var bud := ChompFlower.new()
 	var gaping := ChompFlower.new()
 	gaping.level = ChompFlower.LEVELS.size()
-	var near: Pest = _pest(Pest.APHID, Vector2(0, -gap))
-	var far: Pest = _pest(Pest.APHID, Vector2(0, gap))
+	# Both offsets along the pest's own heading (+X) rather than across it, so `gap` is
+	# still exactly the distance this test is about AND clears `GRAB_LEAD` — which a
+	# purely sideways offset never can, however far away it is.
+	var near: Pest = _pest(Pest.APHID, Vector2(gap, 0))
+	var far: Pest = _pest(Pest.APHID, Vector2(gap, 2.0 * gap))
 	var host: Node2D = _host([bud, gaping, near, far])
 	await _T.instantiate_scene(host)
 	# Two flowers rather than one upgraded between the two reads: a mouth that has
@@ -6669,8 +6708,8 @@ func test_a_gaping_chomp_gives_the_lane_back_before_a_bud_would() -> String:
 	var bud := ChompFlower.new()
 	var gaping := ChompFlower.new()
 	gaping.level = ChompFlower.LEVELS.size()
-	var one: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
-	var two: Pest = _pest(Pest.BEETLE, Vector2(0, 400))
+	var one: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
+	var two: Pest = _prey(Pest.BEETLE, Vector2(0, 400))
 	var host: Node2D = _host([bud, gaping, one, two])
 	await _T.instantiate_scene(host)
 	gaping.position = Vector2(0, 400)
@@ -9095,7 +9134,7 @@ func test_a_hit_the_plate_ate_still_marks_the_pest_it_bounced_off() -> String:
 ## same call, or a released bug walks the rest of the road looking untouched.
 func test_a_pest_a_chomp_held_keeps_the_mark_after_it_is_let_go() -> String:
 	var chomp := ChompFlower.new()
-	var aphid: Pest = _pest(Pest.APHID, Vector2(0.0, -Board.CELL))
+	var aphid: Pest = _prey(Pest.APHID, Vector2(0.0, -Board.CELL))
 	var host: Node2D = _host([chomp, aphid])
 	await _T.instantiate_scene(host)
 
@@ -11881,7 +11920,7 @@ func test_a_bug_eaten_on_top_of_a_chomp_still_stands_on_the_road() -> String:
 	var chomp := ChompFlower.new()
 	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
 	chomp.position = Vector2(0.0, -62.0)
-	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
 	var host: Node2D = _host([chomp, beetle])
 	await _T.instantiate_scene(host)
 
@@ -11945,7 +11984,8 @@ func test_a_bug_swallowed_on_top_of_a_chomp_leaves_its_corpse_up_there() -> Stri
 	var aphid: Pest = _pest(Pest.APHID, Vector2(-2000.0, 0.0))
 	var host: Node2D = _host([chomp, aphid])
 	await _T.instantiate_scene(host)
-	aphid.position = Vector2.ZERO
+	# Past the stem, not level with it: since q9h4 the mouth will not close otherwise.
+	aphid.position = Vector2(ChompFlower.GRAB_LEAD + 4.0, 0.0)
 
 	var pests: Array[Pest] = [aphid]
 	var err: String = _T.assert_false(chomp.is_busy(),
@@ -11989,8 +12029,9 @@ func test_a_chomp_mid_haul_will_not_start_a_second_bug() -> String:
 	var host: Node2D = _host([chomp, beetle, aphid])
 	await _T.instantiate_scene(host)
 	# The beetle is the nearer of the two, so the grab below is not a coin toss either.
-	beetle.position = Vector2.ZERO
-	aphid.position = Vector2(8.0, 0.0)
+	# Both past the stem, the beetle by less, so it is still the nearer of the two.
+	beetle.position = Vector2(ChompFlower.GRAB_LEAD + 4.0, 0.0)
+	aphid.position = Vector2(ChompFlower.GRAB_LEAD + 12.0, 0.0)
 
 	var pests: Array[Pest] = [beetle, aphid]
 	var err: String = _T.assert_false(chomp.is_busy(),
@@ -12057,5 +12098,187 @@ func test_a_carried_pests_body_moves_and_its_place_on_the_road_does_not() -> Str
 		pest.set_carry_offset(Vector2.ZERO)
 		err = _T.assert_eq(pest.carry_offset(), lift,
 			"a dead pest ignores the carry -- the corpse stays where it was eaten")
+	_T.free_ui(host)
+	return err
+
+
+# -- The ambush: a Chomp waits until the bug is past it -----------------------
+#
+# plant-tower-defense-q9h4. The mouth used to close on the leading edge of the reach,
+# catching a bug before it was level with the stem. `GRAB_LEAD` makes the flower let
+# them come on a bit and snap from behind.
+
+
+## All four headings, by the cross product rather than by three examples, because the
+## road turns four times and "past" is a different axis and a different sign on each leg
+## of it (`.claude/skills/enumerate-the-pairs`). A rule written as `pest.x > plant.x` is
+## right on the three legs `Board.PATH_CORNERS` runs +X along and wrong or meaningless
+## on the other four, and only a sweep like this one says so.
+func test_a_chomp_waits_for_a_pest_to_pass_from_every_direction() -> String:
+	var plant := Vector2(200.0, 300.0)
+	var lead: float = ChompFlower.GRAB_LEAD
+	var headings: Array[Vector2] = [Vector2.RIGHT, Vector2.LEFT, Vector2.DOWN, Vector2.UP]
+	var err: String = _T.assert_gt(lead, 0.0, "there is a lead to wait out at all")
+	for heading: Vector2 in headings:
+		if err != "":
+			break
+		# Three points on the pest's own line: still coming, exactly level, and past.
+		var coming: Vector2 = plant - heading * (lead + 10.0)
+		var level: Vector2 = plant
+		var past: Vector2 = plant + heading * (lead + 10.0)
+		# Operands flipped: the helper set has no assert_lt (test_combat.gd:2089).
+		err = _T.assert_gt(0.0, ChompFlower.pass_distance(plant, coming, heading),
+			"walking %s: a bug still on its way in is NEGATIVE past the flower" % heading)
+		if err == "":
+			err = _T.assert_float_eq(ChompFlower.pass_distance(plant, level, heading),
+				0.0, 0.0001, "walking %s: level with the stem is exactly 0" % heading)
+		if err == "":
+			err = _T.assert_float_eq(ChompFlower.pass_distance(plant, past, heading),
+				lead + 10.0, 0.001, "walking %s: and past is the distance past" % heading)
+		if err == "":
+			err = _T.assert_false(
+				ChompFlower.is_past_enough(plant, coming, heading, lead),
+				"walking %s: the mouth does not close on a bug still approaching" % heading)
+		if err == "":
+			err = _T.assert_false(
+				ChompFlower.is_past_enough(plant, level, heading, lead),
+				"walking %s: nor on one level with the stem -- that is the whole change"
+					% heading)
+		if err == "":
+			err = _T.assert_true(
+				ChompFlower.is_past_enough(plant, past, heading, lead),
+				"walking %s: and does close once it is a little way past" % heading)
+		if err == "":
+			# The boundary itself, which is where an off-by-one lives.
+			err = _T.assert_true(
+				ChompFlower.is_past_enough(plant, plant + heading * lead, heading, lead),
+				"walking %s: exactly GRAB_LEAD past is past enough" % heading)
+		if err == "":
+			err = _T.assert_false(
+				ChompFlower.is_past_enough(plant, plant + heading * (lead - 0.5),
+					heading, lead),
+				"walking %s: half a pixel short of it is not" % heading)
+	if err == "":
+		# The sideways axis is not "past" at all. A bug on a crossing lane that happens
+		# to be beside this flower has gone nowhere past it.
+		err = _T.assert_float_eq(
+			ChompFlower.pass_distance(plant, plant + Vector2(0.0, 90.0), Vector2.RIGHT),
+			0.0, 0.0001, "displacement across the heading is not progress along it")
+	if err == "":
+		# The degenerate default, and it is the SAFE direction: see is_past_enough.
+		err = _T.assert_true(
+			ChompFlower.is_past_enough(plant, plant, Vector2.ZERO, lead),
+			"a pest with no heading is grabbable, because a flower that silently never "
+				+ "eats is the worse of the two available failures")
+	return err
+
+
+## THE NUMBER THIS FEATURE CAN DIE ON. A Chomp stands on grass and its prey walks a lane
+## one `Board.CELL` away, so the reach only cuts a chord across that lane -- and the lead
+## is spent out of the chord. Set it too long and the window closes, the flower eats
+## nothing, and NOTHING REPORTS IT: "found no prey" and "there is no prey" are the same
+## silence, which is the failure `GRAB_RADIUS`'s own header records from when it was 62.
+##
+## Written in FRAMES rather than pixels because pixels alone cannot fail honestly -- a
+## 4 px window is open and useless. Derived from the species table (not a hand-listed
+## few) at each species' own top speed and the fastest game speed the player can pick,
+## so a new species or a faster `GameSpeed` step is covered the day it lands.
+func test_the_pass_window_stays_open_for_every_species_at_double_speed() -> String:
+	var window: float = ChompFlower.pass_window_for(1)
+	# The half-chord computed here rather than as `window + GRAB_LEAD`, which is only the
+	# same number while the window is still open -- exactly the case this message is for.
+	var reach: float = ChompFlower.grab_radius_for(1)
+	var half_chord: float = sqrt(maxf(0.0, reach * reach - float(Board.CELL * Board.CELL)))
+	var err: String = _T.assert_gt(window, 0.0,
+		("GRAB_LEAD %.1f leaves no room at rung 1: a %.1f px reach cuts only a %.1f px "
+			+ "half-chord across a lane one cell away, and the lead spends all of it. "
+			+ "This flower would never eat, and nothing else in this suite would say so")
+			% [ChompFlower.GRAB_LEAD, reach, half_chord])
+	if err != "":
+		return err
+	var fastest_step: float = 1.0
+	for step: float in GameSpeed.STEPS:
+		fastest_step = maxf(fastest_step, step)
+	if err == "":
+		err = _T.assert_gte(fastest_step, 2.0,
+			"the speed steps still include a 2x, or this test is measuring nothing")
+	var checked: int = 0
+	for species: StringName in Pest.SPECIES:
+		if err != "":
+			break
+		var speed: float = float(Pest.SPECIES[species]["speed"])
+		if speed <= 0.0:
+			continue
+		# Per physics frame, at the worst case the player can actually produce.
+		var travel: float = speed * fastest_step / 60.0
+		var frames: float = window / travel
+		err = _T.assert_gte(frames, 4.0,
+			("'%s' at %.0f px/s crosses the %.1f px pass-window in %.1f physics frames "
+				+ "at %.0fx -- too few for the mouth to notice it and close")
+				% [species, speed, window, frames, fastest_step])
+		checked += 1
+	if err == "":
+		err = _T.assert_eq(checked, Pest.SPECIES.size(),
+			"every species was swept, got %d of %d" % [checked, Pest.SPECIES.size()])
+	if err == "":
+		# Buying reach widens the window, so no rung is worse off than the one below.
+		var previous: float = 0.0
+		for level: int in range(1, ChompFlower.LEVELS.size() + 1):
+			var w: float = ChompFlower.pass_window_for(level)
+			err = _T.assert_gt(w, previous,
+				"rung %d widens the pass-window (%.1f after %.1f)" % [level, w, previous])
+			if err != "":
+				break
+			previous = w
+	return err
+
+
+## The rule reaching the selector, which the pure statics above cannot show. Two pests
+## in reach, identical but for which way they walk: the mouth takes the one that has
+## gone by and leaves the one still coming.
+func test_a_chomp_takes_the_bug_that_has_gone_by_and_leaves_the_one_arriving() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	chomp.position = Vector2.ZERO
+	# Both on the lane one cell up, both well inside GRAB_RADIUS (73.6), one on each
+	# side of the stem by more than GRAB_LEAD.
+	var arriving: Pest = _pest(Pest.BEETLE, Vector2(-2000.0, -64.0))
+	var leaving: Pest = _pest(Pest.BEETLE, Vector2(-2001.0, -64.0))
+	var host: Node2D = _host([chomp, arriving, leaving])
+	await _T.instantiate_scene(host)
+	arriving.position = Vector2(-24.0, -64.0)
+	leaving.position = Vector2(24.0, -64.0)
+
+	var pests: Array[Pest] = [arriving, leaving]
+	var err: String = _T.assert_false(chomp.is_busy(), "nothing was in reach at spawn")
+	if err == "":
+		# Both walk +X, which is the leg the default road runs past a Chomp on.
+		# By the dot, not by ==: `travel_direction()` rotates a unit vector, which leaves
+		# the off-axis component at ~4e-8 rather than at a clean zero.
+		err = _T.assert_float_eq(arriving.travel_direction().dot(Vector2.RIGHT), 1.0,
+			0.0001, "the arriving beetle is walking right")
+	if err == "":
+		err = _T.assert_float_eq(leaving.travel_direction().dot(Vector2.RIGHT), 1.0,
+			0.0001, "and so is the one that has gone by")
+	if err == "":
+		err = _T.assert_gt(chomp.grab_radius(),
+			arriving.global_position.distance_to(chomp.global_position),
+			"the arriving beetle IS inside the reach -- it is refused for its heading, "
+				+ "not for its distance")
+	if err == "":
+		chomp._act(0.016, pests)
+		err = _T.assert_true(chomp.held_pest() == leaving,
+			"the mouth closed on the bug that had gone past, not the nearer one in front")
+	if err == "":
+		err = _T.assert_true(arriving.held_by == null,
+			"and the arriving beetle walked on untouched")
+	if err == "":
+		# And it is not a permanent refusal: the same bug, once it has gone by, is prey.
+		chomp.release()
+		arriving.position = Vector2(ChompFlower.GRAB_LEAD + 2.0, -64.0)
+		leaving.position = Vector2(-2000.0, -64.0)
+		chomp._act(0.016, pests)
+		err = _T.assert_true(chomp.held_pest() == arriving,
+			"the bug it let through is caught on the way out")
 	_T.free_ui(host)
 	return err
