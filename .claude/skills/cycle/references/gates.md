@@ -66,11 +66,23 @@ python tools/citation_check.py       # a `file:line` citation in kanban.md (or a
                                      #   the claim — and it prints how many entries carry
                                      #   no citation at all, which is 249 of 323 in
                                      #   kanban.md and the real limit on every check here
-python tools/run_json_check.py       # a key in .devtools/run.json that verify_ledger reads
-                                     #   nowhere, so the ledger row silently loses it.
-                                     #   RUN IT BEFORE `verify_ledger record`, not after —
-                                     #   the row is append-only and a dropped key is
-                                     #   indistinguishable from a run that never had one
+python tools/run_json_check.py --strict && python tools/verify_ledger.py record ...
+                                     #   a key in .devtools/run.json that verify_ledger
+                                     #   reads nowhere, or one it reads and defaults
+                                     #   silently. RUN IT --strict, CHAINED, in exactly
+                                     #   this position, right before `record` — a bare
+                                     #   sequential run prints the finding and `record`
+                                     #   still writes anyway (plant-tower-defense-4ulq,
+                                     #   log-devtools.md G-137: that is the row that
+                                     #   went in with lint:null/tests:null on a run
+                                     #   where both had gone fine). `--strict` requires
+                                     #   every accepted key, not just verdict/lint/tests
+                                     #   — plain mode is still fine to run on its own
+                                     #   earlier in a cycle, before run.json is meant to
+                                     #   be complete. `record` itself also now refuses
+                                     #   a --run missing `verdict`, or missing `lint`/
+                                     #   `tests` when verdict isn't "aborted" — this is
+                                     #   the earlier, cheaper catch, not the only guard
 python tools/gap_ledger.py           # which [G-NNN] gaps are actually open (advisory)
 python tools/bead_prose_check.py     # prose the SHELL ate on its way into `bd` -- a word
                                      #   inside backticks is command substitution, and one

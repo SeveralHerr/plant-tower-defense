@@ -22,13 +22,61 @@ READ THE OUTPUT, NOT THE EXIT CODE. This resolves citations; it cannot tell you 
 the landed line SUPPORTS the claim around it. Cycles 68 and 76 both wrote a citation that
 resolved cleanly to a doc-comment line one above the constant it meant.
 
+--SYMBOL (plant-tower-defense-nalv), AND WHY --AGAINST CANNOT REPLACE IT. --against
+compares the TEXT a citation lands on before and after THIS cycle's own edits -- a
+citation already pointing at the wrong line when the snapshot was taken has its wrong
+text recorded as the baseline and compares clean forever, so an already-stale citation
+in a file nobody touches this cycle is invisible to it permanently. Cycle 139 found
+eleven such citations into game/pest.gd -- wrong by roughly eight hundred lines, every
+one of them green under every existing mode -- only because an unrelated edit happened
+to move the lines under them.
+
+A citation that additionally NAMES the symbol it means -- `Pest._gait` (`game/pest.gd:
+1527`), or in bead prose (unbackticked, same convention as PLAIN below) `_gait
+(game/pest.gd:1527)` -- needs no snapshot at all: the named symbol's own
+func/const/var/signal declaration either falls inside the cited range or it does not,
+checked fresh every run against the CURRENT file. This is strictly narrower than
+--against (most citations name no symbol at all -- see the printed "N of M ... name a
+symbol" denominator) but it is the only mode that can fire on a citation that went
+stale three cycles ago in a file nobody has touched since.
+
+SCOPE HONESTY: a symbol-checked citation is a citation whose TARGET is verified, never
+its argument. It says the symbol really is where the citation claims; it says nothing
+about whether the prose around the citation is still a true description of that symbol.
+See symbol_check()'s own NOT COVERED line for the rest, including the deliberate
+precision/recall trade the unbackticked (bead-prose) form makes.
+
 Usage:
     python tools/citation_check.py [FILE ...]         # default kanban.md
     python tools/citation_check.py --quiet FILE       # findings only, no landed lines
     python tools/citation_check.py --baseline PATH FILE
     python tools/citation_check.py --baseline-write PATH FILE
+    python tools/citation_check.py --symbol [--beads] [FILE ...]
+    python tools/citation_check.py --self-check       # proves --beads and --symbol can fail
 
 Exit 0 clean, 1 findings, 2 could not run.
+
+# fixture:   --self-check's cases 8-13 build a throwaway .gd file (tempfile) with a
+#            known signal, const, func, static func and a multi-line const array,
+#            then citation text that cites the right symbol at the right line, the
+#            right symbol at the WRONG range, a symbol that does not exist in the
+#            file at all, a plain lowercase name once backticked, a citation into a
+#            multi-line declaration's own CONTINUATION line, a builtin engine type
+#            name that must never be treated as a symbol, and (unbackticked, as
+#            bead prose writes it) an ordinary English word next to a citation that
+#            must NOT be mistaken for a symbol name.
+# mutations: drop the "falls inside the cited range" check and always accept the
+#              first declaration found -> the wrong-range fixture must go red
+#            loosen PLAIN_SYMBOL_PREFIX to accept any bare word              -> the
+#              "for no good reason (file.gd:12)" fixture must go red
+#            drop the Class./call() qualifiers and require ONLY a leading underscore
+#              -> the Class.member and name() fixture cases must go red
+#            revert _decl_spans() to a single header line, not a body/literal span
+#              -> the multi-line-continuation fixture must go red (this is not
+#              hypothetical: it is what the real kanban.md run first reported as
+#              two false findings, `RunConfig.HINTS` and `CompostMeter.lifetime_for`)
+#            drop the BUILTIN_TYPES filter                                   -> the
+#              `String` fixture must go red, reporting a builtin as "no such symbol"
 """
 
 from __future__ import annotations
@@ -119,6 +167,312 @@ PLAIN = re.compile(
     r"([A-Za-z0-9_./-]*[A-Za-z0-9_.-]+\.(?:gd|py|md|json|tscn|tres|gdshader))"
     r":(\d+)(?:-(\d+))?(?![`\w])"
 )
+
+
+# ---------------------------------------------------------------------------------
+# --symbol (plant-tower-defense-nalv): a citation that additionally NAMES the
+# symbol it means, checked against the symbol's own declaration rather than
+# against a snapshot. See the module docstring's own paragraph on this mode for
+# what it buys over --against and what it still cannot see.
+# ---------------------------------------------------------------------------------
+
+# The identifier as this project's own prose already writes it immediately before a
+# citation: optionally `Class.`-qualified, optionally a bare call `name()`. Used
+# ONLY inside backticks (the FILE form below) -- the backticks are the author's own
+# "this is code" signal, so no further restriction is needed on top of them.
+SYMBOL_NAME = r"(?:[A-Za-z_][A-Za-z0-9_]*\.)?[A-Za-z_][A-Za-z0-9_]*(?:\(\))?"
+
+# `` `Pest._gait` (`game/pest.gd:1527`) `` -- the symbol and the citation each in
+# their own backticks, immediately adjacent but for the parenthesis and a space.
+# Anchored with `$` and searched against the text BEFORE the citation match, so it
+# only fires when the symbol sits directly against the citation's own opening
+# paren, not merely somewhere earlier in the sentence.
+FILE_SYMBOL_PREFIX = re.compile(r"`(%s)`\s*\($" % SYMBOL_NAME)
+
+# Bead prose is UNBACKTICKED, same reasoning as PLAIN vs CITATION above: nothing
+# renders a `bd` description, so nothing rewards backticks. Without them, a bare
+# identifier immediately before "(file:line)" is indistinguishable BY SHAPE from an
+# ordinary English word doing the same thing -- measured on the real export, that
+# shape is 315 wide and a sample of it reads as prose: "reason (run_sim.gd:13-19)",
+# "zero (game.gd:519-521)", "writes (game/run_config.gd:751)", "awaits
+# (test_combat.gd:4512-4518)" -- none of those name a symbol. So the unbackticked
+# form is accepted only when it carries a signal an English word essentially never
+# does: a `Class.member`/`Class.CONST` dot, a `_leading_underscore`, `ALL_CAPS`, or
+# an explicit `name()` call -- all four attested in the same export ("Board.
+# is_buildable", "Game.UPROOT_CONFIRM_SECONDS", "_adjacent_plant",
+# "get_viewport_height()"). This is a real narrowing, not a formality: it correctly
+# drops a genuine symbol like "neighbour_interval_scale (game/game.gd:3003)" that
+# carries none of the four signals, in exchange for never mistaking "reason" for a
+# citation's subject. NOT COVERED restates this; it is the tool being honest about
+# a precision/recall trade it made on purpose.
+PLAIN_SYMBOL_PREFIX = re.compile(
+    r"(?<![A-Za-z0-9_])"
+    r"([A-Z][A-Za-z0-9]*\.[A-Za-z_][A-Za-z0-9_]*"         # Class.member / Class.CONST
+    r"|_[A-Za-z0-9_]*"                                     # _private
+    r"|[A-Z][A-Z0-9_]+"                                    # ALL_CAPS (2+ chars)
+    r"|[A-Za-z_][A-Za-z0-9_]*\(\))"                         # name()
+    r"\s*\($"
+)
+
+
+# Godot/GDScript BUILT-IN type names. A closed set fixed by the ENGINE, not a
+# hand-curated business-logic list -- none of these can ever be a func/const/var/
+# signal declaration in ANY GDScript file, in this repo or any other, so a
+# citation that happens to land right after one ("`Pest.mutation` is a single
+# `StringName` (`game/pest.gd:284`)") is never claiming StringName itself lives at
+# that line; it is describing a TYPE, and the citation's real subject is the
+# earlier, unadjacent `Pest.mutation`. Without this a symbol whose only backticked
+# neighbour is its own type annotation reports "no such symbol", which is true and
+# useless -- the entry never claimed a declaration there. Kept short and closed on
+# purpose: the moment a name here IS legitimately declared somewhere (a project
+# defining its own class named `Node`, say), this stops applying, but that has
+# never been true of Godot's actual reserved builtins.
+BUILTIN_TYPES = frozenset((
+    "String", "StringName", "NodePath", "int", "float", "bool", "void",
+    "Array", "Dictionary", "PackedStringArray", "PackedInt32Array",
+    "PackedFloat32Array", "PackedByteArray", "PackedVector2Array",
+    "Vector2", "Vector2i", "Vector3", "Vector3i", "Vector4", "Rect2", "Rect2i",
+    "Transform2D", "Transform3D", "Basis", "Quaternion", "Plane", "AABB",
+    "Color", "Callable", "Signal", "Variant", "Object", "RefCounted", "Resource",
+    "Node", "Node2D", "Node3D", "Control", "CanvasItem",
+))
+
+
+def _strip_symbol(raw: str) -> str:
+    """`Pest._gait` -> `_gait`, `husk_multiplier()` -> `husk_multiplier`. The Class
+    qualifier and the call parens are context for a human reader; the declaration
+    search below wants the bare name a `func`/`const`/`var`/`signal` line carries."""
+    name = raw.rsplit(".", 1)[-1]
+    if name.endswith("()"):
+        name = name[:-2]
+    return name
+
+
+def symbol_citations(text: str, plain: bool = False) -> list[dict]:
+    """Every citation in `text` immediately preceded by a qualifying symbol name --
+    [{"line", "raw", "name", "path", "start", "end"}, ...].
+
+    DELIBERATELY mirrors citations()'s own loop -- same CITATION/BARE(+PLAIN)
+    pattern objects, same context-reset-on-entry-boundary rule, same bare-`:NN`-
+    continuation binding -- rather than calling citations() and re-deriving spans
+    from its output, because citations() does not expose WHERE on the line a match
+    sat and a second implementation of the SAME rule is how two tools drift apart
+    silently. self_check() cross-checks the (line, path, start, end) this produces
+    against citations() on the same text so they can never quietly disagree.
+    """
+    out: list[dict] = []
+    context: str | None = None
+    prefix_re = PLAIN_SYMBOL_PREFIX if plain else FILE_SYMBOL_PREFIX
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if line.startswith("- ") or line.startswith("#"):
+            context = None
+        forms = list(CITATION.finditer(line)) + list(BARE.finditer(line))
+        if plain:
+            forms += list(PLAIN.finditer(line))
+        for m in sorted(forms, key=lambda mm: mm.start()):
+            if m.re is CITATION or m.re is PLAIN:
+                context = m.group(1)
+                start = int(m.group(2))
+                end = int(m.group(3)) if m.group(3) else start
+                path = context
+            elif context is not None:
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else start
+                path = context
+            else:
+                continue
+            sm = prefix_re.search(line[:m.start()])
+            if not sm:
+                continue
+            raw_symbol = sm.group(1)
+            name = _strip_symbol(raw_symbol)
+            if name in BUILTIN_TYPES:
+                continue
+            out.append({"line": lineno, "raw": raw_symbol, "name": name,
+                        "path": path, "start": start, "end": end})
+    return out
+
+
+# GDScript's declaration grammar -- one keyword, an optional `static`, the name,
+# then punctuation (`(`, `:`, `=`, or end of line for a bare `signal name`) -- is
+# predictable enough that a regex is the right tool here, per house-static-
+# checker's own convention ("a regex-based structural search is fine -- this is
+# GDScript, not something you need a real parser for"). Not a parser: a name that
+# also appears in a doc comment above its own declaration, or a local variable
+# shadowing it inside another function, is invisible to this distinction -- see
+# the mode's own NOT COVERED line.
+def _decl_body_end(lines: list[str], header_idx: int) -> int:
+    """0-based index of the LAST line belonging to the declaration whose header
+    sits at `header_idx` -- the header itself for a one-line `const`/`signal`,
+    further for a `func` body or a bracketed literal continued over several lines.
+
+    Heuristic, not a bracket-matcher: GDScript's block structure is indentation,
+    same as Python's, so "belongs to this declaration" is read the same way a
+    person reads it -- every following line that is blank or indented STRICTLY
+    MORE than the header, until the first line back at the header's own
+    indentation or less. Found necessary, not merely tidy: `const HINTS: Array
+    [String] = [` continues onto an indented element line before its closing
+    `]` returns to column 0, and a check comparing the citation against ONLY the
+    `const` line itself reported a citation to that element line as "outside the
+    cited range" -- correct about the text, wrong about the claim, on a citation
+    that had not drifted at all.
+    """
+    header_line = lines[header_idx]
+    header_indent = len(header_line) - len(header_line.lstrip(" \t"))
+    end = header_idx
+    i = header_idx + 1
+    while i < len(lines):
+        line = lines[i]
+        if not line.strip():
+            i += 1
+            continue
+        indent = len(line) - len(line.lstrip(" \t"))
+        if indent <= header_indent:
+            break
+        end = i
+        i += 1
+    return end
+
+
+# GDScript's declaration grammar -- one keyword, an optional `static`, the name,
+# then punctuation (`(`, `:`, `=`, or end of line for a bare `signal name`) -- is
+# predictable enough that a regex is the right tool here, per house-static-
+# checker's own convention ("a regex-based structural search is fine -- this is
+# GDScript, not something you need a real parser for"). Not a parser: a name that
+# also appears in a doc comment above its own declaration, or a local variable
+# shadowing it inside another function, is invisible to this distinction -- see
+# the mode's own NOT COVERED line.
+def _decl_spans(path: Path, name: str) -> list[tuple[int, int]]:
+    """(start, end) 1-based line spans where `path` declares func/const/var/signal
+    NAME -- the header line through the end of its own body/literal, per
+    `_decl_body_end`. A citation is verified against the whole span, not just the
+    header line, because a citation into a function's BODY or a multi-line
+    literal's own continuation is citing that same declaration, not a different
+    one three lines away."""
+    pat = re.compile(r"^\s*(?:static\s+)?(?:func|const|var|signal)\s+"
+                     + re.escape(name) + r"\b")
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    return [(i + 1, _decl_body_end(lines, i) + 1)
+            for i, ln in enumerate(lines) if pat.match(ln)]
+
+
+def symbol_check(sources: list[tuple[str, str, bool, bool]]) -> int:
+    """--symbol mode: verify each citation that NAMES a symbol against that
+    symbol's own declaration. Prints "N of M citation(s) name a symbol; K
+    verified, J finding(s)" and returns 0/1/2 per the house contract.
+    """
+    total = 0
+    named = 0
+    verified = 0
+    findings: list[str] = []
+    non_gating: list[str] = []
+
+    for label, text, is_file, gating in sources:
+        total += len(citations(text, plain=not is_file))
+        for c in symbol_citations(text, plain=not is_file):
+            named += 1
+            loc = "%s:%d" % (label, c["line"])
+            cite = key(c["path"], c["start"], c["end"])
+            sink = findings if gating else non_gating
+            src, ambiguous = _resolve(ROOT / "kanban.md", c["path"])
+            if ambiguous:
+                sink.append(_printable(
+                    "FINDING: %s names `%s` at %s -- that bare name matches %s.\n"
+                    "  fix: write the path out so it names one of them.\n"
+                    "  waive: none."
+                    % (loc, c["raw"], cite,
+                       " and ".join(str(a.relative_to(ROOT)) for a in ambiguous))))
+                continue
+            if src is None:
+                sink.append(_printable(
+                    "FINDING: %s names `%s` at %s -- no such file.\n"
+                    "  fix: the file was renamed or removed; re-cite it or delete "
+                    "the entry.\n  waive: none." % (loc, c["raw"], cite)))
+                continue
+            try:
+                nlines = len(src.read_text(encoding="utf-8",
+                                           errors="replace").splitlines())
+            except OSError as exc:
+                print("citation_check: %s is present but unreadable: %s"
+                      % (c["path"], exc), file=sys.stderr)
+                return 2
+            if c["start"] < 1 or c["end"] > nlines or c["end"] < c["start"]:
+                sink.append(_printable(
+                    "FINDING: %s names `%s` at %s -- out of range; %s has %d "
+                    "line(s).\n  fix: re-derive the line number.\n  waive: none."
+                    % (loc, c["raw"], cite, c["path"], nlines)))
+                continue
+            spans = _decl_spans(src, c["name"])
+            if not spans:
+                sink.append(_printable(
+                    "FINDING: %s claims `%s` is at %s, but no func/const/var/signal "
+                    "declares `%s` anywhere in %s.\n"
+                    "  fix: the symbol was renamed or removed; find its real name "
+                    "or delete the claim.\n  waive: none."
+                    % (loc, c["raw"], cite, c["name"], c["path"])))
+                continue
+            # OVERLAP, not containment either way: a citation may be a sub-range of
+            # a multi-line declaration (one element of a literal, one line of a
+            # function body) or may fully bracket it -- both are the same claim.
+            if any(c["start"] <= d_end and c["end"] >= d_start
+                   for d_start, d_end in spans):
+                verified += 1
+                continue
+            span_text = "/".join(
+                "%d" % s if s == e else "%d-%d" % (s, e) for s, e in spans)
+            sink.append(_printable(
+                "FINDING: %s claims `%s` is at %s, but `%s` is declared at %s:%s, "
+                "outside the cited range.\n"
+                "  fix: re-cite %s:%s (or widen the range to include it).\n"
+                "  waive: none."
+                % (loc, c["raw"], cite, c["name"], c["path"], span_text,
+                   c["path"], span_text)))
+
+    print("citation_check --symbol: %d of %d citation(s) name a symbol; %d "
+          "verified, %d finding(s)%s"
+          % (named, total, verified, len(findings),
+             (" (+%d in CLOSED beads, advisory)" % len(non_gating))
+             if non_gating else ""))
+    if total == 0:
+        print("NOTE: no citations found at all. That is a clean result only if you "
+              "expected a file with none.")
+    for m in findings:
+        print(m)
+    if non_gating:
+        print("CLOSED BEADS (%d finding(s), advisory -- a closed bead is a record "
+              "of what was true when it closed):" % len(non_gating))
+        for m in non_gating:
+            print("  " + m.replace("\n", "\n  "))
+    print("NOT COVERED by --symbol: this only checks a citation immediately "
+          "preceded by a symbol name -- most citations carry no symbol at all (see "
+          "the 'entries carry NO citation at all' line printed by the default mode "
+          "for how few entries carry any citation, and of those most name no "
+          "symbol either). It verifies the citation's TARGET -- that the named "
+          "symbol really is declared where the citation says -- never whether the "
+          "surrounding prose's CLAIM about that symbol is still true, the same "
+          "limit plain mode's own NOT COVERED line states. Detection is a regex "
+          "over declaration lines, not a parser: a name that also appears in a doc "
+          "comment, or is shadowed by a local variable inside another function, is "
+          "invisible to it. And the unbackticked (bead-prose) form is accepted "
+          "only when the name is `Class.member`-qualified, `_leading_underscore`, "
+          "`ALL_CAPS`, or written as an explicit `name()` call -- an ordinary bare "
+          "lowercase word before a citation is deliberately NOT treated as a "
+          "symbol, because measured on the real bead export that shape is "
+          "overwhelmingly prose ('reason (file.gd:12)'), not a claim about code. "
+          "AND: a citation naming a symbol only to give a RELATED line -- an "
+          "assignment site, a usage, a distance the symbol supplies -- reads "
+          "IDENTICALLY to a declaration claim and is checked as one. Two real "
+          "cases found running this over kanban.md: '...drawn ... out to "
+          "`FAN_LENGTH` (`game/corn_cobbler.gd:367`)' cites where the constant is "
+          "USED, not declared, and '...restores it by assigning `_message_text` "
+          "(`game/hud.gd:1780`)' cites the ASSIGNMENT, not the `var` line -- both "
+          "report as findings that are really about a different, unchecked "
+          "question. A known, small class (2 of 84 findings in that same run); "
+          "read a finding before re-citing it.")
+    return 1 if findings else 0
 
 
 def citations(text: str, plain: bool = False) -> list[tuple[int, str, int, int]]:
@@ -302,6 +656,10 @@ def bead_sources(export: Path | None = None) -> tuple[list[tuple[str, str, bool]
 def self_check() -> int:
     """Prove the --beads mode can FAIL, and that a closed bead cannot make it fail.
 
+    (Cases 8-11, added for --symbol, temporarily repoint the module-level ROOT at a
+    throwaway directory -- declared `global` here, at function top, because Python
+    requires that before ANY use of the name in a function that later assigns it.)
+
     A run reporting "468 bead(s) ... 0 finding(s)" is indistinguishable from a run whose
     extraction silently matched nothing -- and that is not hypothetical here: the FIRST
     version of this mode did exactly that, reading 95 of 590 bead citations because it
@@ -315,6 +673,7 @@ def self_check() -> int:
       3. an unbackticked citation, the form bead prose actually uses      -> seen at all
       4. a bead carrying the waiver marker                                -> skipped entirely
     """
+    global ROOT
     import tempfile
     probe = ROOT / "tools" / "citation_check.py"
     past_end = len(probe.read_text(encoding="utf-8", errors="replace").splitlines()) + 5000
@@ -391,16 +750,188 @@ def self_check() -> int:
         if citations(prose, plain=False):
             problems.append("%s: extracted an unbackticked citation with plain=False, so "
                             "the markdown path has been loosened too" % lbl)
+    # Case 8-11: --symbol (plant-tower-defense-nalv). A throwaway .gd file with
+    # known declarations, never vendored into the repo, so the fixture proves the
+    # RULES fire without depending on any real file's current line numbers.
+    with tempfile.TemporaryDirectory() as td:
+        fake_gd = Path(td) / "fixture_symbol.gd"
+        fake_gd.write_text(
+            "extends Node\n"                    # 1
+            "class_name FixtureSymbol\n"         # 2
+            "\n"                                 # 3
+            "signal escaped(x)\n"                # 4
+            "const HUSK_MULTIPLIER := 2\n"       # 5
+            "\n"                                 # 6
+            "func _gait(delta: float) -> void:\n"  # 7
+            "    pass\n"                          # 8
+            "\n"                                  # 9
+            "static func gait_stretch(w: float) -> float:\n"  # 10
+            "    return w\n"                                   # 11
+            "\n"                                                # 12
+            "const HINTS: Array[String] = [\n"                  # 13
+            "\tHINT_A, HINT_B,\n"                                # 14
+            "]\n",                                               # 15
+            encoding="utf-8")
+        relpath = "fixture_symbol.gd"
+
+        # 8a: a symbol cited exactly where it is declared -> verified, 0 findings.
+        good_md = "- `FixtureSymbol._gait` (`%s:7`) is fine.\n" % relpath
+        # 8b: the SAME symbol, cited at a range that does not contain line 7 --
+        # the fixture the bead itself asks for: a real, gating failure.
+        bad_md = "- `FixtureSymbol._gait` (`%s:1-3`) is wrong.\n" % relpath
+        # 8c: a symbol that does not exist anywhere in the file.
+        missing_md = "- `_no_such_symbol` (`%s:7`) is invented.\n" % relpath
+        # 8d: the backtick-permissive FILE form accepts a plain lowercase name a
+        # human clearly meant as code (it is backticked) -- `gait_stretch` has no
+        # underscore/ALL_CAPS/dot signal and would be REJECTED under the stricter
+        # PLAIN rule; the FILE form must still accept it because the backticks
+        # themselves are the signal there.
+        plain_shaped_md = "- `gait_stretch` (`%s:10`) is fine too.\n" % relpath
+        # 8e: THE MULTI-LINE-DECLARATION FIX ITSELF. `HINTS` headers at line 13; its
+        # own continuation line 14 is a real citation into that SAME declaration,
+        # not a different one -- exactly the `RunConfig.HINTS`-shaped citation this
+        # cycle's real kanban.md run showed reported as a false "outside the cited
+        # range" finding before spans replaced single header lines.
+        span_md = "- `HINTS` (`%s:14`) is fine, it's the continuation line.\n" % relpath
+        # 8f: a builtin TYPE mention, not a symbol -- `game/pest.gd:2502` in the
+        # real corpus reads "`Pest.mutation` is a single `StringName`
+        # (`game/pest.gd:284`)", where the backticked word immediately before the
+        # citation describes mutation's TYPE, not a declaration at that line. Must
+        # not be counted as a named symbol at all (a "no such symbol" finding
+        # about `String` would be true and useless).
+        builtin_md = ("- `Pest.mutation` is a single `String` (`%s:5`), unrelated.\n"
+                     % relpath)
+
+        def _one(md_text, is_file=True, plain=False):
+            return symbol_check([("fixture.md", md_text, is_file, True)])
+
+        import io, contextlib
+        # symbol_check() resolves every source as if it were a root-level document
+        # (`_resolve(ROOT / "kanban.md", cited)` -- see bead_sources()'s own
+        # rationale for why: every source shares one resolver). The fixture file
+        # therefore has to sit BESIDE a `kanban.md`-shaped citing path for the
+        # SAME reason citation_relocate.py's own self-test puts its fixture files
+        # beside ITS synthetic root: `_resolve`'s first, and here only, successful
+        # branch is `citing.parent / cited`. Swapped back in `finally` no matter
+        # what -- a checker's own tests must not leave the module pointed at a
+        # temp directory that is about to be deleted.
+        real_root = ROOT
+        ROOT = Path(td)
+        try:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc_good = _one(good_md)
+            if rc_good != 0:
+                problems.append("a symbol cited exactly at its own declaration must "
+                                "exit 0 -- got %d, output: %r" % (rc_good, buf.getvalue()))
+            if "1 verified, 0 finding" not in buf.getvalue():
+                problems.append("the correct symbol citation was not reported as "
+                                "verified: %r" % buf.getvalue())
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc_bad = _one(bad_md)
+            out = buf.getvalue()
+            if rc_bad != 1:
+                problems.append("THE REQUIRED FIXTURE: a symbol cited outside its own "
+                                "declaration's range must exit 1 -- got %d" % rc_bad)
+            if "_gait" not in out or "outside the cited range" not in out:
+                problems.append("the out-of-range finding did not NAME the symbol: %r"
+                                % out)
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc_missing = _one(missing_md)
+            if (rc_missing != 1
+                    or "no func/const/var/signal declares" not in buf.getvalue()):
+                problems.append("a symbol with no declaration anywhere in the cited "
+                                "file must be a finding, not a silent pass: rc=%d %r"
+                                % (rc_missing, buf.getvalue()))
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc_plain_shaped = _one(plain_shaped_md)
+            if rc_plain_shaped != 0 or "1 verified" not in buf.getvalue():
+                problems.append("the backtick FILE form must accept a plain lowercase "
+                                "name (the backticks are the signal, not the casing): "
+                                "rc=%d %r" % (rc_plain_shaped, buf.getvalue()))
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc_span = _one(span_md)
+            if rc_span != 0 or "1 verified" not in buf.getvalue():
+                problems.append("THE MULTI-LINE-DECLARATION FIX: a citation into a "
+                                "multi-line const's own continuation line must "
+                                "verify against the declaration's whole SPAN, not "
+                                "just its header line: rc=%d %r"
+                                % (rc_span, buf.getvalue()))
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc_builtin = _one(builtin_md)
+            out = buf.getvalue()
+            if rc_builtin != 0 or "0 of 1" not in out:
+                problems.append("a builtin TYPE name (`String`) immediately before "
+                                "a citation must NOT be counted as a named symbol "
+                                "at all: rc=%d %r" % (rc_builtin, out))
+        finally:
+            ROOT = real_root
+
+        # Case 9: the UNBACKTICKED (bead-prose) form must reject an ordinary
+        # English word and accept the four qualifying shapes -- this is the
+        # measured 315-was-mostly-prose finding from the real export, reproduced
+        # as a positive control that can actually fail.
+        prose_word = "for no good reason (%s:7)" % relpath
+        prose_dotted = "FixtureSymbol._gait (%s:7)" % relpath
+        prose_underscore = "_gait (%s:7)" % relpath
+        prose_allcaps = "HUSK_MULTIPLIER (%s:5)" % relpath
+        prose_call = "gait_stretch() (%s:10)" % relpath
+        if symbol_citations(prose_word, plain=True):
+            problems.append("an ordinary English word before a plain citation was "
+                            "treated as a symbol -- the 'reason (file.gd:12)' "
+                            "false positive this mode exists to avoid: %r"
+                            % symbol_citations(prose_word, plain=True))
+        for label, prose in (("Class.member", prose_dotted),
+                             ("_leading_underscore", prose_underscore),
+                             ("ALL_CAPS", prose_allcaps),
+                             ("name()", prose_call)):
+            if not symbol_citations(prose, plain=True):
+                problems.append("the %s plain-prose form was not recognised as a "
+                                "symbol citation: %r" % (label, prose))
+
+        # Case 10: symbol_citations() must never invent a (path, start, end) that
+        # citations() itself does not also report -- a symbol citation is always A
+        # citation first. Cross-checked on real repo text (kanban.md), not just
+        # the synthetic fixture, so a drift between the two loops over messy real
+        # input cannot hide behind a clean synthetic case.
+        kanban_text = (ROOT / "kanban.md").read_text(encoding="utf-8", errors="replace")
+        base_set = {(ln, p, s, e) for ln, p, s, e in citations(kanban_text, plain=False)}
+        for c in symbol_citations(kanban_text, plain=False):
+            if (c["line"], c["path"], c["start"], c["end"]) not in base_set:
+                problems.append("symbol_citations() reported %r as a citation that "
+                                "citations() itself does not see -- the two loops "
+                                "have drifted apart" % c)
+                break
+
     for p in problems:
         print("SELF-CHECK FAILED: %s" % p)
     if problems:
         return 1
-    print("citation_check --self-check: 7 case(s) OK -- an open bead's dead citation gates, "
-          "the same defect in a closed bead does not, the unbackticked form is seen, and "
-          "a line-initial %r waives a bead while a mid-sentence mention of it does not, "
-          "a res:// path quoted from a backtrace resolves repo-relative, and --weak calls a blank landing weak while leaving a distinctive one alone. NOT COVERED "
-          "by this fixture: whether the real export parses, and whether a landed line "
-          "supports its claim." % BEAD_WAIVER)
+    print("citation_check --self-check: 13 case(s) OK -- an open bead's dead citation "
+          "gates, the same defect in a closed bead does not, the unbackticked form is "
+          "seen, and a line-initial %r waives a bead while a mid-sentence mention of it "
+          "does not, a res:// path quoted from a backtrace resolves repo-relative, "
+          "--weak calls a blank landing weak while leaving a distinctive one alone, "
+          "and --symbol verifies a correctly-cited declaration, FAILS (exit 1, naming "
+          "the symbol) on one cited outside its own range, fails on a symbol that "
+          "does not exist in the file, accepts a plain lowercase name once it is "
+          "backticked, verifies a citation into a multi-line declaration's own "
+          "continuation line (not just its header), never counts a builtin engine "
+          "type name as a symbol, and on the unbackticked "
+          "(bead-prose) form rejects an ordinary English word while accepting "
+          "Class.member, _leading_underscore, ALL_CAPS and name() shapes. NOT "
+          "COVERED by this fixture: whether the real export parses, and whether a "
+          "landed line supports its claim." % BEAD_WAIVER)
     return 0
 
 
@@ -475,6 +1006,12 @@ def main(argv: list[str]) -> int:
                          "throughout its file. ADVISORY: these are citations to READ, not "
                          "citations that are wrong. They are the ones --against can never "
                          "check, because a blank line matches a blank line anywhere")
+    ap.add_argument("--symbol", action="store_true",
+                    help="check citations of the form `Symbol.name` (`file:line`) -- "
+                         "verify the named symbol's own func/const/var/signal "
+                         "declaration falls inside the cited range. Needs no "
+                         "snapshot, unlike --against, so it catches a citation that "
+                         "went stale before this cycle ever touched the file")
     ap.add_argument("--self-check", action="store_true",
                     help="run the synthetic bead fixture and exit; proves --beads can fail")
     args = ap.parse_args(argv[1:])
@@ -548,6 +1085,18 @@ def main(argv: list[str]) -> int:
         beads_note = why
         beads_seen = len(bs)
         sources += [(lbl, prose, False, gating) for lbl, prose, gating in bs]
+
+    if args.symbol:
+        if args.beads and beads_note:
+            # Checked HERE, not deferred to the bottom of the default-mode print
+            # block like the other early-return modes currently do (--weak,
+            # --snapshot, --against) -- an unreadable export silently dropping its
+            # citations from THIS mode's denominator would be exactly the "clean
+            # run over an unread input" shape the house contract exists to catch.
+            print("citation_check: --beads read NOTHING (%s). No bead was checked; "
+                  "the count above is files only." % beads_note, file=sys.stderr)
+            return 2
+        return symbol_check(sources)
 
     for label, text, is_file, gating in sources:
         # Every source resolves as a root-level document. For a file that is what it

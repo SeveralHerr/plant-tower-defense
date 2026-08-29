@@ -6,8 +6,6 @@
     "game/chomp_flower.gd::func::held_pest",
     "game/corn_cobbler.gd::func::kernel_damage",
     "game/corn_cobbler.gd::func::spread_degrees",
-    "game/game.gd::func::budget_number",
-    "game/game.gd::func::check_budgets",
     "game/game.gd::var::victory",
     "game/hud.gd::func::set_active",
     "game/hud.gd::signal::packet_requested",
