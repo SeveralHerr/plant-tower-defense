@@ -109,7 +109,24 @@ const SAVE_PATH := "user://highscore.save"
 ## count can catch a truncation, and a field appended after it would take that guard
 ## down with it. So the v10 line order is: milestones, preferences, difficulty
 ## scores, SKINS, binding count, bindings.
-const SAVE_VERSION: int = 10
+##
+## Version 11 is the Petal shop, and it adds TWO lines rather than one: the petal
+## balance (`p<n>`) and the wardrobe (`u<n> [kind:id=fam,fam ...]`). They are two lines
+## and not one because they are two different shapes — a scalar and a variable-length
+## set — and the whole argument of v8's rename is that a line holding both stops being
+## nameable. Both go before the binding count, for the third time and the same reason.
+##
+## THE MIGRATION IS A MEANING AGAIN, like v9's. A v10 file's `s` line named the skin the
+## player had CHOSEN for each target under the old milestone gate; those choices are
+## still parsed, still kept, and are simply not selectable, because at v11 selecting one
+## requires OWNING it and a v10 file records no purchases. `selected_skin()`'s existing
+## fallback to DEFAULT_SKIN is that migration — see its own comment. Nothing is thrown
+## away: a player who later buys golden for the row a v10 save picked it on gets their
+## choice back with no re-picking.
+##
+## So the v11 line order is: milestones, preferences, difficulty scores, skins, PETALS,
+## PURCHASES, binding count, bindings.
+const SAVE_VERSION: int = 11
 
 ## The version that made the record know which difficulty earned it
 ## (plant-tower-defense-1hgx).
@@ -136,6 +153,33 @@ const VERSION_WITH_DIFFICULTY_SCORES: int = 9
 ## VERSION_WITH_DIFFICULTY_SCORES: a v9 file does not have it, and reading one anyway
 ## would consume the binding count as a skin line and then refuse the whole save.
 const VERSION_WITH_SKINS: int = 10
+
+## The version that put the petal balance and the wardrobe in the file. Same role a
+## third time, and it covers BOTH new lines because both landed together: a v10 file
+## has neither, and reading one anyway would consume the binding count as a petal line
+## and then refuse a save whose two high scores cannot be re-earned.
+const VERSION_WITH_SHOP: int = 11
+
+## The petal line's leading character, and it has one for the reason MILESTONE_PREFIX
+## does: `get_line()` returns "" past the end of a truncated file, `int("")` is 0, and 0
+## is a legal-looking balance. A bare digit here would also be indistinguishable from
+## the key-binding COUNT line two rows down, so a save truncated mid-file would parse as
+## a shorter file that happened to line up — the same trap OPTIONS_SPEED_PREFIX names.
+const PETAL_PREFIX := "p"
+
+## The wardrobe line's leading character. `u` for "unlocked", which is what a bought
+## family is from the player's side; `p` was already taken by the balance and `s` by the
+## selections one line up.
+const PURCHASE_PREFIX := "u"
+
+## Petals a milestone is worth the first time it is earned.
+##
+## Ten against one-per-wave-cleared, so the seven milestones are worth about as much as
+## three campaigns — an achievement pays for most of a plant skin (`Skins.PLANT_SKIN_COST`
+## is 5) or two pest ones. ONCE, and that is `record_milestones`'s contract rather than a
+## check here: it returns only what is fresh, so `Game._end_run` grants against that array
+## and a re-earned milestone is worth nothing, exactly as its flag already was.
+const MILESTONE_PETALS: int = 10
 
 ## The version that introduced the milestone line, the options line and the
 ## binding block — all three landed together, so one number covers them.
@@ -509,9 +553,41 @@ var earned_milestones: Dictionary = {}
 ## reading rather than a fallback: nobody had a choice to lose before this existed.
 ##
 ## Set only through `set_skin()`, never assigned directly — see that function for why
-## a raw assignment could persist a skin nobody has unlocked, or one no plant/pest
-## this build knows exists.
+## a raw assignment could persist a skin nobody OWNS, or one no plant/pest this build
+## knows exists.
 var selected_skins: Dictionary = {}
+
+## The petal balance: the persisted meta-currency the Shop spends
+## (plant-tower-defense-u82u). One per wave cleared, MILESTONE_PETALS per milestone
+## earned for the first time.
+##
+## PERSISTED, and it is the first number in this file that is neither a record nor a
+## preference — it is a BALANCE, and that is a third contract. A lost record is a lost
+## boast; a lost balance is lost work. It rides in the same file all the same, because a
+## second file would mean a second half-written-file story and this file's header is
+## about how expensive that was to get right once.
+##
+## Never negative. `add_petals` refuses a negative grant and `buy_skin` refuses a price
+## it cannot pay, so the only two writers cannot take it below zero — which is also what
+## lets the save format validate it with the existing `_is_score`.
+var petals: int = 0
+
+## The wardrobe: which families have been BOUGHT for which target, as
+## `Skins.selection_key(kind, id) -> Array[String]` of family ids.
+##
+## PER TARGET, not per family, and see `Skins`'s own header for why: a purchase that
+## dressed every row at once would be the old milestone gate wearing a price tag.
+##
+## Absent means "nothing bought", which is the correct reading for a fresh save and for
+## every save older than v11 rather than a fallback — nobody had a wardrobe to lose
+## before this existed. DEFAULT_SKIN is never recorded here: it is owned by everyone
+## always (`Skins.is_owned`), so writing it down would grow the line for information the
+## reader already has.
+##
+## Set only through `buy_skin()`, never assigned directly — the same rule
+## `selected_skins` follows one field up, and for a stronger reason: a raw assignment
+## here hands out a skin nobody paid for.
+var purchased_skins: Dictionary = {}
 
 ## Draw the two combat bars — a plant's health fill and the wave readout's threat
 ## tint — on GardenTheme's blue/orange ramp instead of the green/amber/red one.
@@ -613,6 +689,8 @@ var game_speed_step: int = 0
 ##               milestone line under them)
 ##   "recovered" `save_path` was missing and an interrupted `_save`'s temp file
 ##               was complete, so it was adopted
+##   "mirrored"  neither the save nor its temp file existed and `SaveMirror` had a
+##               copy, so it was written to `save_path` and read from there
 ##   "refused"   a file exists and could not be trusted; the scores were left alone
 var load_status: String = ""
 
@@ -675,6 +753,14 @@ func reset_persisted_state() -> void:
 	difficulty_high_scores = {}
 	key_bindings = {}
 	earned_milestones = {}
+	# The v10 field, and it was MISSING from this list until v11 went in
+	# (plant-tower-defense-u82u). Every field `_save` composes has to be here or a
+	# process that adopted the scratch path carries the previous process's choices into
+	# the bytes it writes — which is exactly the `d2 campaign:gentle=3453` failure
+	# `discard_scratch_save`'s own header describes, one field along.
+	selected_skins = {}
+	petals = 0
+	purchased_skins = {}
 	colorblind_safe = false
 	mute_sfx = false
 	mute_music = false
@@ -834,7 +920,8 @@ func record_score(seeds_earned: int) -> bool:
 ## middle and every field under them moves whenever a player rebinds a key.
 static func compose_save(campaign: int, endless_best: int, milestone_line: String,
 		preferences_line: String, bindings: Dictionary,
-		other_difficulties: Dictionary = {}, skins: Dictionary = {}) -> String:
+		other_difficulties: Dictionary = {}, skins: Dictionary = {},
+		petal_count: int = 0, purchases: Dictionary = {}) -> String:
 	var out: PackedStringArray = [
 		"v%d" % SAVE_VERSION,
 		str(campaign),
@@ -843,6 +930,10 @@ static func compose_save(campaign: int, endless_best: int, milestone_line: Strin
 		preferences_line,
 		compose_difficulty_line(other_difficulties),
 		compose_skins_line(skins),
+		# The two v11 lines, and they go HERE — under the skins, above the count — for
+		# the third time and the same reason the two before them did. See SAVE_VERSION.
+		compose_petal_line(petal_count),
+		compose_purchase_line(purchases),
 		str(bindings.size()),
 	]
 	var names: Array = bindings.keys()
@@ -969,6 +1060,120 @@ static func parse_skins_line(text: String) -> Variant:
 	return out
 
 
+## The v11 petal line. A prefix and a non-negative integer, nothing else — the
+## simplest line in the file, and prefixed anyway for the reason PETAL_PREFIX gives.
+static func compose_petal_line(count: int) -> String:
+	return "%s%d" % [PETAL_PREFIX, count]
+
+
+## Reads what `compose_petal_line` wrote, as an int, or `null` on anything else — the
+## convention every `_parse_*` here follows so `_parse_save` can refuse the whole file
+## rather than half-read it.
+##
+## Validated by `_is_score`, which is the same function the two high scores go through
+## and rejects both `""` and a negative. A negative balance is not a shape either writer
+## can produce (`add_petals` refuses a negative grant, `buy_skin` refuses a price it
+## cannot pay), so one on disk is corruption — and a balance that reads as -3 would let
+## the shop hand out a free skin the moment the player earned four petals.
+static func parse_petal_line(text: String) -> Variant:
+	if not text.begins_with(PETAL_PREFIX):
+		return null
+	var body: String = text.substr(PETAL_PREFIX.length())
+	if not _is_score(body):
+		return null
+	return int(body)
+
+
+## The v11 wardrobe line. The `s` line's shape with a COMMA LIST for a value:
+## `u2 pest:aphid=ember plant:sunflower=frost,golden`.
+##
+## Count-prefixed and sorted like every other set line here, and the family list within
+## each key is sorted too — otherwise two saves holding the same wardrobe differ in
+## bytes depending on the order the player happened to buy things in, which is the one
+## property `compose_difficulty_line`'s own sort exists to give.
+##
+## A key whose list comes out empty is DROPPED rather than written as `key=`, and
+## DEFAULT_SKIN is dropped from every list, for the same reason a zero score and a
+## default selection are dropped: it is owned by everyone always, so recording it grows
+## the line for nothing. An empty value is also not a shape `parse_purchase_line` will
+## read back, so writing one would fail `_save`'s own readback.
+static func compose_purchase_line(purchases: Dictionary) -> String:
+	var fields: PackedStringArray = []
+	var keys: Array = purchases.keys()
+	keys.sort()
+	for key: Variant in keys:
+		var families: Array[String] = []
+		for entry: Variant in (purchases[key] as Array):
+			var text: String = String(entry)
+			if text.is_empty() or text == String(Skins.DEFAULT_SKIN) or families.has(text):
+				continue
+			families.append(text)
+		if families.is_empty():
+			continue
+		families.sort()
+		fields.append("%s=%s" % [String(key), ",".join(PackedStringArray(families))])
+	return " ".join(PackedStringArray(["%s%d" % [PURCHASE_PREFIX, fields.size()]]) + fields)
+
+
+## Reads what `compose_purchase_line` wrote, as `key -> Array[String]`, or `null` on
+## anything malformed.
+##
+## Every token — the kind, the target id, and each family in the list — is validated
+## against MILESTONE_ID_CHARS through `_is_id_text`, exactly as `parse_skins_line` does
+## and for exactly its reason: these are written by this project, never by a player, so
+## anything else is corruption. It matters more here than there, because this is a line
+## `buy_skin` appends to at runtime: an id with a capital accepted at the writer is
+## written, refused on `_save`'s readback, and then every save for the rest of the
+## session fails silently — the failure `record_milestones` documents at length.
+##
+## A duplicate key, a duplicate family within a key, and an empty value are all
+## refusals. A count that disagrees with the field count is a refusal too: the whole
+## point of writing a count is that it can disagree.
+##
+## The KIND half is NOT checked against Skins.KIND_PLANT/KIND_PEST, matching
+## `parse_skins_line`: a save from a later build may name a third kind, and refusing the
+## whole file over one unfamiliar kind would cost the two scores it cannot refuse away.
+## `Skins.is_owned` is where an unknown kind, target or family becomes "not owned".
+static func parse_purchase_line(text: String) -> Variant:
+	var parts: PackedStringArray = text.split(" ", false)
+	if parts.size() == 0 or not parts[0].begins_with(PURCHASE_PREFIX):
+		return null
+	var count_text: String = parts[0].substr(PURCHASE_PREFIX.length())
+	if not count_text.is_valid_int():
+		return null
+	var count: int = int(count_text)
+	if count < 0 or parts.size() - 1 != count:
+		return null
+	var out: Dictionary = {}
+	for i: int in range(1, parts.size()):
+		var field: String = parts[i]
+		var split: int = field.find("=")
+		if split <= 0:
+			return null
+		var key: String = field.substr(0, split)
+		var value: String = field.substr(split + 1)
+		if value.is_empty():
+			return null
+		var colon: int = key.find(":")
+		if colon <= 0 or colon == key.length() - 1:
+			return null
+		if not _is_id_text(key.substr(0, colon)) or not _is_id_text(key.substr(colon + 1)):
+			return null
+		if out.has(key):
+			return null
+		var families: Array[String] = []
+		for token: String in value.split(","):
+			# `split(",")` keeps empties, so `a,,b` and a trailing comma both arrive as
+			# an empty token and are refused here rather than shrugged at — a parser
+			# that tolerates a stray separator is one that would tolerate a half-written
+			# line, which is the argument `_parse_preferences` makes about two spaces.
+			if token.is_empty() or not _is_id_text(token) or families.has(token):
+				return null
+			families.append(token)
+		out[key] = families
+	return out
+
+
 ## Whether `text` is made only of MILESTONE_ID_CHARS — shared by the skins line's
 ## key and value halves, which follow the same "written by this project, never by a
 ## player" rule the milestone ids do.
@@ -1045,28 +1250,126 @@ func record_milestones(ids: Array) -> Array[String]:
 
 ## The skin currently chosen for `kind`/`id`, or `Skins.DEFAULT_SKIN`.
 ##
-## Reads back through `Skins.is_unlocked` rather than trusting the saved value
-## outright: a milestone lost to a refused/quarantined save (see this file's own
-## header) or a skin from a build newer than this one must not leave a plant or
-## pest wearing a colour the player can no longer see a reason for on the Skins
-## screen. Falling back to DEFAULT_SKIN here, rather than erroring, is the same
-## "an unknown reads as off" contract `Milestones.is_met` and `Pest.tint_for` use.
+## Reads back through `Skins.is_owned` rather than trusting the saved value outright:
+## a purchase lost to a refused/quarantined save (see this file's own header) or a skin
+## from a build newer than this one must not leave a plant or pest wearing a drawing the
+## player can no longer see a reason for in the Shop. Falling back to DEFAULT_SKIN here,
+## rather than erroring, is the same "an unknown reads as off" contract
+## `Milestones.is_met` and `Pest.tint_for` use.
+##
+## **THIS FALLBACK IS THE v10 -> v11 MIGRATION, and it is intended rather than
+## incidental.** A v10 save's `s` line recorded a skin the player had chosen under the
+## old milestone gate; at v11 that same file records no purchases, because there was
+## nothing to buy when it was written. So the selections PARSE, are KEPT on disk, and
+## read back as DEFAULT_SKIN until the matching family is bought for that row — at which
+## point the old choice returns with no re-picking. Discarding them at load instead was
+## the alternative, and it would have thrown away a preference the player still holds in
+## order to make a fallback look tidier.
 func selected_skin(kind: StringName, id: StringName) -> StringName:
 	var key: String = Skins.selection_key(kind, id)
 	var chosen: StringName = StringName(selected_skins.get(key, Skins.DEFAULT_SKIN))
 	if chosen == Skins.DEFAULT_SKIN:
 		return chosen
-	if not Skins.is_unlocked(chosen, earned_milestones):
+	if not Skins.is_owned(kind, id, chosen, purchased_skins):
 		return Skins.DEFAULT_SKIN
 	return chosen
 
 
+## Whether this player has bought `family_id` for this exact target. The one reader
+## outside `Skins` — everything else goes through `selected_skin()` or the shop.
+func owns_skin(kind: StringName, id: StringName, family_id: StringName) -> bool:
+	return Skins.is_owned(kind, id, family_id, purchased_skins)
+
+
+## Buys `family_id` for `kind`/`id`: spends the petals, records the purchase and writes
+## the file. Returns whether the purchase happened.
+##
+## FOUR REFUSALS, in this order, and every one of them leaves `petals` and
+## `purchased_skins` exactly as they were:
+##   an unknown target — a plant or pest this build does not have;
+##   an unknown family, or DEFAULT_SKIN, which is not for sale because everyone has it;
+##   one already owned on this row, so a double press cannot be charged twice;
+##   a price the balance cannot pay.
+##
+## THE ID GUARD IS AT THE DOOR, and it is here for the reason `record_milestones`
+## documents at length rather than out of symmetry: this function APPENDS to a line
+## `_save()` reads back through the loader's own validator. An id carrying a capital or
+## a hyphen would be accepted here, written, refused on readback, and then every save
+## for the rest of the session would fail silently with the bad id still sitting in the
+## dictionary. `Skins.has_target` and `Skins.has_family` already make that unreachable
+## today — both ids come from this project's own tables — which is exactly why the
+## check is cheap, and why the day someone adds a table entry with a capital in it
+## should cost one warning rather than most of a cycle.
+##
+## Not idempotent in `set_skin`'s sense: buying what you already own is a REFUSAL, not a
+## silent success, because a shop that answers "yes" to a purchase it did not make is a
+## shop that will eventually be charged for one.
+func buy_skin(kind: StringName, id: StringName, family_id: StringName) -> bool:
+	if not Skins.has_target(kind, id):
+		return false
+	if family_id == Skins.DEFAULT_SKIN or not Skins.has_family(family_id):
+		return false
+	if owns_skin(kind, id, family_id):
+		return false
+	if not is_recordable_purchase(kind, id, family_id):
+		push_warning(("RunConfig: refusing to buy %s:%s=%s -- only %s are legal in a save, "
+			+ "and accepting this would make every save in this session fail silently.")
+			% [kind, id, family_id, MILESTONE_ID_CHARS])
+		return false
+	var cost: int = Skins.cost_for(kind, family_id)
+	if cost > petals:
+		return false
+	var key: String = Skins.selection_key(kind, id)
+	var owned: Array[String] = []
+	for entry: Variant in (purchased_skins.get(key, []) as Array):
+		owned.append(String(entry))
+	owned.append(String(family_id))
+	# Sorted on the way IN as well as on the way out, so the in-memory wardrobe and the
+	# bytes are the same list rather than two orderings that agree only after a round
+	# trip -- which is what makes a byte-exact assertion on a freshly bought skin mean
+	# anything.
+	owned.sort()
+	purchased_skins[key] = owned
+	petals -= cost
+	_save()
+	return true
+
+
+## Whether a (kind, id, family) triple can survive a save/load round trip.
+##
+## Derived from the same constant `parse_purchase_line` validates against rather than
+## re-stating the rule, exactly as `is_recordable_milestone` is: the two halves being
+## written independently is how a writer comes to accept what its own reader rejects.
+static func is_recordable_purchase(kind: StringName, id: StringName,
+		family_id: StringName) -> bool:
+	return (_is_id_text(String(kind)) and _is_id_text(String(id))
+		and _is_id_text(String(family_id)))
+
+
+## Adds `count` petals and writes them down. Returns the balance afterwards, so a
+## caller need not read it back.
+##
+## A NEGATIVE COUNT IS A NO-OP, not a subtraction, and this is the only place the rule
+## lives. Petals are spent through `buy_skin`, which knows the price and refuses one it
+## cannot pay; a general "add a negative" door would be a second spender with no such
+## check, and it is the one that would take the balance below zero — where `_is_score`
+## refuses the line and every save in the session dies silently. `count == 0` is a no-op
+## for the reason `set_colorblind_safe` is: the save file is not a place to record that
+## nothing happened.
+func add_petals(count: int) -> int:
+	if count <= 0:
+		return petals
+	petals += count
+	_save()
+	return petals
+
+
 ## Sets the skin for `kind`/`id`, and persists it. Returns whether the choice took —
-## false for an unknown target, an unknown skin, or one not yet unlocked, in which
-## case `selected_skins` is left exactly as it was.
+## false for an unknown target, an unknown skin, or one this player does not OWN for
+## this target, in which case `selected_skins` is left exactly as it was.
 ##
 ## THIS IS THE ONLY WRITER. A raw assignment to `selected_skins` could persist a
-## skin the player has not earned, or a target this build does not have — either of
+## skin the player has not bought, or a target this build does not have — either of
 ## which `selected_skin()` would then have to notice and correct on every read
 ## instead of being refused once, here, at the door.
 ##
@@ -1075,7 +1378,7 @@ func selected_skin(kind: StringName, id: StringName) -> StringName:
 func set_skin(kind: StringName, id: StringName, skin_id: StringName) -> bool:
 	if not Skins.has_target(kind, id):
 		return false
-	if not Skins.is_unlocked(skin_id, earned_milestones):
+	if not Skins.is_owned(kind, id, skin_id, purchased_skins):
 		return false
 	var key: String = Skins.selection_key(kind, id)
 	if StringName(selected_skins.get(key, Skins.DEFAULT_SKIN)) == skin_id:
@@ -1531,7 +1834,8 @@ func _parse_failed(reason: String) -> Dictionary:
 	return {"ok": false, "campaign": 0, "endless": 0, "milestones": [],
 		"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
 		"game_speed_step": 0, "sfx_level": 0, "music_level": 0,
-		"bindings": {}, "version": 0, "difficulty_scores": {}, "skins": {}, "reason": reason}
+		"bindings": {}, "version": 0, "difficulty_scores": {}, "skins": {},
+		"petals": 0, "purchases": {}, "reason": reason}
 
 
 ## Validates an entire save file and only then hands back its contents.
@@ -1572,7 +1876,8 @@ func _parse_save(path: String) -> Dictionary:
 		return {"ok": true, "campaign": 0, "endless": int(header), "milestones": [],
 			"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
 			"game_speed_step": 0, "sfx_level": 0, "music_level": 0,
-			"bindings": {}, "version": 1, "difficulty_scores": {}, "skins": {}, "reason": "v1"}
+			"bindings": {}, "version": 1, "difficulty_scores": {}, "skins": {},
+			"petals": 0, "purchases": {}, "reason": "v1"}
 
 	var version_text: String = header.substr(1)
 	if not version_text.is_valid_int():
@@ -1664,6 +1969,24 @@ func _parse_save(path: String) -> Dictionary:
 			return _parse_failed("its skin line is not a skin line")
 		skins = parsed_skins as Dictionary
 
+	# The two v11 lines, gated on VERSION_WITH_SHOP for the reason VERSION_WITH_SKINS
+	# exists one field up: a v10 file has neither, and reading one anyway would consume
+	# the binding count as a petal line and then refuse the whole save.
+	#
+	# Both or neither, never one: they landed in the same version, so a file that has the
+	# balance and not the wardrobe is not a shape any writer produced.
+	var petal_count: int = 0
+	var purchases: Dictionary = {}
+	if version >= VERSION_WITH_SHOP:
+		var parsed_petals: Variant = parse_petal_line(f.get_line().strip_edges())
+		if parsed_petals == null:
+			return _parse_failed("its petal line is not a petal line")
+		petal_count = int(parsed_petals)
+		var parsed_purchases: Variant = parse_purchase_line(f.get_line().strip_edges())
+		if parsed_purchases == null:
+			return _parse_failed("its purchase line is not a purchase line")
+		purchases = parsed_purchases as Dictionary
+
 	# The count is what makes a truncation here detectable at all — without it, a
 	# file cut after the options line is indistinguishable from a player who never
 	# opened the Keys screen, and the rebindings vanish with no error. Same
@@ -1711,6 +2034,8 @@ func _parse_save(path: String) -> Dictionary:
 		"bindings": bindings,
 		"difficulty_scores": difficulty_scores,
 		"skins": skins,
+		"petals": petal_count,
+		"purchases": purchases,
 		"reason": "v%d" % version,
 	}
 
@@ -1735,15 +2060,40 @@ func _load() -> void:
 	# still pending against a file nobody is going to read again is just a stale
 	# rename waiting to fire at the wrong moment.
 	_refused_path = ""
+	var mirrored: bool = false
 	if not FileAccess.file_exists(path):
 		# An interrupted `_save` can leave a complete temp file with no save
 		# beside it. Adopting it is the entire reason `_save` writes it
 		# separately; without this, the safety net catches nothing.
 		if not FileAccess.file_exists(_tmp_path()):
-			load_status = "absent"
-			return
-		path = _tmp_path()
-		recovered = true
+			# LAST, after both files, and only then: the mirror is a copy of what one of
+			# them held (see `SaveMirror`), so consulting it while either exists would be
+			# preferring a copy to the original. A web build whose IDBFS mount came back
+			# empty is exactly the case where neither exists and the mirror still does.
+			#
+			# The bytes are written to `save_path` and then parsed from there by the code
+			# below, rather than parsed in memory: that keeps ONE parser and ONE
+			# validator in this file. A mirror this build cannot read is therefore
+			# refused by the same branch that refuses a file it cannot read, and
+			# quarantined to `.bak` by the next `_save` rather than silently retried on
+			# every launch.
+			var mirror_text: String = SaveMirror.read() if SaveMirror.active() else ""
+			if mirror_text.is_empty():
+				load_status = "absent"
+				return
+			var restored := FileAccess.open(path, FileAccess.WRITE)
+			if restored == null:
+				push_warning(("RunConfig: a mirrored save exists but %s cannot be written "
+					+ "(%s), so this session starts fresh and the mirror is left alone.")
+					% [path, error_string(FileAccess.get_open_error())])
+				load_status = "absent"
+				return
+			restored.store_string(mirror_text)
+			restored.close()
+			mirrored = true
+		else:
+			path = _tmp_path()
+			recovered = true
 
 	var parsed: Dictionary = _parse_save(path)
 	if not bool(parsed["ok"]):
@@ -1761,6 +2111,13 @@ func _load() -> void:
 	# A pre-v10 save has none, and an empty dictionary is the correct reading for the
 	# same reason: before v10 there was no Skins screen to have chosen one on.
 	selected_skins = parsed.get("skins", {}) as Dictionary
+	# A pre-v11 save has neither, and zero-and-empty is the correct reading a third
+	# time: before v11 there was no shop to have earned or spent anything at. Note the
+	# selections read one line up survive alongside an empty wardrobe and are simply not
+	# selectable until something is bought — see `selected_skin()`, where that fallback
+	# IS the v10 -> v11 migration.
+	petals = int(parsed.get("petals", 0))
+	purchased_skins = parsed.get("purchases", {}) as Dictionary
 	key_bindings = parsed["bindings"] as Dictionary
 	# Replaced, not merged. A load is "this is what is on disk", and a union with
 	# whatever the process happened to be holding would make a save reloaded twice
@@ -1787,6 +2144,15 @@ func _load() -> void:
 	if recovered:
 		load_status = "recovered"
 		_save()
+	elif mirrored:
+		# Its own status, not "loaded", for the reason `load_status` exists at all: "there
+		# was a file" and "there was no file and the browser had a copy" are different
+		# facts about this launch, and only the second is worth a bug report if it starts
+		# happening on desktop. The bytes are already at `save_path`, so nothing is
+		# rewritten unless they are an older shape.
+		load_status = "mirrored"
+		if int(parsed["version"]) < SAVE_VERSION:
+			_save()
 	elif int(parsed["version"]) < SAVE_VERSION:
 		load_status = "migrated"
 		# Rewrite immediately in the new shape, so the ambiguity is resolved once
@@ -1844,9 +2210,10 @@ func _save() -> bool:
 		push_warning("RunConfig: cannot write %s (%s). The record stands in memory only, and the previous save is untouched."
 			% [tmp, error_string(FileAccess.get_open_error())])
 		return false
-	f.store_string(compose_save(campaign_high_score, endless_high_score,
+	var text: String = compose_save(campaign_high_score, endless_high_score,
 		_milestone_line(), _preferences_line(), key_bindings, difficulty_high_scores,
-		selected_skins))
+		selected_skins, petals, purchased_skins)
+	f.store_string(text)
 	f.flush()
 	var write_error: int = f.get_error()
 	f.close()
@@ -1871,5 +2238,16 @@ func _save() -> bool:
 	if rename_error != OK:
 		push_warning("RunConfig: %s replacing %s. The finished save is at %s and _load will adopt it."
 			% [error_string(rename_error), save_path, tmp])
+	# THE MIRROR IS WRITTEN LAST, and only from `text`, which by this point has been read
+	# back through the loader's own validator. So the browser copy is a copy of bytes
+	# this build has proven it can read, never a second composition that could differ —
+	# see `SaveMirror`'s header for why that is the whole design.
+	#
+	# Written after a FAILED rename too, deliberately. The bytes are on disk either way
+	# (this function returns true for exactly that reason), and on a web build the mirror
+	# is the durable copy — skipping it there because a rename failed would drop the one
+	# write that survives the tab closing.
+	if SaveMirror.active():
+		SaveMirror.write(text)
 	# See the header: the data is on disk and _load adopts it, so this is a success.
 	return true

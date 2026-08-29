@@ -85,6 +85,14 @@ const UP_ARROW := "↑"
 const RIGHT_ARROW := "→"
 const DOWN_ARROW := "↓"
 const INFINITY := "∞"
+## The Petal shop's two marks. Named here as well as in `ShopScreen` because this
+## table is what says a drawn character has been thought about, and both of these are
+## Dingbats — the first block this project has drawn from that its shipped font is not
+## guaranteed to carry. `ShopScreen._mark()` asks `Font.has_char()` before drawing
+## either, so a row here is a claim about what the glyph MEANS, not a promise that it
+## renders; the fallback is that screen's business.
+const PETAL := "✿"
+const TICK := "✓"
 
 
 ## One row per distinct non-ASCII character in `res://game/*.gd`.
@@ -179,6 +187,22 @@ const TABLE: Array[Dictionary] = [
 		"roles": [ROLE_KEY_NAME],
 		"means": "The Down arrow key's printed name.",
 		"drawn_in": ["key_bindings.gd"],
+	},
+	{
+		"glyph": PETAL,
+		"codepoint": 0x273F,
+		"unicode_name": "BLACK FLORETTE",
+		"roles": [ROLE_MARK],
+		"means": "One petal, the currency skins are bought with. Appended bare to a price (\"Heirloom Gold  5✿\") because the word does not fit: three priced buttons carrying \"5 petals\" measured 1164px against a 1152px canvas, so the unit is carried by the balance line and the note instead and the price wears the mark. Bare beside a number, which is the shape the collision gate bites, so it is gated with the rest.",
+		"drawn_in": ["shop_screen.gd"],
+	},
+	{
+		"glyph": TICK,
+		"codepoint": 0x2713,
+		"unicode_name": "CHECK MARK",
+		"roles": [ROLE_MARK],
+		"means": "This skin is the one the target is wearing. Appended to an owned family's title on a disabled button, as the second channel beside the disabled tint. Unlike the petal it has a word that fits, so `ShopScreen` falls back to \"worn\" when the font cannot draw it.",
+		"drawn_in": ["shop_screen.gd"],
 	},
 	{
 		"glyph": INFINITY,

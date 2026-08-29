@@ -1585,8 +1585,24 @@ func test_the_title_menu_has_room_for_the_next_destination() -> String:
 	var cap: int = TitleScreen.menu_capacity()
 	var horizon: float = float(TitleScreen.viewport_height()) * TitleBackdrop.HORIZON
 
-	var err: String = _T.assert_true(cap >= now + 2,
-		"the menu holds %d and could hold %d -- a sixth AND a seventh destination fit" % [now, cap])
+	## ONE SPARE, NOT TWO, SINCE THE SHOP -- and the constants were checked before this
+	## number was moved, because "fix the layout, not the test" is the right instinct
+	## and here it is not available. The grid holds 8: two 44px primaries and three
+	## 40px pair-rows, footing at 448 with the hint at 454..476 against a horizon at
+	## 479.5. A NINTH button is a sixth ROW, which costs 48px, and there are 3.5. The
+	## three constants it could come out of are each at a documented floor --
+	## SECONDARY_BUTTON_HEIGHT is 40 because `findings` gates an interactive Control at
+	## 40x40, BUTTON_TOP cannot rise without the subtitle running into the wordmark
+	## (SCORE_Y's foot is 2px clear of it), and BUTTON_GAP already spent 2px buying the
+	## fifth destination. Every pixel available is 12 of the 44.5 needed.
+	##
+	## So the ninth destination is a SHAPE change, the way the sixth was: a third
+	## column in the band, or a "More" door, both of which were argued and refused in
+	## the note above BUTTON_TOP. This is the assertion that will say so on the day it
+	## is needed, and the pair of ceiling checks below -- which is where this test's
+	## real deliverable lives -- are untouched.
+	var err: String = _T.assert_true(cap >= now + 1,
+		"the menu holds %d and could hold %d -- the next destination fits" % [now, cap])
 	if err == "":
 		# The ceiling is a measurement, not a number: one more than capacity must
 		# actually run the hint past the grass line.
@@ -1963,11 +1979,16 @@ func test_every_overlay_wears_the_same_chrome() -> String:
 	var want := Vector2(1152, 648)
 	# Built one at a time rather than three up front: a screen this test never
 	# reaches would otherwise sit unparented and be counted as an orphan.
-	var who_list: Array[String] = ["the Keys screen", "the Options screen", "the notebook"]
+	var who_list: Array[String] = ["the Keys screen", "the Options screen", "the notebook",
+		"the shop"]
 	var makers: Array[Callable] = [
 		func() -> OverlayScreen: return KeyBindingScreen.build(),
 		func() -> OverlayScreen: return OptionsScreen.new(),
 		func() -> OverlayScreen: return NotebookScreen.new(),
+		# Through build(), not new(): the shop's PROCESS_MODE_ALWAYS is set there, and
+		# a screen this test built by hand would be a screen this test cannot see that
+		# property on.
+		func() -> OverlayScreen: return ShopScreen.build(),
 	]
 	var err := ""
 	for i: int in makers.size():
@@ -2069,6 +2090,16 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 	# The two mutes joined that list at v6.
 	var stashed_colorblind: bool = RunConfig.colorblind_safe
 	var stashed_milestones: Dictionary = RunConfig.earned_milestones.duplicate()
+	# The v10 skins line and the v11 petal and purchase lines are pinned here for the
+	# same reason the milestones above are: this test asserts the save BYTE FOR BYTE, so
+	# every count-prefixed line in it has to be a value this function set, not one an
+	# earlier test in the suite left behind.
+	var stashed_selected_skins: Dictionary = RunConfig.selected_skins.duplicate()
+	var stashed_purchased_skins: Dictionary = RunConfig.purchased_skins.duplicate(true)
+	var stashed_petals: int = RunConfig.petals
+	RunConfig.selected_skins = {}
+	RunConfig.purchased_skins = {}
+	RunConfig.petals = 0
 	var stashed_mute_sfx: bool = RunConfig.mute_sfx
 	var stashed_mute_music: bool = RunConfig.mute_music
 	RunConfig.colorblind_safe = false
@@ -2097,7 +2128,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 		err = _T.assert_eq(String(Game.key_help()[0]["keys"]), "F1", "the pause card's legend moved")
 	if err == "":
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\np0\nu0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
 			"and it was written down beside the scores")
 	if err == "":
 		# A key another verb already answers to is refused, and said so.
@@ -2134,7 +2165,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 				"Put them all back restores the shipped keys once confirmed")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\np0\nu0\n0\n" % RunConfig.SAVE_VERSION,
 				"and clears the overrides out of the save rather than pinning the defaults into it")
 
 	_T.free_ui(screen)
@@ -2146,6 +2177,9 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 	RunConfig.endless_high_score = stashed_endless
 	RunConfig.colorblind_safe = stashed_colorblind
 	RunConfig.earned_milestones = stashed_milestones
+	RunConfig.selected_skins = stashed_selected_skins
+	RunConfig.purchased_skins = stashed_purchased_skins
+	RunConfig.petals = stashed_petals
 	RunConfig.mute_sfx = stashed_mute_sfx
 	RunConfig.mute_music = stashed_mute_music
 	for suffix: String in ["", ".tmp", ".bak"]:
@@ -2349,6 +2383,16 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 	var stashed_endless: int = RunConfig.endless_high_score
 	var stashed_colorblind: bool = RunConfig.colorblind_safe
 	var stashed_milestones: Dictionary = RunConfig.earned_milestones.duplicate()
+	# The v10 skins line and the v11 petal and purchase lines are pinned here for the
+	# same reason the milestones above are: this test asserts the save BYTE FOR BYTE, so
+	# every count-prefixed line in it has to be a value this function set, not one an
+	# earlier test in the suite left behind.
+	var stashed_selected_skins: Dictionary = RunConfig.selected_skins.duplicate()
+	var stashed_purchased_skins: Dictionary = RunConfig.purchased_skins.duplicate(true)
+	var stashed_petals: int = RunConfig.petals
+	RunConfig.selected_skins = {}
+	RunConfig.purchased_skins = {}
+	RunConfig.petals = 0
 	var stashed_sfx: bool = Sfx.is_muted()
 	var stashed_music: bool = Music.is_muted()
 	# Both halves of each mute, because v6 gave them two: the static flag the player
@@ -2471,7 +2515,7 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 		err = _T.assert_true(RunConfig.colorblind_safe, "the colourblind row sets the flag")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\np0\nu0\n0\n" % RunConfig.SAVE_VERSION,
 				"and it is written down beside the scores, not held for the session")
 	if err == "":
 		# Nothing on the paper may run off it or sit on top of anything else, and the
@@ -2488,6 +2532,9 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 	RunConfig.endless_high_score = stashed_endless
 	RunConfig.colorblind_safe = stashed_colorblind
 	RunConfig.earned_milestones = stashed_milestones
+	RunConfig.selected_skins = stashed_selected_skins
+	RunConfig.purchased_skins = stashed_purchased_skins
+	RunConfig.petals = stashed_petals
 	RunConfig.mute_sfx = stashed_mute_sfx
 	RunConfig.mute_music = stashed_mute_music
 	Sfx.set_muted(stashed_sfx)
@@ -6058,12 +6105,12 @@ func test_the_binding_table_answers_about_itself() -> String:
 		# through this, so a field appended in the wrong place fails here.
 		err = _T.assert_eq(
 			RunConfig.compose_save(3, 4, "m0", "cb0 sfx0 mus0 spd0", {"garden_pause": [KEY_F1, KEY_F2]}),
-			"v%d\n3\n4\nm0\ncb0 sfx0 mus0 spd0\nd0\ns0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
+			"v%d\n3\n4\nm0\ncb0 sfx0 mus0 spd0\nd0\ns0\np0\nu0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
 			"compose_save writes the header, both scores, the milestones, the options, "
 				+ "the count, then the rows")
 	if err == "":
 		err = _T.assert_eq(RunConfig.compose_save(0, 0, "m0", "cb0 sfx0 mus0 spd0", {}),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\nd0\ns0\n0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\nd0\ns0\np0\nu0\n0\n" % RunConfig.SAVE_VERSION,
 			"and an untouched keyboard is a count of zero, not an absent line")
 	KeyBindings.reset_all()
 	return err
@@ -6096,6 +6143,16 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	# file, so a maintainer who plays muted would otherwise read `sfx1` here.
 	var stashed_colorblind: bool = RunConfig.colorblind_safe
 	var stashed_milestones: Dictionary = RunConfig.earned_milestones.duplicate()
+	# The v10 skins line and the v11 petal and purchase lines are pinned here for the
+	# same reason the milestones above are: this test asserts the save BYTE FOR BYTE, so
+	# every count-prefixed line in it has to be a value this function set, not one an
+	# earlier test in the suite left behind.
+	var stashed_selected_skins: Dictionary = RunConfig.selected_skins.duplicate()
+	var stashed_purchased_skins: Dictionary = RunConfig.purchased_skins.duplicate(true)
+	var stashed_petals: int = RunConfig.petals
+	RunConfig.selected_skins = {}
+	RunConfig.purchased_skins = {}
+	RunConfig.petals = 0
 	var stashed_mute_sfx: bool = RunConfig.mute_sfx
 	var stashed_mute_music: bool = RunConfig.mute_music
 	RunConfig.colorblind_safe = false
@@ -6113,7 +6170,7 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	if err == "":
 		RunConfig.store_key_bindings(KeyBindings.overrides())
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
+			"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\np0\nu0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
 			"the save carries the count and one action row")
 	if err == "":
 		# Wipe every trace from memory, then read it all back off disk.
@@ -6157,6 +6214,9 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	RunConfig.endless_high_score = stashed_endless
 	RunConfig.colorblind_safe = stashed_colorblind
 	RunConfig.earned_milestones = stashed_milestones
+	RunConfig.selected_skins = stashed_selected_skins
+	RunConfig.purchased_skins = stashed_purchased_skins
+	RunConfig.petals = stashed_petals
 	RunConfig.mute_sfx = stashed_mute_sfx
 	RunConfig.mute_music = stashed_mute_music
 	for suffix: String in ["", ".tmp", ".bak"]:
@@ -9502,6 +9562,10 @@ func test_no_test_persists_through_the_players_own_save() -> String:
 		"RunConfig.record_score", "RunConfig._save()", "RunConfig.record_milestones",
 		"RunConfig.set_colorblind_safe", "RunConfig.set_mute_sfx", "RunConfig.set_mute_music",
 		"RunConfig.store_key_bindings",
+		# The v10 and v11 writers. `set_skin` persists a chosen skin; `buy_skin` and
+		# `add_petals` persist the wardrobe and the balance, and `add_petals` is reached
+		# from Game.bank_score() on every run that clears a wave.
+		"RunConfig.set_skin", "RunConfig.buy_skin", "RunConfig.add_petals",
 	]
 	var checked: int = 0
 	var offenders: PackedStringArray = []
@@ -11263,14 +11327,17 @@ func test_the_title_menu_pairs_its_secondary_destinations_two_to_a_row() -> Stri
 		"an empty menu has no rows — the loop terminates rather than emitting one")
 	if err == "":
 		err = _T.assert_eq(_menu_row_shape(TitleScreen.MENU_BUTTON_NAMES.size()),
-			[[0], [1], [2, 3], [4, 5]],
-			("the shipped menu is two full-width primaries and two pairs. It was "
-				+ "[[0], [1], [2, 3], [4]] until cycle 157 added the difficulty button, "
-				+ "which filled the hole beside Options rather than opening a row -- "
-				+ "which is the prediction the case below has been making all along"))
+			[[0], [1], [2, 3], [4, 5], [6]],
+			("the shipped menu is two full-width primaries, two pairs and a lone "
+				+ "trailing row. It was [[0], [1], [2, 3], [4]] until cycle 157 added the "
+				+ "difficulty button, which filled the hole beside Options rather than "
+				+ "opening a row, and [[0], [1], [2, 3], [4, 5]] until the Shop opened "
+				+ "the fifth row -- both of them predicted by the forward case below "
+				+ "before they landed"))
 	if err == "":
-		err = _T.assert_eq(_menu_row_shape(7), [[0], [1], [2, 3], [4, 5], [6]],
-			"a SEVENTH destination is the one that opens a new row, alone and full-width")
+		err = _T.assert_eq(_menu_row_shape(8), [[0], [1], [2, 3], [4, 5], [6, 7]],
+			("an EIGHTH destination fills the hole beside the Shop rather than opening "
+				+ "another row -- which is the same prediction, one destination on"))
 	if err == "":
 		err = _T.assert_eq(_menu_row_shape(TitleScreen.PRIMARY_COUNT),
 			[[0], [1]],
@@ -12666,12 +12733,14 @@ func test_every_row_limited_surface_is_exactly_full() -> String:
 			"fits": RunSummary.rows_capacity(),
 		},
 		{
-			# 2 since cycle 157, and it was 3: the difficulty button spent one of the
-			# three slots cycle 82 measured. The recorded number moving DOWN is the
-			# expected direction when a destination lands, and this assertion existing
-			# is why that arrives as a decision rather than as a surprise later.
+			# 1 since the Petal shop, and it was 3 in cycle 82 and 2 after the
+			# difficulty button. The recorded number moving DOWN is the expected
+			# direction when a destination lands, and this assertion existing is why
+			# that arrives as a decision rather than as a surprise later. ONE is the
+			# last one that can be spent without changing the menu's shape -- see
+			# test_the_title_menu_has_room_for_the_next_destination for the arithmetic.
 			"what": "the title screen menu",
-			"spare": 2,
+			"spare": 1,
 			"used": TitleScreen.MENU_BUTTON_NAMES.size(),
 			"fits": TitleScreen.menu_capacity(),
 		},
@@ -15906,6 +15975,13 @@ const DEFAULTED_VERBS := [
 	# Same reason `budgets` is here -- a verb that exists so you need not know the names
 	# must not require you to know a name.
 	"messages",
+	# The two bee verbs read no arguments and cannot: `bee_state` reports the whole of what
+	# the layer is doing (flying count, seconds to the next bout, whether it is stepping at
+	# all) because no subset of three fields is worth asking for separately, and `bee_bout`
+	# has exactly one effect. A bout is not parameterised on purpose -- the bees a bout
+	# sends are a hash of its number, so a verb that let a caller pick the count would put
+	# a bout on screen that the game itself can never produce.
+	"bee_state", "bee_bout",
 	# `deselect_plant` takes nothing and can take nothing: clearing the selection is the
 	# whole operation. It is a SEPARATE verb from `select_plant` rather than that verb
 	# with the cell omitted precisely so that this list can hold them apart -- one
@@ -18936,7 +19012,14 @@ func _overlay_subclass_names() -> Array[String]:
 ## polices still holds for it — `OverlayScreen._ready()` derives what to hold
 ## inert from its actual parent, not from a list — just not through a door this
 ## particular test can press to prove it.
-const OVERLAY_SUBCLASSES_WITH_NO_CARD_DOOR: Array[String] = ["SkinsScreen"]
+##
+## ShopScreen has no door on the pause card either, and for a reason that is a design
+## decision rather than a lane boundary: it is the TITLE screen's buy door, reached
+## between runs with a balance to spend, while the pause card's wardrobe door is
+## `SkinsScreen`'s quick-equip off the HUD. Putting a shop on the pause card would let
+## a player spend a run's earnings in the middle of the run that earned them, which is
+## the one moment the price of a skin is competing with the board.
+const OVERLAY_SUBCLASSES_WITH_NO_CARD_DOOR: Array[String] = ["SkinsScreen", "ShopScreen"]
 
 
 ## Every button on the pause card that the card answers ITSELF -- the doors it opens
@@ -23980,6 +24063,79 @@ func test_only_the_two_documented_buses_are_created_at_runtime() -> String:
 	return err
 
 
+
+## The web audio buffer must hold more than Godot's default, because Stream playback made
+## the buffer a function of FRAME TIME and mobile's frame time is not desktop's.
+##
+## The setting above chose the engine's own mixer over the browser's bus graph, and the
+## cost of that choice is paid here: Stream mixes in WASM, `variant/thread_support=false`
+## in export_presets.cfg puts that mixing on the main loop, and a ring buffer refilled once
+## per rendered frame underruns the moment a frame takes longer than the buffer. Godot's
+## web default of 50ms is two slow phone frames. It crackled, and a mobile player heard it
+## as distortion and lag.
+##
+## ASSERTED AS A FLOOR, NOT AS 120. The claim worth defending is "there is headroom for
+## several slow frames", not one tuned integer, and a test pinned to the exact value fails
+## on a retune that is still correct. The floor is derived from the frame budget the
+## harness itself gates on (`fps_min` in devtools_config.json, 30) rather than from a
+## second number typed here: a project that later demands 60fps should not silently keep a
+## buffer sized for 30.
+##
+## Read as the raw `.web` override for the same reason the playback-type test above does --
+## this suite runs on desktop, where the suffix is inert, so reading the resolved value
+## would pass no matter what the override said.
+func test_web_audio_output_latency_has_mobile_headroom() -> String:
+	var key := "audio/driver/output_latency.web"
+	var err: String = _T.assert_true(ProjectSettings.has_setting(key),
+		"project.godot declares the web output-latency override at all")
+	if err != "":
+		return err
+	var latency: int = int(ProjectSettings.get_setting(key))
+	# The gated frame budget, read off the harness config the same way
+	# `test_every_devtools_entry_point_names_a_method_that_exists` reads it -- so the
+	# floor below moves with the fps this project actually gates on, and there is no
+	# second copy of `30` to fall out of step with the first.
+	var file := FileAccess.open("res://addons/godot_selftest/devtools_config.json",
+		FileAccess.READ)
+	err = _T.assert_true(file != null, "the devtools config is readable")
+	if err != "":
+		return err
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	err = _T.assert_true(parsed is Dictionary, "and is a JSON object")
+	if err != "":
+		return err
+	var fps_min: float = float((parsed as Dictionary).get("fps_min", 0))
+	err = _T.assert_true(fps_min > 0.0,
+		"fps_min is a real frame budget to derive from, got %s" % fps_min)
+	if err != "":
+		return err
+	var slow_frame_ms: float = 1000.0 / fps_min
+	# Four of them. One frame of buffer underruns on the first frame that runs long, and
+	# a phone's long frames arrive in bursts (a wave spawning, a volley landing), so the
+	# headroom has to cover a burst rather than a single overrun.
+	var floor_ms: int = int(ceil(slow_frame_ms * 4.0))
+	err = _T.assert_true(latency >= floor_ms,
+		"web audio buffer is %dms, at least %dms (four %.1fms frames at the gated"
+		% [latency, floor_ms, slow_frame_ms]
+		+ " %.0f fps) -- at Godot's 50ms default the engine mixer, refilled once per"
+		% fps_min
+		+ " main-loop iteration because thread_support is off, underruns on mobile"
+		+ " and is heard as crackle")
+	if err == "":
+		# A buffer this large stops being latency and starts being a delay line: at a
+		# quarter-second a player hears their own click as an echo of itself.
+		err = _T.assert_true(latency <= 250,
+			"and it is %dms, not so deep that a cue reads as detached from the press"
+			% latency)
+	if err == "":
+		err = _T.assert_true(
+			int(ProjectSettings.get_setting("audio/driver/output_latency")) < latency,
+			"while the base value stays low -- this is a web-only tax, and desktop,"
+			+ " which mixes on its own audio thread, must not pay it")
+	return err
+
+
 # -- Arming a plant: the cue, the escape, and the ghost under the finger
 #    (plant-tower-defense-vvmy) -----------------------------------------------
 
@@ -24365,3 +24521,1100 @@ func _touch_event(pressed: bool, at: Vector2) -> InputEventScreenTouch:
 	return event
 
 
+
+
+# =============================================================================
+# LANE SECTION — the Petal shop (plant-tower-defense-u82u.3, Lane C)
+#
+# `ShopScreen` is the title screen's buy door: one row per `Skins.targets()` entry,
+# paged, with one button per buyable family whose text and `disabled` state together
+# ARE the purchase state. Four states, and the reason they are swept as a cross
+# product rather than sampled at three examples is `.claude/skills/enumerate-the-pairs`
+# — the states are decided by a RELATION between two facts (do you own it, can you
+# afford it) and a defect in that relation lives in the combination nobody wrote a
+# case for. `ShopScreen.STATES` is the source of the list; nothing below types it.
+# =============================================================================
+
+
+## Every process-global field the shop can write, snapshotted deep.
+##
+## RunConfig is an autoload seeded from the developer's real save at startup, and both
+## `buy_skin` and `set_skin` call `_save()`. `setup()` already points `save_path` at
+## SUITE_SAVE_PATH, so nothing here reaches the player's file — what these two guard is
+## the IN-MEMORY state, which `free_ui` does not reset and which would otherwise leak a
+## bought skin into whatever script runs next.
+func _stash_wardrobe() -> Dictionary:
+	return {
+		"petals": RunConfig.petals,
+		"purchased": RunConfig.purchased_skins.duplicate(true),
+		"selected": RunConfig.selected_skins.duplicate(true),
+	}
+
+
+func _restore_wardrobe(stashed: Dictionary) -> void:
+	RunConfig.petals = int(stashed["petals"])
+	RunConfig.purchased_skins = (stashed["purchased"] as Dictionary).duplicate(true)
+	RunConfig.selected_skins = (stashed["selected"] as Dictionary).duplicate(true)
+
+
+## Puts the wardrobe into exactly one of the states the cross product names.
+##
+## Written straight into the two persisted Dictionaries rather than driven through
+## `buy_skin`/`set_skin`, and that is what makes the adversarial rows reachable at all:
+## "selected but not owned" is a state a v10 save produces on migration and no writer
+## in this game will construct for you. See the contract note about `selected_skin()`
+## falling back to DEFAULT_SKIN being the migration path.
+func _set_wardrobe(kind: StringName, id: StringName, family_id: StringName,
+		owned: bool, worn: bool, petals: int) -> void:
+	var key: String = Skins.selection_key(kind, id)
+	RunConfig.purchased_skins = {}
+	RunConfig.selected_skins = {}
+	if owned:
+		RunConfig.purchased_skins[key] = [String(family_id)]
+	if worn:
+		RunConfig.selected_skins[key] = String(family_id)
+	RunConfig.petals = petals
+
+
+## The spec table from the shop's own header, written once here as a rule over the
+## three booleans rather than as four example cases.
+func _expected_shop_state(owned: bool, worn: bool, affordable: bool) -> StringName:
+	if owned:
+		return ShopScreen.STATE_WORN if worn else ShopScreen.STATE_EQUIP
+	return ShopScreen.STATE_BUY if affordable else ShopScreen.STATE_UNAFFORDABLE
+
+
+## The first target of each kind `Skins.targets()` produces, so the sweep below covers
+## both prices (a plant skin is a drawing, a pest skin is a tint, and they cost
+## differently) without naming `corn_cobbler` or `aphid` here.
+func _one_target_per_kind() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var seen: Array[StringName] = []
+	for target: Dictionary in Skins.targets():
+		var kind := StringName(target["kind"])
+		if not seen.has(kind):
+			seen.append(kind)
+			out.append(target)
+	return out
+
+
+func test_the_shop_is_reachable_from_the_title_and_does_not_stack() -> String:
+	## The same overlay contract the other three title doors are held to, plus the half
+	## only a FOURTH overlay can be wrong about: `overlay_open()` is one shared guard,
+	## so the shop must not open over options and options must not open over the shop.
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as TitleScreen
+	var button: Button = title.get_node_or_null("ShopButton") as Button
+	var err: String = _T.assert_true(button != null, "the title screen has a Shop button")
+	if err == "":
+		err = _T.assert_true(button.size.x >= 40.0 and button.size.y >= 40.0,
+			"and it is a real touch target, got %s" % button.size)
+	if err == "":
+		button.pressed.emit()
+		err = _T.assert_true(title.get_node_or_null(ShopScreen.NODE_NAME) is ShopScreen,
+			"pressing it opens the shop under its own NODE_NAME")
+	if err == "":
+		err = _T.assert_eq((title.get_node("StartButton") as Button).focus_mode, Control.FOCUS_NONE,
+			"and the menu behind it stops taking focus")
+	if err == "":
+		title._open_shop()
+		err = _T.assert_eq(title.get_children().filter(
+			func(child: Node) -> bool: return child is ShopScreen).size(), 1,
+			"pressing the button twice does not stack two of them")
+	if err == "":
+		title._open_options()
+		err = _T.assert_true(title.get_node_or_null("OptionsScreen") == null,
+			"and the options screen cannot open on top of it")
+	if err == "":
+		title._close_shop()
+		err = _T.assert_false(title.overlay_open(), "closing it leaves nothing over the menu")
+	if err == "":
+		err = _T.assert_eq((title.get_node("StartButton") as Button).focus_mode, Control.FOCUS_ALL,
+			"and the menu takes focus again")
+	if err == "":
+		# The other direction of the same guard. Counted live rather than looked up by
+		# name, for the reason the Options version of this carries: `queue_free()` does
+		# not take effect until the frame ends and this test never yields one, so the
+		# screen closed on the line above is STILL a child here.
+		title._open_options()
+		title._open_shop()
+		err = _T.assert_eq(title.get_children().filter(
+			func(child: Node) -> bool:
+				return child is ShopScreen and not child.is_queued_for_deletion()).size(), 0,
+			"and the shop cannot open on top of options either")
+		title._close_options()
+	_T.free_ui(title)
+	return err
+
+
+func test_the_shop_lays_out_inside_its_paper_without_overlap() -> String:
+	## The enclosure-and-overlap rule every overlay is held to, applied to the one
+	## screen in this game whose row is five Controls wide. `findings` cannot see this:
+	## it measures a Control against its OWN box, so three price buttons drawn through
+	## each other are invisible to it.
+	var stashed: Dictionary = _stash_wardrobe()
+	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
+	var err: String = _T.assert_gt(ShopScreen.page_capacity(), 0,
+		("the shop has row slots -- a capacity of 0 would make every sweep below pass "
+			+ "over nothing"))
+	if err == "":
+		err = _T.assert_gt(Skins.buyable_families().size(), 0,
+			"and there are families to draw buttons for")
+	if err == "":
+		err = _overlay_content_fits_and_stands_clear(screen)
+	if err == "":
+		# The derived width cannot outgrow the canvas it is centred on. `paper_left()`
+		# centres the paper live, so a panel wider than the viewport does not clip --
+		# it goes to a NEGATIVE left edge and hangs off both sides, which is a defect
+		# the containment sweep above cannot see because everything is still inside the
+		# paper. 16px a side is a margin, not a preference: a paper flush with the
+		# window edge loses the drop shadow GardenTheme.paper_panel draws 14px of.
+		var widest: float = float(OverlayScreen.design_width()) - 32.0
+		err = _T.assert_true(ShopScreen.panel_width() <= widest,
+			("the shop's derived paper is %.0f wide and the design canvas allows %.0f. "
+				+ "Every column is measured (see ShopScreen's header), so this growing "
+				+ "past the canvas means a family title or a display name got long "
+				+ "enough that the row needs a different SHAPE -- two buttons and a "
+				+ "pager, or a taller row -- rather than one more constant nudged.")
+				% [ShopScreen.panel_width(), widest])
+	if err == "":
+		err = _T.assert_gte(screen.footer_clearance(), OverlayScreen.FOOTER_GAP,
+			"and the footer stands %.0fpx clear of the last row" % screen.footer_clearance())
+	if err == "":
+		err = _T.assert_float_eq(screen.panel_rect().size.x, ShopScreen.panel_width(), 0.0001,
+			("the drawn paper is the derived width, not a second copy of it -- these are "
+				+ "asked separately because panel_rect() is what gets drawn and "
+				+ "panel_width() is what every column offset is measured from"))
+	_T.free_ui(screen)
+	_restore_wardrobe(stashed)
+	return err
+
+
+func test_the_shop_measures_every_face_it_draws_and_fits_them_all() -> String:
+	## The width derivation's own claim. Only the middle assertion is arithmetic.
+	##
+	## The FIRST is the one that makes the other two mean anything. `GardenTheme.measure`
+	## answers 0.0 when no font resolves, deliberately, and a shop whose every column
+	## collapsed to its floor would still lay out, still pass the containment sweep, and
+	## still clip every title. A non-zero measurement is the evidence that the widths on
+	## screen came from the font rather than from the fallbacks.
+	var stashed: Dictionary = _stash_wardrobe()
+	# Enough petals that some buttons carry a price and some do not, so the sweep sees
+	# the long faces rather than only the short ones.
+	RunConfig.petals = 99
+	RunConfig.purchased_skins = {}
+	RunConfig.selected_skins = {}
+	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
+	var faces: Array[String] = ShopScreen.family_button_texts()
+	var err: String = _T.assert_gt(faces.size(), 0, "there are button faces to price")
+	if err == "":
+		var widest: float = 0.0
+		for text: String in faces:
+			widest = maxf(widest, GardenTheme.measure(text, GardenTheme.BUTTON_FONT_SIZE))
+		err = _T.assert_gt(widest, 0.0,
+			("the theme font measured the button faces. 0.0 here is GardenTheme.measure "
+				+ "saying no font resolved, which silently drops every column in this "
+				+ "screen to its floor -- the layout still passes and every title clips"))
+		if err == "":
+			err = _T.assert_gte(ShopScreen.family_button_width(),
+				widest + ShopScreen.BUTTON_TEXT_MARGIN,
+				"and the button box holds the widest of them plus its stylebox margins")
+	if err == "":
+		# The DRAWN buttons, not the derivation: a screen that computed the right width
+		# and then sized its buttons from ROW_BUTTON_SIZE would pass everything above.
+		var drawn: int = 0
+		for child: Node in screen.get_children():
+			var button := child as Button
+			if button == null or not String(button.name).begins_with("RowButton"):
+				continue
+			drawn += 1
+			err = _T.assert_float_eq(button.size.x, ShopScreen.family_button_width(), 0.5,
+				"%s is drawn at the derived width" % button.name)
+			if err != "":
+				break
+		if err == "":
+			err = _T.assert_eq(drawn,
+				ShopScreen.page_capacity() * Skins.buyable_families().size(),
+				"and every slot got one button per buyable family")
+	if err == "":
+		# The row LABELS, measured through their own resolved theme font rather than
+		# through get_minimum_size(), which reports ~1px on any clip_text Label and so
+		# passes unconditionally on exactly the labels that need checking.
+		var checked: int = 0
+		for child: Node in screen.get_children():
+			var label := child as Label
+			if label == null or not label.visible:
+				continue
+			if not (String(label.name).begins_with("ShopName")
+					or String(label.name).begins_with("ShopWearing")):
+				continue
+			if label.text.is_empty():
+				continue
+			var width: float = _T.text_width(label)
+			checked += 1
+			err = _T.assert_gt(width, 0.0, "%s draws something measurable" % label.name)
+			if err == "":
+				err = _T.assert_true(width <= label.size.x,
+					"%s draws %.0f inside a %.0f box, holding \"%s\""
+						% [label.name, width, label.size.x, label.text])
+			if err != "":
+				break
+		if err == "":
+			err = _T.assert_gt(checked, 0,
+				"there were bound row labels to measure -- an empty sweep proves nothing")
+	_T.free_ui(screen)
+	_restore_wardrobe(stashed)
+	return err
+
+
+func test_every_shop_target_is_reachable_across_the_pages_exactly_once() -> String:
+	## Paging is the only way to reach target eight and up, so "every target has a row"
+	## is a claim about the PAGER as much as about the row list. Walked with the Next
+	## button the way a player does, rather than by calling `_show_page` -- a page turn
+	## that works only when driven directly is a page turn no player can make.
+	var stashed: Dictionary = _stash_wardrobe()
+	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
+	var next_button := screen.get_node_or_null("ShopPageNext") as Button
+	var prev_button := screen.get_node_or_null("ShopPagePrev") as Button
+	var err: String = _T.assert_true(next_button != null and prev_button != null,
+		"the shop has a pager the bridge can press by name")
+	if err == "":
+		err = _T.assert_eq(screen.current_page(), 0, "and it opens on the first page")
+	if err == "":
+		err = _T.assert_true(prev_button.disabled,
+			"Prev is dead on the first page rather than silently clamping")
+	var seen: Array[String] = []
+	var walked: int = 0
+	if err == "":
+		# A HARD CAP, not `walked <= total_pages()`. This loop only ends because the
+		# pager makes progress, which is exactly the property a refactor breaks
+		# silently -- and a test that hangs takes the whole suite with it rather than
+		# failing. 64 is far past any page count fourteen targets can produce; the
+		# assertion under the loop is what says the walk ended by finishing rather than
+		# by running into the cap. See tools/loop_bound_check.py.
+		while err == "" and walked < 64:
+			walked += 1
+			var page_keys: Array[String] = []
+			for target: Dictionary in screen.visible_targets():
+				page_keys.append(Skins.selection_key(
+					StringName(target["kind"]), StringName(target["id"])))
+			err = _T.assert_gt(page_keys.size(), 0,
+				"page %d has rows on it" % (screen.current_page() + 1))
+			if err != "":
+				break
+			seen.append_array(page_keys)
+			if screen.current_page() >= screen.total_pages() - 1:
+				break
+			next_button.pressed.emit()
+	if err == "":
+		err = _T.assert_eq(walked, screen.total_pages(),
+			("the walk visited each of the %d page(s) once and stopped there -- running "
+				+ "into the loop's own cap would mean the pager never reported a last "
+				+ "page, which is the hang this cap exists to turn into a failure")
+				% screen.total_pages())
+	if err == "":
+		err = _T.assert_true(next_button.disabled,
+			"Next is dead on the last page, so the walk above ended rather than wrapping")
+	if err == "":
+		var expected: Array[String] = []
+		for target: Dictionary in Skins.targets():
+			expected.append(Skins.selection_key(
+				StringName(target["kind"]), StringName(target["id"])))
+		err = _T.assert_eq(seen, expected,
+			("every target got exactly one row, in Skins.targets() order, across %d "
+				+ "page(s) -- a duplicate here is two rows writing to one target and a "
+				+ "missing one is a skin nobody can buy") % screen.total_pages())
+	if err == "":
+		# And the seam the tests and the bridge use to jump straight to a target agrees
+		# with the walk: every target is on the page show_page_for() turns to.
+		for target: Dictionary in Skins.targets():
+			var kind := StringName(target["kind"])
+			var id := StringName(target["id"])
+			err = _T.assert_true(screen.show_page_for(kind, id),
+				"show_page_for finds %s" % Skins.selection_key(kind, id))
+			if err == "":
+				var found: bool = false
+				for shown: Dictionary in screen.visible_targets():
+					if StringName(shown["kind"]) == kind and StringName(shown["id"]) == id:
+						found = true
+						break
+				err = _T.assert_true(found,
+					"and the page it turned to actually shows %s"
+						% Skins.selection_key(kind, id))
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_false(screen.show_page_for(Skins.KIND_PLANT, &"a_target_from_a_later_build"),
+			("a target this build does not know is refused rather than turning to page 0 "
+				+ "and reporting success"))
+	_T.free_ui(screen)
+	_restore_wardrobe(stashed)
+	return err
+
+
+func test_every_shop_button_state_is_produced_by_the_state_it_names() -> String:
+	## THE CROSS PRODUCT, not three examples. The button's face is decided by a relation
+	## between two independent facts -- ownership and affordability -- and the case that
+	## breaks is the combination nobody wrote: an OWNED skin on a player who has spent
+	## down to nothing must read `equip`, not `unaffordable`, because it is not for sale
+	## any more. That row exists only because the loop generates it.
+	##
+	## Kinds come from `Skins.targets()` and families from `Skins.buyable_families()`,
+	## so a fourth family or a third kind is swept the day it is added
+	## (`.claude/skills/derive-the-list`).
+	var stashed: Dictionary = _stash_wardrobe()
+	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
+	var subjects: Array[Dictionary] = _one_target_per_kind()
+	var families: Array[Dictionary] = Skins.buyable_families()
+	var err: String = _T.assert_gt(subjects.size(), 0, "there are kinds to sweep")
+	if err == "":
+		err = _T.assert_gt(families.size(), 0, "and families to price")
+	# Which of the four states the sweep actually produced. A cross product that
+	# happened to reach only two of them would pass every assertion below and check
+	# half the machine.
+	var produced: Array[StringName] = []
+	for target: Dictionary in subjects:
+		if err != "":
+			break
+		var kind := StringName(target["kind"])
+		var id := StringName(target["id"])
+		for family: Dictionary in families:
+			if err != "":
+				break
+			var family_id := StringName(family["id"])
+			var cost: int = Skins.cost_for(kind, family_id)
+			for owned: bool in [false, true]:
+				if err != "":
+					break
+				for worn: bool in [false, true]:
+					if err != "":
+						break
+					for affordable: bool in [false, true]:
+						var petals: int = cost if affordable else maxi(cost - 1, 0)
+						_set_wardrobe(kind, id, family_id, owned, worn, petals)
+						screen.show_page_for(kind, id)
+						var want: StringName = _expected_shop_state(owned, worn, affordable)
+						if not produced.has(want):
+							produced.append(want)
+						var who: String = ("%s/%s owned=%s worn=%s affordable=%s (%d petals,"
+							+ " costs %d)") % [Skins.selection_key(kind, id), family_id,
+							owned, worn, affordable, petals, cost]
+						err = _T.assert_eq(String(screen.button_state(kind, id, family_id)),
+							String(want), "%s reads %s" % [who, want])
+						if err != "":
+							break
+						var face: Dictionary = screen.button_face(kind, id, family_id)
+						err = _T.assert_false(face.is_empty(),
+							"%s has a drawn button on the page" % who)
+						if err == "":
+							# The BUTTON, not the model a second time. A screen whose
+							# state moved and whose face did not is the defect this half
+							# exists for.
+							err = _T.assert_eq(String(face["text"]),
+								ShopScreen.button_text(kind, family_id, want),
+								"%s draws the words its state names" % who)
+						if err == "":
+							err = _T.assert_eq(bool(face["disabled"]),
+								ShopScreen.state_is_disabled(want),
+								"%s is %s" % [who,
+									"dead to a press" if ShopScreen.state_is_disabled(want)
+									else "pressable"])
+						if err == "" and ShopScreen.state_is_disabled(want):
+							# `press_family_button` refuses a disabled button, so the seam
+							# and the control agree about what a player could do.
+							err = _T.assert_false(
+								screen.press_family_button(kind, id, family_id),
+								"%s refuses the press seam too" % who)
+						if err != "":
+							break
+	if err == "":
+		var missing: Array[StringName] = []
+		for state: StringName in ShopScreen.STATES:
+			if not produced.has(state):
+				missing.append(state)
+		err = _T.assert_eq(missing.size(), 0,
+			("the sweep reached all %d of ShopScreen.STATES -- %s never came up, so the "
+				+ "loop above is checking a smaller machine than the screen has")
+				% [ShopScreen.STATES.size(), missing])
+	_T.free_ui(screen)
+	_restore_wardrobe(stashed)
+	return err
+
+
+func test_the_shop_balance_line_reads_the_persisted_petals() -> String:
+	## One Label, in GOLD, saying what there is to spend. It is the only number on this
+	## screen a price means anything against, so it has to be the live field and not a
+	## copy taken when the screen opened.
+	var stashed: Dictionary = _stash_wardrobe()
+	RunConfig.purchased_skins = {}
+	RunConfig.selected_skins = {}
+	RunConfig.petals = 41
+	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
+	var err: String = _T.assert_eq(screen.balance_text(), "Petals  41",
+		"the balance names the currency and the number")
+	if err == "":
+		err = _T.assert_eq(screen.balance_text(), ShopScreen.balance_line(RunConfig.petals),
+			"and the drawn line is the composed one, not a second copy of the format")
+	if err == "":
+		var label := screen.get_node_or_null("Balance") as Label
+		err = _T.assert_true(label != null, "it is a Label the bridge can read by name")
+		if err == "":
+			err = _T.assert_eq(label.get_theme_color("font_color"), GardenTheme.GOLD,
+				("in GOLD -- this game's colour for a number the player earned, the same "
+					+ "one the focus ring and the record line already use"))
+	if err == "":
+		# Live, not captured. A balance read once at build time is right until the first
+		# purchase and wrong for the whole rest of the visit.
+		RunConfig.petals = 6
+		var target: Dictionary = Skins.targets()[0]
+		screen.show_page_for(StringName(target["kind"]), StringName(target["id"]))
+		err = _T.assert_eq(screen.balance_text(), "Petals  6",
+			"and it follows the field rather than the value it opened with")
+	_T.free_ui(screen)
+	_restore_wardrobe(stashed)
+	return err
+
+
+func test_buying_a_skin_in_the_shop_spends_the_petals_and_wears_it() -> String:
+	## The writer, end to end, plus the thing a per-row redraw would get wrong.
+	##
+	## A purchase is not local to its row: it drops the balance, and a balance that
+	## drops past a price turns every OTHER row's `buy` into `unaffordable`. So the
+	## second half of this test presses one row and then reads a different one --
+	## `SkinsScreen` refreshes only the slot it was pressed on, which is correct for
+	## equipping and would be wrong here.
+	var stashed: Dictionary = _stash_wardrobe()
+	RunConfig.purchased_skins = {}
+	RunConfig.selected_skins = {}
+	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
+	var shown: Array[Dictionary] = screen.visible_targets()
+	var err: String = _T.assert_gt(shown.size(), 1,
+		"the first page shows at least two targets, which the cross-row half needs")
+	var family_id: StringName = &""
+	var kind: StringName = &""
+	var id: StringName = &""
+	var other_kind: StringName = &""
+	var other_id: StringName = &""
+	var cost: int = 0
+	if err == "":
+		family_id = StringName(Skins.buyable_families()[0]["id"])
+		kind = StringName(shown[0]["kind"])
+		id = StringName(shown[0]["id"])
+		other_kind = StringName(shown[1]["kind"])
+		other_id = StringName(shown[1]["id"])
+		cost = Skins.cost_for(kind, family_id)
+		err = _T.assert_gt(cost, 0, "a buyable family costs something")
+	if err == "":
+		# EXACTLY one purchase's worth, which is what makes the cross-row assertion
+		# below a real one: after this buy there is nothing left for the second row.
+		RunConfig.petals = cost
+		screen.show_page_for(kind, id)
+		err = _T.assert_eq(String(screen.button_state(kind, id, family_id)),
+			String(ShopScreen.STATE_BUY), "the row opens offering the skin for sale")
+	if err == "":
+		err = _T.assert_eq(String(screen.button_state(other_kind, other_id, family_id)),
+			String(ShopScreen.STATE_BUY), "and so does the row under it")
+	if err == "":
+		err = _T.assert_true(screen.press_family_button(kind, id, family_id),
+			"the press seam presses it")
+	if err == "":
+		err = _T.assert_eq(RunConfig.petals, 0,
+			"the price came out of the balance, %d left" % RunConfig.petals)
+	if err == "":
+		err = _T.assert_true(RunConfig.owns_skin(kind, id, family_id),
+			"the skin is owned afterwards")
+	if err == "":
+		err = _T.assert_eq(String(RunConfig.selected_skin(kind, id)), String(family_id),
+			("and WORN -- buying something and then having to press it again to see it "
+				+ "is a step with no decision in it"))
+	if err == "":
+		err = _T.assert_eq(String(screen.button_state(kind, id, family_id)),
+			String(ShopScreen.STATE_WORN), "so the button it was bought with says worn")
+	if err == "":
+		err = _T.assert_eq(screen.balance_text(), "Petals  0",
+			"and the balance line moved with it")
+	if err == "":
+		# THE CROSS-ROW HALF. Nothing was pressed on this row and its button changed.
+		err = _T.assert_eq(String(screen.button_state(other_kind, other_id, family_id)),
+			String(ShopScreen.STATE_UNAFFORDABLE),
+			("the OTHER row went unaffordable when the balance dropped -- a redraw "
+				+ "scoped to the pressed row leaves it looking live and buyable"))
+	if err == "":
+		var face: Dictionary = screen.button_face(other_kind, other_id, family_id)
+		err = _T.assert_true(not face.is_empty() and bool(face["disabled"]),
+			"and its drawn button went dead with it, not just its model")
+	if err == "":
+		err = _T.assert_false(screen.press_family_button(other_kind, other_id, family_id),
+			"pressing it does nothing")
+	if err == "":
+		err = _T.assert_eq(RunConfig.petals, 0, "and spends nothing, %d left" % RunConfig.petals)
+	if err == "":
+		err = _T.assert_false(screen.press_family_button(kind, id, family_id),
+			"pressing the worn one does nothing either -- it is already true")
+	if err == "":
+		# EQUIPPING is free. A second owned family on the same target, reached with an
+		# empty purse, is the row the ownership-before-price rule exists for.
+		var second: StringName = family_id
+		for row: Dictionary in Skins.buyable_families():
+			if StringName(row["id"]) != family_id:
+				second = StringName(row["id"])
+				break
+		err = _T.assert_true(second != family_id, "there is a second family to switch to")
+		if err == "":
+			RunConfig.purchased_skins[Skins.selection_key(kind, id)] = [
+				String(family_id), String(second)]
+			screen.show_page_for(kind, id)
+			err = _T.assert_eq(String(screen.button_state(kind, id, second)),
+				String(ShopScreen.STATE_EQUIP),
+				"an owned skin on a broke player is equippable, not unaffordable")
+		if err == "":
+			err = _T.assert_true(screen.press_family_button(kind, id, second),
+				"and pressing it is allowed")
+		if err == "":
+			err = _T.assert_eq(String(RunConfig.selected_skin(kind, id)), String(second),
+				"it is worn now")
+		if err == "":
+			err = _T.assert_eq(RunConfig.petals, 0,
+				"and cost nothing, %d left" % RunConfig.petals)
+	_T.free_ui(screen)
+	_restore_wardrobe(stashed)
+	return err
+
+
+func test_the_shop_only_draws_marks_its_own_font_can_render() -> String:
+	## `✿` and `✓` are Dingbats, and Godot's built-in theme font is not guaranteed to
+	## carry that block — this project's shipped non-ASCII is arrows and mathematical
+	## operators, which it does. A glyph the font is missing does NOT fail loudly: it
+	## draws as a hex box with an advance like any other glyph, so `GardenTheme.measure`
+	## reports it fitting and every width assertion on this screen passes over it. The
+	## only thing that would say so is a screenshot nobody takes.
+	##
+	## So `ShopScreen` asks the font (`_mark`) instead of assuming, and this is the
+	## check that the asking works: whichever of the two strings comes back, the font
+	## can draw all of it.
+	var probe := Label.new()
+	var font: Font = probe.get_theme_font("font")
+	var err: String = _T.assert_true(font != null,
+		"a theme font resolved -- without one every assertion below is about nothing")
+	var marks: Array[Dictionary] = [
+		{"what": "petal", "mark": ShopScreen.petal_mark(),
+			"glyph": ShopScreen.PETAL_GLYPH, "fallback": ShopScreen.PETAL_FALLBACK},
+		{"what": "worn", "mark": ShopScreen.worn_mark(),
+			"glyph": ShopScreen.WORN_GLYPH, "fallback": ShopScreen.WORN_FALLBACK},
+	]
+	for row: Dictionary in marks:
+		if err != "":
+			break
+		var mark: String = String(row["mark"])
+		err = _T.assert_true(mark == String(row["glyph"]) or mark == String(row["fallback"]),
+			("the %s mark is either its glyph or its declared fallback and never a third "
+				+ "thing, got \"%s\"") % [row["what"], mark])
+		if err == "":
+			# The petal fallback is deliberately EMPTY (the unit is carried by the
+			# balance line and the note instead, because "petals" spelled out on three
+			# price buttons does not fit the canvas), so this loop can legitimately run
+			# zero times. That is why the assertion above is separate from it.
+			for i: int in mark.length():
+				err = _T.assert_true(font.has_char(mark.unicode_at(i)),
+					("the %s mark draws: the font carries every character of \"%s\". A "
+						+ "character it does not carry renders as a hex box, which "
+						+ "measures like a real glyph and is invisible to every width "
+						+ "check on this screen") % [row["what"], mark])
+				if err != "":
+					break
+	probe.free()
+	if err == "":
+		# And the mark actually reaches a button, rather than being a helper nothing
+		# spends. The worn face is the one asserted because the worn mark is non-empty
+		# in both branches — `contains("")` is true of every string and would be a
+		# check that cannot fail.
+		var kind: StringName = ShopScreen.target_kinds()[0]
+		var family_id := StringName(Skins.buyable_families()[0]["id"])
+		err = _T.assert_true(
+			ShopScreen.button_text(kind, family_id, ShopScreen.STATE_WORN).contains(
+				ShopScreen.worn_mark()),
+			"and the worn face carries the mark rather than the raw glyph constant")
+	return err
+
+
+func test_the_shop_columns_add_up_to_the_paper_it_draws_them_on() -> String:
+	## `panel_width()` is a SUM of four measured things, and a sum is the shape that
+	## goes quietly wrong: drop one COLUMN_GAP and every column still lands somewhere
+	## plausible, the containment sweep still passes because the paper grew with it,
+	## and the only symptom is a right margin that does not match the left.
+	##
+	## So this reads the offsets back off the DRAWN controls -- located by geometry
+	## rather than by `ShopName0` / `RowButton2`, so nothing here depends on which slot
+	## a target landed in -- and closes the sum at the far edge: the last button's right
+	## edge must sit exactly NAME_X short of the paper's, the same margin the first
+	## column starts at.
+	var stashed: Dictionary = _stash_wardrobe()
+	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
+	var panel: Rect2 = screen.panel_rect()
+	var families: Array[Dictionary] = Skins.buyable_families()
+	var kinds: Array[StringName] = ShopScreen.target_kinds()
+
+	var err: String = _T.assert_gt(kinds.size(), 0, "Skins.targets() produces kinds to price")
+	if err == "":
+		# Derived, not [KIND_PLANT, KIND_PEST]: a third kind has to be priced by the
+		# sweep that never saw it, and this is the assertion that would notice.
+		var from_targets: Array[StringName] = []
+		for target: Dictionary in Skins.targets():
+			var kind := StringName(target["kind"])
+			if not from_targets.has(kind):
+				from_targets.append(kind)
+		err = _T.assert_eq(kinds, from_targets,
+			"target_kinds() is the distinct kinds of Skins.targets(), in first-seen order")
+	if err == "":
+		for kind: StringName in kinds:
+			err = _T.assert_gt(Skins.cost_for(kind, StringName(families[0]["id"])), 0,
+				"every kind prices a buyable family, %s does not" % kind)
+			if err != "":
+				break
+
+	# The first row, found by its y rather than by its index.
+	var row_buttons: Array[Button] = []
+	var row_labels: Array[Label] = []
+	for child: Node in screen.get_children():
+		var control := child as Control
+		if control == null or not control.visible:
+			continue
+		if absf(control.position.y - ShopScreen.ROWS_TOP) > 0.5:
+			var label_y: float = ShopScreen.ROWS_TOP + ShopScreen.ROW_LABEL_INSET
+			if absf(control.position.y - label_y) > 0.5:
+				continue
+			var label := control as Label
+			if label != null:
+				row_labels.append(label)
+			continue
+		var button := control as Button
+		if button != null:
+			row_buttons.append(button)
+	row_buttons.sort_custom(func(a: Button, b: Button) -> bool: return a.position.x < b.position.x)
+	row_labels.sort_custom(func(a: Label, b: Label) -> bool: return a.position.x < b.position.x)
+
+	if err == "":
+		err = _T.assert_eq(row_buttons.size(), families.size(),
+			"the first row has one button per buyable family")
+	if err == "":
+		err = _T.assert_eq(row_labels.size(), 2,
+			"and two text cells -- what it is, and what it is wearing")
+	if err == "":
+		err = _T.assert_float_eq(row_labels[0].position.x - panel.position.x,
+			ShopScreen.NAME_X, 0.5, "the name cell starts at the paper's own left margin")
+	if err == "":
+		err = _T.assert_float_eq(row_labels[0].size.x, ShopScreen.name_column_width(), 0.5,
+			"and is the derived name column wide")
+	if err == "":
+		err = _T.assert_float_eq(row_labels[1].position.x - panel.position.x,
+			ShopScreen.wearing_x(), 0.5, "the wearing cell starts a COLUMN_GAP past it")
+	if err == "":
+		err = _T.assert_float_eq(row_labels[1].size.x, ShopScreen.wearing_column_width(), 0.5,
+			"and is the derived wearing column wide")
+	if err == "":
+		err = _T.assert_float_eq(row_buttons[0].position.x - panel.position.x,
+			ShopScreen.buttons_x(), 0.5, "the first button starts a COLUMN_GAP past THAT")
+	if err == "":
+		for f: int in row_buttons.size():
+			var want: float = (ShopScreen.buttons_x()
+				+ float(f) * (ShopScreen.family_button_width() + ShopScreen.BUTTON_GAP))
+			err = _T.assert_float_eq(row_buttons[f].position.x - panel.position.x, want, 0.5,
+				"button %d sits one width-plus-gap past the one before it" % f)
+			if err != "":
+				break
+	if err == "":
+		# THE FAR EDGE, which is what closes the sum. Every offset above could be right
+		# and panel_width() still wrong by a gap, and this is the only assertion that
+		# would see it.
+		var last: Button = row_buttons[row_buttons.size() - 1]
+		err = _T.assert_float_eq(panel.end.x - (last.position.x + last.size.x),
+			ShopScreen.NAME_X, 0.5,
+			("the right margin matches the left -- panel_width() is the sum of exactly "
+				+ "the columns that got drawn, with no gap counted twice or dropped"))
+	_T.free_ui(screen)
+	_restore_wardrobe(stashed)
+	return err
+
+
+func test_the_shop_pager_reserves_the_width_its_buttons_actually_take() -> String:
+	## The one defect this screen actually shipped, pinned at the layer it happened.
+	##
+	## The three row columns were derived through `GardenTheme.measure` from the start.
+	## The pager's two were typed in — 70 for a button, 90 for the label — and they were
+	## the only hand-written widths on the screen and the only two that collided:
+	## `Control.set_size` clamps to `get_combined_minimum_size()`, so a Button asked for
+	## 70 took the 93 its text plus the theme's 14+14 content margins plus the focus
+	## box's expand actually need, and sat 13px under the page label it had positioned
+	## itself 8px clear of. Measured on the running game after the fix: `< Prev` draws
+	## at x=768 93 wide, the label at 869, Next at 967, right edge 1060 inside a 1088
+	## paper.
+	##
+	## Asserting the DERIVATION against the clamp, not the drawn rects against each
+	## other — the containment sweep already catches the overlap, and it caught this
+	## one. What it cannot say is WHY, so a fix that widened the panel until the
+	## collision stopped would have satisfied it just as well. This says the reserved
+	## width is the width the engine will insist on, which is the property that makes
+	## the overlap impossible rather than merely absent today.
+	var stashed: Dictionary = _stash_wardrobe()
+	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
+	var err: String = ""
+	var checked: int = 0
+	for node_name: String in ["ShopPagePrev", "ShopPageNext"]:
+		var button := screen.get_node_or_null(NodePath(node_name)) as Button
+		if button == null:
+			err = "the shop has no %s to measure" % node_name
+			break
+		checked += 1
+		# The engine's own answer, asked of the built Control rather than recomputed
+		# from the theme's numbers — a copy of that arithmetic here would pass over
+		# exactly the margin it got wrong.
+		var floor_width: float = button.get_combined_minimum_size().x
+		err = _T.assert_true(ShopScreen.pager_button_width() >= floor_width,
+			("%s reserves %.0f and the engine will not draw it under %.0f — a reserved "
+				+ "width below the clamp is a control that quietly takes more room than "
+				+ "the layout gave it") % [node_name, ShopScreen.pager_button_width(), floor_width])
+		if err == "":
+			err = _T.assert_eq(button.size.x, ShopScreen.pager_button_width(),
+				"and the drawn %s is the width the derivation reserved" % node_name)
+		if err != "":
+			break
+	if err == "":
+		# Guards the loop above against being a loop over nothing, and the label with it.
+		err = _T.assert_eq(checked, 2, "both pager buttons were measured, not neither")
+	if err == "":
+		var label := screen.get_node_or_null(^"ShopPageLabel") as Label
+		err = _T.assert_true(label != null and label.size.x >= ShopScreen.pager_label_width(),
+			"and the page label is drawn at the width its own derivation reserved")
+	if err == "":
+		# The label's text is set by `_show_page`, so it is the one pager face whose
+		# width has to survive a string the derivation predicted rather than measured.
+		var label := screen.get_node_or_null(^"ShopPageLabel") as Label
+		err = _T.assert_true(_T.text_width(label) <= label.size.x,
+			("the page count fits the box the derivation sized for the widest count this "
+				+ "corpus can reach (%s in %.0f px)") % [label.text, label.size.x])
+	_T.free_ui(screen)
+	_restore_wardrobe(stashed)
+	return err
+
+## ---------------------------------------------------------------------------
+## Ambient bees (plant-tower-defense-qz4j). Purely cosmetic, which is exactly why
+## these are written: nothing in the game will ever notice a bee behaving wrongly,
+## so a defect here is invisible until a player sees it. Every claim below is over
+## the pure statics, because `GardenTheme.animations_enabled()` is false for the
+## whole suite -- the node never opens a bout headless, and a test that drove it
+## would be asserting an early return.
+## ---------------------------------------------------------------------------
+
+## The board every bee test flies over: the real one, 14x9 cells of 64 px.
+const BEE_BOARD := Vector2(896.0, 576.0)
+
+
+func test_a_bee_enters_off_the_board_crosses_it_and_leaves_off_it_again() -> String:
+	var err: String = ""
+	var crossed: int = 0
+	var bees: int = 0
+	var board := Rect2(Vector2.ZERO, BEE_BOARD)
+	var reach: float = BeeSwarm.EDGE_MARGIN + BeeSwarm.WANDER_A1 + BeeSwarm.WANDER_A2 + 1.0
+	var bounds := Rect2(Vector2(-reach, -reach), BEE_BOARD + Vector2(reach, reach) * 2.0)
+	for bout: int in range(1, 13):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			bees += 1
+			# The ends are EXACT, which is the property the sin(PI*t) easing exists for:
+			# a bee that started its wander at t=0 would appear mid-swerve at the rim.
+			if err == "":
+				err = _T.assert_true(
+					BeeSwarm.bee_position(bout, i, 0.0, BEE_BOARD)
+						.is_equal_approx(BeeSwarm.entry_point(bout, i, BEE_BOARD)),
+					"bout %d bee %d starts exactly at its entry point" % [bout, i])
+			if err == "":
+				err = _T.assert_true(
+					BeeSwarm.bee_position(bout, i, 1.0, BEE_BOARD)
+						.is_equal_approx(BeeSwarm.exit_point(bout, i, BEE_BOARD)),
+					"bout %d bee %d ends exactly at its exit point" % [bout, i])
+			if err == "":
+				err = _T.assert_true(not board.has_point(
+						BeeSwarm.bee_position(bout, i, 0.0, BEE_BOARD)),
+					("bout %d bee %d enters from OUTSIDE the board, so it is already "
+						+ "flying by the time anything can see it") % [bout, i])
+			# It actually crosses the garden rather than clipping a corner of it, and it
+			# never sails further out than the wander can carry it.
+			var inside: bool = false
+			for step: int in range(101):
+				var at: Vector2 = BeeSwarm.bee_position(bout, i, float(step) / 100.0, BEE_BOARD)
+				if board.has_point(at):
+					inside = true
+				if err == "" and not bounds.has_point(at):
+					err = "bout %d bee %d left the garden's neighbourhood at t=%.2f (%s)" \
+						% [bout, i, float(step) / 100.0, str(at)]
+			if inside:
+				crossed += 1
+			if err == "":
+				err = _T.assert_true(inside,
+					("bout %d bee %d is over the board at some point in its crossing -- a "
+						+ "bee that only ever skims the outside is an animation nobody sees")
+						% [bout, i])
+	if err == "":
+		err = _T.assert_eq(crossed, bees,
+			"every bee of every sampled bout crossed the board")
+	if err == "":
+		err = _T.assert_true(bees >= 12,
+			"and the sweep had bees to check in the first place (%d)" % bees)
+	return err
+
+
+func test_the_bee_path_never_tears_between_two_frames() -> String:
+	# The wander is two sines in SECONDS of flight, so its speed is set by amplitude times
+	# frequency and not by anything the crossing time normalises away. This is the check
+	# that keeps a future amplitude bump honest: 34 px at 0.21 Hz is 45 px/s of sideways
+	# motion on its own, and a bee that moves more than its own body in one frame is a bee
+	# that teleports.
+	var err: String = ""
+	var worst: float = 0.0
+	for bout: int in range(1, 9):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			var frames: int = int(BeeSwarm.cross_seconds(bout, i) * 60.0)
+			var previous: Vector2 = BeeSwarm.bee_position(bout, i, 0.0, BEE_BOARD)
+			for f: int in range(1, frames + 1):
+				var at: Vector2 = BeeSwarm.bee_position(
+					bout, i, float(f) / float(frames), BEE_BOARD)
+				worst = maxf(worst, at.distance_to(previous))
+				previous = at
+	err = _T.assert_true(worst < BeeSwarm.BODY_LENGTH,
+		("the furthest a bee moves in one 60 fps frame is %.2f px, under its own %.1f px "
+			+ "body") % [worst, BeeSwarm.BODY_LENGTH])
+	if err == "":
+		err = _T.assert_true(worst > 0.5,
+			("and it is actually moving (%.2f px/frame), which a path collapsed to a point "
+				+ "would not be") % worst)
+	return err
+
+
+func test_a_bout_flies_the_same_way_twice_and_two_bouts_do_not() -> String:
+	# Deterministic by hash rather than by RNG, so `Game.set_seed` still pins everything
+	# random about a run. The second half is the one that matters: a hash that ignored the
+	# bout number would be perfectly reproducible AND identical every time, which is a
+	# failure this cannot tell from success without asking.
+	var a: Vector2 = BeeSwarm.bee_position(4, 0, 0.5, BEE_BOARD)
+	var err: String = _T.assert_true(
+		a.is_equal_approx(BeeSwarm.bee_position(4, 0, 0.5, BEE_BOARD)),
+		"bout 4 flies bout 4's path both times")
+	var differs: int = 0
+	for bout: int in range(1, 20):
+		if bout != 4 and not BeeSwarm.bee_position(bout, 0, 0.5, BEE_BOARD).is_equal_approx(a):
+			differs += 1
+	if err == "":
+		err = _T.assert_true(differs >= 15,
+			("and %d of the other 18 bouts fly somewhere else -- a hash that dropped the "
+				+ "bout number would score 0 here") % differs)
+	return err
+
+
+func test_the_bee_schedule_stays_inside_the_ranges_it_was_tuned_to() -> String:
+	var err: String = ""
+	var counts: Dictionary = {}
+	for bout: int in range(1, 200):
+		var gap: float = BeeSwarm.bout_gap(bout)
+		if err == "" and (gap < BeeSwarm.GAP_MIN or gap > BeeSwarm.GAP_MAX):
+			err = "bout %d waits %.1fs, outside %.0f..%.0f" \
+				% [bout, gap, BeeSwarm.GAP_MIN, BeeSwarm.GAP_MAX]
+		var n: int = BeeSwarm.bees_in_bout(bout)
+		counts[n] = int(counts.get(n, 0)) + 1
+		if err == "" and (n < BeeSwarm.BEES_MIN or n > BeeSwarm.BEES_MAX):
+			err = "bout %d sends %d bees, outside %d..%d" \
+				% [bout, n, BeeSwarm.BEES_MIN, BeeSwarm.BEES_MAX]
+		for i: int in range(n):
+			var cross: float = BeeSwarm.cross_seconds(bout, i)
+			if err == "" and (cross < BeeSwarm.CROSS_SECONDS_MIN
+					or cross > BeeSwarm.CROSS_SECONDS_MAX):
+				err = "bout %d bee %d crosses in %.1fs, outside the tuned range" % [bout, i, cross]
+			var wait: float = BeeSwarm.stagger_seconds(bout, i)
+			if err == "" and (wait < 0.0 or wait > BeeSwarm.STAGGER_MAX):
+				err = "bout %d bee %d waits %.2fs before entering" % [bout, i, wait]
+	# Every size actually occurs. A hash that always returned the same bucket would pass
+	# every range check above and would leave BEES_MIN..BEES_MAX a fiction.
+	if err == "":
+		err = _T.assert_eq(counts.size(), BeeSwarm.BEES_MAX - BeeSwarm.BEES_MIN + 1,
+			("all three bout sizes occur across 199 bouts, rather than the range being "
+				+ "documented and unused: %s") % str(counts))
+	return err
+
+
+func test_a_bee_leaves_by_a_different_edge_than_it_came_in_by() -> String:
+	# A bee that enters and leaves by one edge turns around inside the garden, and a thing
+	# that turns around inside the garden looks like it came for something.
+	var err: String = ""
+	var checked: int = 0
+	for bout: int in range(1, 40):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			var from: Vector2 = BeeSwarm.entry_point(bout, i, BEE_BOARD)
+			var to: Vector2 = BeeSwarm.exit_point(bout, i, BEE_BOARD)
+			checked += 1
+			if err == "":
+				err = _T.assert_true(_bee_edge(from) != _bee_edge(to),
+					"bout %d bee %d enters on edge %d and leaves on edge %d"
+						% [bout, i, _bee_edge(from), _bee_edge(to)])
+			if err == "":
+				err = _T.assert_true(_bee_edge(from) >= 0 and _bee_edge(to) >= 0,
+					"and both of those points are off the board (bout %d bee %d)" % [bout, i])
+	if err == "":
+		err = _T.assert_true(checked >= 40, "the sweep had %d bees to check" % checked)
+	return err
+
+
+func test_bees_sit_out_the_rain_and_only_the_rain() -> String:
+	var err: String = _T.assert_true(not BeeSwarm.bout_allowed(WaveDirector.WEATHER_RAIN),
+		"no bout opens in the rain")
+	if err == "":
+		err = _T.assert_true(BeeSwarm.bout_allowed(WaveDirector.WEATHER_CLEAR),
+			"a clear wave gets bees")
+	if err == "":
+		# Drought deliberately does NOT stop them: the rule is one line of world logic, not
+		# a general "bad weather" gate, and a drought garden is exactly where a little life
+		# is worth the most.
+		err = _T.assert_true(BeeSwarm.bout_allowed(WaveDirector.WEATHER_DROUGHT),
+			"and so does a drought one")
+	return err
+
+
+func test_the_two_airborne_shadows_in_this_game_are_the_same_shadow() -> String:
+	# A Dandelion's seed in flight and a bee are the only two things in this game that are
+	# ABOVE the board rather than on it, and both say so with an offset ellipse. One value,
+	# or the channel means two slightly different things depending which one you look at.
+	var err: String = _T.assert_true(
+		BeeSwarm.SHADOW_COLOR.is_equal_approx(SeedBomb.SHADOW_COLOR),
+		"the bee's shadow is the seed bomb's shadow (%s vs %s)"
+			% [str(BeeSwarm.SHADOW_COLOR), str(SeedBomb.SHADOW_COLOR)])
+	if err == "":
+		err = _T.assert_true(BeeSwarm.SHADOW_OFFSET.length() > BeeSwarm.BODY_WIDTH * 0.5,
+			("and it is offset clear of the body it belongs to -- a shadow drawn under the "
+				+ "bee is a shadow nobody reads as height"))
+	return err
+
+
+func test_a_bees_two_wings_beat_against_each_other() -> String:
+	# A pair moving together reads as one flapping sheet. The claim is about two numbers,
+	# so it needs no renderer -- which is the only reason it is checkable at all, since
+	# headless never runs _draw.
+	var high: Vector2 = BeeSwarm.wing_offsets(1.0)
+	var low: Vector2 = BeeSwarm.wing_offsets(-1.0)
+	var err: String = _T.assert_true(high.x < 0.0 and high.y > 0.0,
+		"the two wings sit on opposite sides of the body")
+	if err == "":
+		err = _T.assert_true(high.x < low.x and high.y > low.y,
+			"and the beat moves them apart and together, not both the same way")
+	if err == "":
+		err = _T.assert_eq(
+			BeeSwarm.ellipse_points(BeeSwarm.BODY_LENGTH, BeeSwarm.BODY_WIDTH).size(),
+			BeeSwarm.ELLIPSE_SEGMENTS,
+			"the body is an ellipse of the segment count the constant names")
+	if err == "":
+		var span: float = 0.0
+		for point: Vector2 in BeeSwarm.ellipse_points(BeeSwarm.BODY_LENGTH, BeeSwarm.BODY_WIDTH):
+			span = maxf(span, absf(point.x) * 2.0)
+		err = _T.assert_true(absf(span - BeeSwarm.BODY_LENGTH) < 0.001,
+			"and it is BODY_LENGTH long (%.2f), so the approved size is the drawn size" % span)
+	return err
+
+
+## Which edge of the board an off-board point sits past, or -1 for a point that is not past
+## any edge -- which no entry or exit point should ever be.
+func _bee_edge(at: Vector2) -> int:
+	if at.y < 0.0:
+		return 0
+	if at.x > BEE_BOARD.x:
+		return 1
+	if at.y > BEE_BOARD.y:
+		return 2
+	if at.x < 0.0:
+		return 3
+	return -1
+
+
+func test_the_bee_hash_spreads_and_its_edge_points_land_on_the_side_they_name() -> String:
+	# `hash01` is the whole source of variety in this feature -- every bout parameter and
+	# every flight is a call to it -- so "it returns a number" is not the claim. A hash that
+	# returned 0.5 forever would satisfy every range check in this file.
+	var buckets: Dictionary = {}
+	var err: String = ""
+	for i: int in range(400):
+		var v: float = BeeSwarm.hash01(i, i * 3 + 1)
+		if err == "" and (v < 0.0 or v >= 1.0):
+			err = "hash01(%d, %d) returned %f, outside 0..1" % [i, i * 3 + 1, v]
+		buckets[int(v * 10.0)] = true
+	if err == "":
+		err = _T.assert_eq(buckets.size(), 10,
+			"400 samples land in all ten tenths of 0..1, not in a corner of it: %s"
+				% str(buckets.keys()))
+	# And the edges are the sides they claim. Side numbering is used by `entry_point` and
+	# `exit_point` to guarantee a bee does not turn around inside the garden, so a side that
+	# resolved to the wrong edge would break that guarantee silently.
+	var expectations: Array[Dictionary] = [
+		{"side": 0, "what": "above the top", "ok": func(p: Vector2) -> bool: return p.y < 0.0},
+		{"side": 1, "what": "past the right", "ok": func(p: Vector2) -> bool: return p.x > BEE_BOARD.x},
+		{"side": 2, "what": "below the bottom", "ok": func(p: Vector2) -> bool: return p.y > BEE_BOARD.y},
+		{"side": 3, "what": "left of the left", "ok": func(p: Vector2) -> bool: return p.x < 0.0},
+	]
+	for row: Dictionary in expectations:
+		for u: float in [0.0, 0.5, 1.0]:
+			var at: Vector2 = BeeSwarm.edge_point(u, int(row["side"]), BEE_BOARD)
+			var ok: Callable = row["ok"]
+			if err == "":
+				err = _T.assert_true(ok.call(at),
+					"edge_point(%.1f, %d) is %s (%s)" % [u, int(row["side"]), row["what"], str(at)])
+	return err
+
+
+func test_a_bee_points_the_way_it_is_travelling() -> String:
+	# `bee_heading` is what rotates the drawing, and a heading read from the wrong end of the
+	# path draws a bee flying backwards -- which is exactly the kind of defect that looks
+	# fine in a still screenshot and wrong the moment anything moves.
+	var err: String = ""
+	for bout: int in range(1, 10):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			for t: float in [0.05, 0.35, 0.65, 0.95]:
+				var heading: float = BeeSwarm.bee_heading(bout, i, t, BEE_BOARD)
+				var ahead: Vector2 = BeeSwarm.bee_position(bout, i, minf(1.0, t + 0.02), BEE_BOARD)
+				var here: Vector2 = BeeSwarm.bee_position(bout, i, t, BEE_BOARD)
+				if err == "" and not is_finite(heading):
+					err = "bout %d bee %d has no heading at t=%.2f" % [bout, i, t]
+				if err == "":
+					err = _T.assert_true(
+						Vector2.RIGHT.rotated(heading).dot((ahead - here).normalized()) > 0.7,
+						("bout %d bee %d at t=%.2f faces where it is about to be, within 45 "
+							+ "degrees") % [bout, i, t])
+	return err
+
+
+func test_the_bee_layer_reports_what_it_is_doing_while_it_does_it() -> String:
+	# The three live readouts, which are what `cmd bee_state` and `cmd bee_bout` answer with
+	# -- and the readouts are the only evidence the "an idle garden costs nothing" claim has
+	# in a running game, so a wrong one would make that claim unfalsifiable rather than false.
+	#
+	# Driven on a bare instance rather than through the tree: `_ready` arms nothing headless
+	# (animations are off for the whole suite), and `open_bout_now` on a clear garden touches
+	# no SceneTreeTimer, so this exercises the real path with no frames to pump.
+	var swarm := BeeSwarm.new()
+	swarm.setup(BEE_BOARD)
+	var err: String = _T.assert_eq(swarm.flying_count(), 0,
+		"a layer that has not opened a bout has nothing in the air")
+	if err == "":
+		err = _T.assert_true(swarm.next_bout_seconds() >= 0.0,
+			"and its pending gap is a number rather than a negative sentinel")
+	var sent: int = swarm.open_bout_now()
+	if err == "":
+		err = _T.assert_true(sent >= BeeSwarm.BEES_MIN and sent <= BeeSwarm.BEES_MAX,
+			"a forced bout sends %d bee(s), inside the tuned range" % sent)
+	if err == "":
+		err = _T.assert_eq(swarm.next_bout_seconds(), 0.0,
+			"nothing is pending while a bout is open -- the field means 'waiting', not "
+				+ "'time until something happens'")
+	if err == "":
+		err = _T.assert_true(swarm.is_processing(),
+			"and the layer is stepping, which is the half of the cost claim that says it "
+				+ "only steps when there is something to draw")
+	if err == "":
+		# Forced again mid-bout, it drops the request rather than restarting the flight.
+		err = _T.assert_eq(swarm.open_bout_now(), 0,
+			"a second force while a bout is in the air sends nothing, and says so with a "
+				+ "zero rather than by silently relaunching the same bees")
+	swarm.free()
+	return err

@@ -11052,6 +11052,75 @@ letting both stand as open.
   direct call would have: it proves the game's own call path ran, not just that a function
   returns the right string.
 
+## 2026-08-29 — Lane B of the Petal-shop fan-out: 51 generated skin drawings
+
+- Value: **warranted** — the Godot rasteriser produced the one number no static reader
+  here could: how much of each parent every motif actually covers, measured off the
+  rendered pixels.
+  - Expected: that the three motifs would clear the parents, since every coordinate was
+    placed against a union-occupancy map built from the 17 rendered parent PNGs.
+  - Got: worst occlusion 5.6% (`dandelion_bare` under ember) and 5.3%
+    (`sunflower` under golden, the crown resting on the topmost petals, by design);
+    every other pair under 3%. And the ember motif came back at **116 opaque px**
+    against frost's 174 and golden's 440 — the one family a player could miss.
+  - Found: the ember crescent was too thin, fixed mid-run by thickening the belly to
+    4.25 px and pushing the tips to x = 7 / 57 (now 159 px, still entirely in rows no
+    parent paints). Also found `aloe_skin_ember`'s best-major luminance gap against
+    grass is 33 where the parent aloe's is 74 — reported, not fixed.
+  - Cheaper: nothing. The occlusion and the ink counts are properties of rasterised
+    pixels; `svg_style_check.py` says so itself under NOT COVERED, and it was right.
+
+- Gap: **no gaps this turn.** `render_svg.gd` rendered 105 of 105 and `--import` came
+  back 0 twice; the file-based bus was never needed, because nothing about this change
+  is a running-game question. The one harness-adjacent friction was not the harness:
+  a bash heredoc ate a level of backslash escaping and turned a `\n` inside a regex
+  into a real newline, exactly as `.claude/skills/house-static-checker` records. Its
+  own advice (prefer an editing tool over a heredoc for a needle containing a
+  backslash) is what fixed it, twice.
+  - Improvement: none needed; the skill already states the rule and it worked.
+
+## 2026-08-29 — the Petal shop: a meta-currency, a title-screen shop, and skins that are drawings
+
+Four lanes in one worktree behind `docs/skin-shop-contract.md`; this entry is the
+integrator's, covering the runtime pass none of the four were allowed to run.
+
+- Value: **warranted** — runtime produced two claims the diff could not, and one of them
+  was a defect four gates and 28,829 headless assertions had already passed over.
+  - Expected: the funnel change would resolve `<stem>_skin_<family>.png`, the modulate
+    would be white, and the save would gain `p`/`u` lines. All three were readable in the
+    diff; I expected the run to confirm them and find nothing.
+  - Got: `get-state` on the placed plant's sprite returned
+    `texture: (res://assets/sprites/corn_cobbler_skin_golden.png)` with
+    `modulate: {"a":1.0,"b":1.0,"g":1.0,"r":1.0}`, and the on-disk save read `p7` /
+    `u1 plant:corn_cobbler=golden` after a real `press` on a real button took the balance
+    12 → 7. That is the whole feature end to end, and no headless test asserts the loaded
+    texture because none of them can `load()` a PNG that only exists after a render.
+  - Found: **two.** (1) `ShopScreen`'s two pager widths were the only hand-typed sizes on
+    a screen whose every other column is measured, and `Control.set_size` clamps to
+    `get_combined_minimum_size()` — a Button asked for 70 draws at 93, so Prev sat 13px
+    under the page label. Caught by Lane C's own containment sweep, then *diagnosed*
+    windowed: `node-bounds` reported `768, 560, 93x40` against a reserved 70. Fixed by
+    deriving both widths through `GardenTheme.measure` like the other three, and pinned by
+    `test_the_shop_pager_reserves_the_width_its_buttons_actually_take`, which asserts the
+    reservation against the engine's own `get_combined_minimum_size()` rather than the
+    drawn rects against each other — the containment sweep already had the latter and
+    could not say why. (2) `✿` U+273F and `✓` U+2713 had no `Glyphs.TABLE` row, which
+    `test_every_glyph_in_the_source_has_a_row` caught headlessly; the live screen then
+    showed the *interesting* half — the price draws as `Heirloom Gold  5` with no mark at
+    all, so `Font.has_char()` returned false and Lane C's fallback branch is the one that
+    actually ships. A mark assumed present would have drawn as a hex box with a normal
+    advance and passed every width assertion on the screen.
+  - Cheaper: nothing. The texture claim needs a rendered PNG, an imported project and a
+    placed plant; the font claim needs a resolved font. Reading the diff would have given
+    neither, and the headless suite was green on the pager overlap's *cause* while red on
+    its symptom.
+
+- Gap: **no gaps this turn.** Four lanes sharing one `.godot/` was the only real
+  constraint and the harness already documents it (`name_check` is the parallel-safe gate,
+  everything else serialises through the integrator); that worked exactly as written.
+  `launch --isolated --snapshot-userstate` did its job with six other Godot processes on
+  the machine — `quit` reported `restored 1 file(s)` and the developer's save is back at
+  `v10`, which is the one thing a run that writes a persisted balance had to get right.
 
 ## 2026-08-29 — the Chomp waits until a pest is past it (plant-tower-defense-q9h4)
 
@@ -11090,6 +11159,106 @@ letting both stand as open.
 - Gap: **no devtools-harness gap this turn.** The one thing that cost time was a stage I
   built wrong, and the bridge diagnosed it in one read; `find-nodes --call` on a zero-arg
   getter is exactly the verb for "what does this node think is true", and it worked.
+
+
+## 2026-08-29 — ambient bees: a cosmetic layer nothing in the game reads (plant-tower-defense-qz4j)
+
+- Value: **warranted** — the whole cost argument for this feature is "an idle garden pays
+  nothing", and that is a claim about `set_process` in a running tree that no headless run
+  and no diff can settle. The bridge answered it directly.
+  - Expected: the eight pure-static tests would carry the flight and the schedule, and the
+    live pass would be a formality confirming a bee is drawn where the maths says.
+  - Got: `bee_state` → `{"flying": 0, "next_bout_seconds": 28.06, "processing": false}`
+    after a bout ended, and `{"flying": 3, "processing": true}` during one. That pair is
+    the cost claim, measured: the layer really does stop stepping between bouts and really
+    does re-arm inside GAP_MIN..GAP_MAX. `run-method _apply_weather ["rain"]` then
+    `cmd bee_bout` → `{"bees": 0, "refused": "weather is rain"}`.
+  - Found: (1) **the wings were wrong on screen and right in every test.** At
+    `BODY_LENGTH * 1.12` and 8.2 px off the centre line the two pale ovals were the biggest
+    shapes in the drawing, so an 18 px bee read as a white moth carrying a gold seed. Only a
+    screenshot could say so — `test_a_bees_two_wings_beat_against_each_other` asserts the
+    beat is opposed and passes at any size. Now 0.72 of the body, tucked at 4.6 px.
+    (2) **my own debug verb reported a confirmed rain rule that had not been exercised.**
+    `cmd bee_bout` returned `sent 0 bee(s)` in rain — and 0 is also what it returns when a
+    bout is already flying, which is what had actually happened. The verb now reads the
+    reason BEFORE forcing and reports `refused`, so the two zeroes are distinguishable.
+    (3) the meta-gate `test_every_positional_devtools_verb_refuses_a_call_with_no_position`
+    caught both new verbs going unclassified, which is the check doing its job.
+  - Cheaper: nothing for (1) — it is a judgement about a rendered picture at its real size,
+    and no gate in this repo asks "does this drawing read as the animal it is". The
+    scheduler half could have been argued from the code; it would not have been *measured*.
+
+- Gap: **no devtools-harness gap this turn.** The bridge had a verb for every question:
+  `run-method` for the weather, `wait-frames` + `pause` for a moving drawing, `screenshot
+  --region` for the crop, and project verbs for the rest. Worth recording that the two
+  project verbs written for this feature were themselves the source of a false pass — a
+  status field that cannot distinguish two causes of the same number is the same defect
+  class the harness's own `findings` denominator exists to prevent, one level down.
+
+## 2026-08-29 — web audio buffer sized for a phone's frame time (plant-tower-defense-t416)
+
+- Value: **warranted** — but not from the bridge. The runtime that mattered was the headless
+  suite, and it fired on a number I had already written into `project.godot`.
+  - Expected: a one-line project-setting change with a test wrapped around it, both green
+    first try. The bug is a Web-on-mobile symptom that nothing on this machine can reproduce,
+    so I expected the test to be a bookmark rather than a check.
+  - Got: `[FAIL] test_web_audio_output_latency_has_mobile_headroom` — "web audio buffer is
+    120ms, at least 134ms (four 33.3ms frames at the gated 30 fps)". The floor is derived
+    from `fps_min` in `devtools_config.json` rather than typed, so the test knew the budget
+    and I did not.
+  - Found: **the shipped constant was too small by a frame.** 120ms was chosen by eye as
+    "roughly four slow frames"; four frames at the fps this project actually gates on is
+    134, and the setting is now 140. That is the whole point of the change — a buffer that
+    does not cover a burst of long frames is the defect, so being 14ms short of the floor is
+    being wrong in exactly the direction the bug is in. Reading the diff would have shown a
+    plausible round number.
+  - Cheaper: nothing cheaper would have caught it. The alternative was `1000/30*4` on a
+    calculator, which is the same arithmetic without the gate that keeps it true when
+    `fps_min` moves.
+
+- Gap: **`property_get_revert` is the only way to read an engine default, and no verb exposes
+  it.** The whole diagnosis turned on "what is `audio/driver/output_latency.web` when nobody
+  sets it" — 50, not the 15 the base key shows. `project-settings --name` reports what the
+  RUNNING game resolved, which for a `.web` suffix on desktop is nothing at all, and there is
+  no `--default` / `--revert` column anywhere. Workaround: a throwaway `SceneTree` script
+  looping `ProjectSettings.get_property_list()` and printing
+  `property_get_revert(name)` beside `get_setting(name)`.
+  - [G-159] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: have `project-settings` print `default:` alongside each value (it is one
+    `property_get_revert` call per row), and flag the rows where the two differ. That turns
+    "which settings does this project actually override, and from what" — the first question
+    anyone asks of a `project.godot` — into one call instead of a scratch script.
+
+## 2026-08-29 — closing G-159 in the harness itself: project-settings now prints the default
+
+- Value: **warranted** — the running game killed a bug in the very verb written to stop
+  this class of bug, about ninety seconds after the verb first answered.
+  - Expected: a mechanical change. Add `property_get_revert` beside each row, print a
+    `[default: X]` column, add `--overridden-only`. Nothing to discover.
+  - Got: `project-settings --overridden-only` reported `12 overriding the engine default`
+    over a listing whose rows counted **ten** `OVERRIDDEN` labels and two reading
+    `[no engine default]`. The header and the rows disagreed.
+  - Found: **the label and the count were answering different questions, and the cause was
+    my own conflation of two states.** `autoload/DevTools` returns true from
+    `property_can_revert` and reverts to `null`, so it belongs in `overridden` — the
+    project really does add it — while the client, which inferred "engine has no default"
+    from a null in `defaults`, labelled it as unchanged. Fixed by giving "cannot revert at
+    all" its own `no_default` array in the reply rather than encoding it as a null, which
+    is the same distinction (`absent` vs `zero`) that this whole column exists to draw one
+    level up. Re-run: `12 overriding`, twelve `OVERRIDDEN` rows.
+  - Cheaper: nothing. The two states are indistinguishable in the source — `defaults[key]`
+    is None either way — and only a project that actually contains an autoload separates
+    them. Reading the diff would have shown a correct-looking `if defaults[key] is None`.
+
+- Gap: **[G-159] closed by this turn's own change**, not by an upstream release. This project
+  runs harness 0.38.0 with 0.66.0 sitting on the machine, so the same edit may already exist
+  upstream and may be shaped differently; the local change is written so a reply WITHOUT
+  `defaults` still prints the old output plus a stderr note rather than erroring, so an older
+  running game and a newer client do not have to agree.
+  - [G-159] status: fixed | seen: 1 | harness: 0.38.0
+  - Improvement: shipped here as `project-settings --overridden-only`, and the shape worth
+    upstreaming is the three-state reply (`defaults` / `overridden` / `no_default`) rather
+    than the printing, since that is where the bug was.
 
 
 ## 2026-08-29 — the Chomp bites instead of deleting (plant-tower-defense-*, owner request)

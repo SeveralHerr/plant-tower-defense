@@ -48,10 +48,19 @@ read at runtime:
                      and would have widened the kit contract for all 34 hand-drawn
                      sprites at once.
 
+  * skin ramps    <- `SKIN_PALETTES` in the same file, a Dictionary of one eight-anchor
+                     ramp per family, and applied ONLY to a stem ending
+                     `_skin_<that family>`. Scoped per family and not pooled: a frost
+                     anchor in an ember sprite is a real defect and stays a finding.
+                     Which families exist is read from that block, never listed here.
+
 A sport's canvas size is DERIVED here rather than read, for the same reason the gate
 derives it: a sport copies its parent's geometry byte for byte, so `<parent>_sport` is
 declared at `<parent>`'s size and at no other. A `_sport` stem whose parent has no
-EXPECTED_SIZE row is still undeclared, and still an error.
+EXPECTED_SIZE row is still undeclared, and still an error. A skin's is derived the same
+way, with one clause weaker: a skin appends a motif, so it is its parent's CANVAS rather
+than its parent's geometry. Both derivations are gated on the generated file being on
+disk, never on the pattern.
 
 If the gate's palette gains an entry STYLE.md never documents, that is reported as an
 advisory rather than silently absorbed -- the document and the gate drifting apart is
@@ -216,16 +225,24 @@ Usage:
                deleted -- the mutations below are what you re-run after every edit to
                this file. The whole contract is read at runtime out of two other
                files, so the fixture builds a miniature of all of it in a temp
-               project: a gate script with EXPECTED_SIZE and PALETTE, a STYLE.md with
-               a palette table, nine SVGs, and the eighteen PNGs plus the manifest the
+               project: a gate script with EXPECTED_SIZE, PALETTE and SKIN_PALETTES, a
+               STYLE.md with a palette table and a documented pair of skin ramps,
+               eleven SVGs, and the twenty-two PNGs plus the manifest the
                render half looks for (a real IHDR and no image data -- png_size reads
                24 bytes and nothing else). Cases: clean on all thirteen checks / 48x48
                against a declared 64 / a colour on no palette segment / a grey rim on
                a coloured fill / a <linearGradient> declared AND referenced / no fill
                declared anywhere (renders black) / opacity="0.5" / content 6px off the
                vertical axis / an SVG with no EXPECTED_SIZE row / an EXPECTED_SIZE row
-               with no SVG.
-               Baseline: 11 findings = 10 errors + 1 warning, exit 1.
+               with no SVG / a skin whose row is DERIVED from its parent's and which is
+               painted in its own family's ramp (clean) / a skin painted in ANOTHER
+               family's ramp (a `palette` error, and the whole argument for scoping the
+               ramps per family instead of pooling them).
+               Baseline: 13 findings = 11 errors + 1 warning + 1 advisory, exit 1. The
+               advisory is the contract note that the fixture gate declares no
+               MUTANT_PALETTE; it was missing from this baseline for a while, which
+               left the fixture red on a clean corpus and is exactly the way a kept
+               fixture rots.
                ASSERTED PER CHECK, plus the three SEVERITY totals, plus which checks
                name each sprite. Per check because this tool prints a thirteen-way
                denominator and a check that stops firing prints `0` there exactly as a
@@ -266,6 +283,31 @@ Usage:
                                                  fixture expects ZERO from can fire at
                                                  all -- an expectation of 0 that no
                                                  mutation can move is not an assertion
+               skin_family_of `return family if family in contract.skins else None`
+                 -> `return family`           -> RED as a CRASH, process exit 1, on
+                                                 good_skin_gilt: an unknown family then
+                                                 indexes contract.skins and raises. Loud,
+                                                 but note it is loud only because a sprite
+                                                 for an undeclared family is in the
+                                                 corpus. Without good_skin_gilt this
+                                                 mutation SURVIVED, which is what put that
+                                                 sprite there
+               `palette_rgb += list(contract.skins[skin_family].values())`
+                 -> add EVERY family's ramp   -> 2 failures. good_skin_ember and
+                                                 good_skin_gilt go clean, errors 13 -> 12
+                                                 and warnings 1 -> 2 (their fills demote
+                                                 to the near-a-blend warning). This is the
+                                                 pooled palette the scoping exists to
+                                                 refuse, and it is invisible without a
+                                                 cross-family sprite in the corpus
+               `c.sizes.setdefault(skin, size)` (the skin arm)
+                 -> deleted                   -> 4 failures. declared 3 -> 5, both real
+                                                 skins report as undeclared
+               `if family not in c.skins:` (the unknown-family note)
+                 -> `if False and ...`        -> 2 failures. palette 6 -> 5 and advisory
+                                                 2 -> 1; the per-sprite table does not
+                                                 move, because a contract note names no
+                                                 sprite
 """
 
 from __future__ import annotations
@@ -300,6 +342,12 @@ RETINA_SUFFIX = "@2x"
 ## What makes a stem a sport's. Same spelling as `SPORT_SUFFIX` in `gen_sport_svg.py` and
 ## in the gate; those two check each other, and this one follows them.
 SPORT_SUFFIX = "_sport"
+
+## What makes a stem a skin's: `<parent>_skin_<family>`. Same spelling as `SKIN_SUFFIX` in
+## `gen_skin_svg.py` and in the gate, and followed here for the same reason. The family
+## names are NOT listed here -- they are whatever `SKIN_PALETTES` in the gate declares, so
+## a fourth family is one ramp in one file and no edit at all in this one.
+SKIN_SUFFIX = "_skin_"
 RETINA_SCALE = 2
 
 # Content stamp written by render_svg.gd. See STALENESS in the module docstring: this
@@ -557,6 +605,7 @@ class Contract:
         self.sizes = {}          # stem -> int
         self.palette = {}        # "RRGGBB" -> (r, g, b)
         self.mutant = {}         # "RRGGBB" -> (r, g, b), legal in a _sport stem only
+        self.skins = {}          # family -> {"RRGGBB": (r, g, b)}, legal in that family only
         self.families = {}       # family name -> [hex, ...]
         self.family_of = {}      # "RRGGBB" -> family name
         self.inferred = {}       # "RRGGBB" -> family name (assigned by hue, not read)
@@ -589,7 +638,17 @@ def load_gate_constants(path):
     m = re.search(r"const\s+MUTANT_PALETTE[^\[]*\[(.*?)\]", text, re.S)
     if m:
         mutant = [h.upper() for h in re.findall(r'"([0-9a-fA-F]{6})"', m.group(1))]
-    return sizes, palette, mutant
+    # SKIN_PALETTES is a Dictionary of one array per family rather than one flat array,
+    # because a skin's ramp is scoped to ITS OWN family: the gate hands a `_skin_frost`
+    # stem the frost anchors and nothing else, and this tool has to be able to do the
+    # same or it would accept an ember shade in a frost sprite that the raster gate
+    # refuses. Flat, the three ramps would be indistinguishable here.
+    skins = {}
+    m = re.search(r"const\s+SKIN_PALETTES[^{]*\{(.*?)\n\}", text, re.S)
+    if m:
+        for family, body in re.findall(r'"([a-z_]+)"\s*:\s*\[([^\]]*)\]', m.group(1), re.S):
+            skins[family] = [h.upper() for h in re.findall(r'"([0-9a-fA-F]{6})"', body)]
+    return sizes, palette, mutant, skins
 
 
 def load_style_families(path):
@@ -667,7 +726,7 @@ def load_contract(root):
     if not os.path.isfile(style_path):
         raise RuntimeError("no %s -- the style contract lives there" % STYLE_DOC)
 
-    sizes, palette_hexes, mutant_hexes = load_gate_constants(gate_path)
+    sizes, palette_hexes, mutant_hexes, skin_hexes = load_gate_constants(gate_path)
     if not sizes:
         raise RuntimeError("could not read EXPECTED_SIZE out of %s" % GATE_SCRIPT)
     if not palette_hexes:
@@ -676,11 +735,24 @@ def load_contract(root):
     # parent's size and no other. Derived here rather than expected in EXPECTED_SIZE for
     # the reason the gate's own `_declared()` gives: seventeen hand-typed rows whose only
     # content is "the parent's, again" are seventeen chances to claim a canvas nobody drew.
+    #
+    # A skin is derived the same way and for the same arithmetic -- fifty-one rows, three
+    # per parent -- but it earns the row differently: a skin is NOT its parent's geometry,
+    # it appends a motif. What survives is the only thing this table claims, that the
+    # CANVAS is the parent's, because `gen_skin_svg.py` keeps every motif inside the same
+    # box. Both derivations are gated on the file being on disk, not on the pattern: the
+    # first version of the sport rule derived `<stem>_sport` for every stem and invented
+    # sports for five pests and two projectiles, reporting seven files that will never
+    # exist. Multiply that by three families and it is twenty-one.
     c.sizes = dict(sizes)
     for stem, size in sizes.items():
         sport = stem + SPORT_SUFFIX
         if os.path.isfile(os.path.join(root, SRC_DIR, sport + ".svg")):
             c.sizes.setdefault(sport, size)
+        for family in skin_hexes:
+            skin = stem + SKIN_SUFFIX + family
+            if os.path.isfile(os.path.join(root, SRC_DIR, skin + ".svg")):
+                c.sizes.setdefault(skin, size)
     for h in palette_hexes:
         c.palette[h] = parse_hex("#" + h)
     for h in mutant_hexes:
@@ -689,6 +761,22 @@ def load_contract(root):
         c.notes.append(
             "no MUTANT_PALETTE in %s -- any %s sprite will be held to the kit palette "
             "alone, which it cannot satisfy" % (GATE_SCRIPT, SPORT_SUFFIX))
+    for family, hexes in skin_hexes.items():
+        c.skins[family] = {h: parse_hex("#" + h) for h in hexes}
+    # Note the shape of this guard: it fires on a skin SVG whose FAMILY the gate does not
+    # carry, not on the mere absence of SKIN_PALETTES. A project with no skins has nothing
+    # to say here, and an unconditional note would be a permanently-red line in every
+    # tree that never grows one.
+    for name in sorted(os.listdir(os.path.join(root, SRC_DIR))
+                       if os.path.isdir(os.path.join(root, SRC_DIR)) else []):
+        if not name.endswith(".svg") or SKIN_SUFFIX not in name:
+            continue
+        family = name[:-4].rsplit(SKIN_SUFFIX, 1)[1]
+        if family not in c.skins:
+            c.notes.append(
+                "%s is a %s%s sprite but SKIN_PALETTES in %s carries no such family, so it "
+                "will be held to the kit palette alone, which it cannot satisfy"
+                % (name, SKIN_SUFFIX, family, GATE_SCRIPT))
 
     families, loose = load_style_families(style_path)
     if not families:
@@ -715,17 +803,31 @@ def load_contract(root):
     # Both directions, across both tables. STYLE.md documents the kit palette AND the
     # mutant ramps; the gate carries them as PALETTE and MUTANT_PALETTE. A hex in the
     # document that is in neither is a shade an author will use and the gate will refuse.
+    all_ramps = set(c.mutant)
+    for members in c.skins.values():
+        all_ramps |= set(members)
     for h in loose:
-        if h not in c.palette and h not in c.mutant:
-            c.notes.append("STYLE.md documents #%s but neither PALETTE nor MUTANT_PALETTE "
-                           "in the gate carries it -- a sprite using it would fail the gate"
-                           % h)
+        if h not in c.palette and h not in all_ramps:
+            c.notes.append("STYLE.md documents #%s but none of PALETTE, MUTANT_PALETTE or "
+                           "SKIN_PALETTES in the gate carries it -- a sprite using it "
+                           "would fail the gate" % h)
     stray = [h for h in c.mutant if h not in documented]
     if stray:
         c.notes.append(
             "the gate's MUTANT_PALETTE carries %d entr%s STYLE.md does not document: %s"
             % (len(stray), "y" if len(stray) == 1 else "ies",
                ", ".join("#" + h for h in sorted(stray))))
+    # Same cross-check, per family. The mutant one caught a real desync the moment a ramp
+    # anchor moved; three ramps is three more chances at the same drift, and STYLE.md is
+    # the copy a PERSON reads, so it is the copy most likely to be left behind.
+    for family in sorted(c.skins):
+        stray = [h for h in c.skins[family] if h not in documented]
+        if stray:
+            c.notes.append(
+                "the gate's SKIN_PALETTES[%s] carries %d entr%s STYLE.md does not "
+                "document: %s"
+                % (family, len(stray), "y" if len(stray) == 1 else "ies",
+                   ", ".join("#" + h for h in sorted(stray))))
     return c
 
 
@@ -1567,6 +1669,9 @@ def check_sprite(path, stem, contract, findings):
     palette_rgb = list(contract.palette.values())
     if stem.endswith(SPORT_SUFFIX):
         palette_rgb += list(contract.mutant.values())
+    skin_family = skin_family_of(stem, contract)
+    if skin_family is not None:
+        palette_rgb += list(contract.skins[skin_family].values())
     seen_colours = {}
     painted = 0
     content = Box()
@@ -1724,6 +1829,21 @@ def check_sprite(path, stem, contract, findings):
     return res
 
 
+def skin_family_of(stem, contract):
+    """Which skin ramp `stem` may draw from, or None.
+
+    Matched against the families the GATE declares rather than against the pattern, so a
+    `foo_skin_gilt.svg` for a family nobody defined resolves to None and is held to the
+    kit palette -- which it cannot satisfy, which is the correct loud failure. Deciding
+    membership by the pattern alone would have quietly handed it whatever ramp sorted
+    first.
+    """
+    if SKIN_SUFFIX not in stem:
+        return None
+    family = stem.rsplit(SKIN_SUFFIX, 1)[1]
+    return family if family in contract.skins else None
+
+
 def check_palette(stem, rgb, where, contract, palette_rgb, findings):
     key = to_hex(rgb)[1:]
     if key in contract.palette:
@@ -1733,6 +1853,13 @@ def check_palette(stem, rgb, where, contract, palette_rgb, findings):
     # blend but not verbatim" warning for colours that are in fact verbatim -- 102 of
     # them, which is the warning becoming noise for the 34 sprites it was written for.
     if stem.endswith(SPORT_SUFFIX) and key in contract.mutant:
+        return
+    # Same scoping, one ramp narrower: a skin's anchors are literal palette entries FOR
+    # ITS OWN FAMILY. Both arms of this rule have to be scoped the same way or the tool
+    # reports "on a blend but not verbatim" for colours that are in fact verbatim, which
+    # is 102 warnings turning the warning into noise for the sprites it was written for.
+    family = skin_family_of(stem, contract)
+    if family is not None and key in contract.skins[family]:
         return
     dist = distance_to_palette_blend(rgb, palette_rgb)
     if dist <= BLEND_TOLERANCE:
@@ -1865,8 +1992,19 @@ const PALETTE: PackedStringArray = [
 \t"1F8A4C", "2ECC71", "31D978",
 \t"727272", "939393", "AAAAAA",
 ]
+
+const SKIN_PALETTES := {
+\t"frost": ["0C618C", "87CEF2"],
+\t"ember": ["902D0C", "F89B7C"],
+}
 '''
 
+# The two families above are documented HERE as prose, exactly as the real STYLE.md
+# documents its ramps under its table, so the doc-vs-gate cross-check has something to
+# agree with. Note there is deliberately no MUTANT_PALETTE in the gate above: the
+# contract loader says so as an advisory, and that advisory is the third `palette`
+# finding and the one advisory this fixture expects. It was NOT expected for a while,
+# which is how this fixture came to be red on a clean corpus.
 FIXTURE_STYLE = '''# Sprite style (fixture)
 
 | Role | Dark rim | Base | Light facet |
@@ -1875,6 +2013,9 @@ FIXTURE_STYLE = '''# Sprite style (fixture)
 | Stone | `#727272` | `#939393` | `#AAAAAA` |
 
 Outline = 2px at 64x64, a darker shade of the fill. Never a gradient.
+
+Skin ramps: frost `#0C618C` `#87CEF2`, ember `#902D0C` `#F89B7C`. Legal in a
+`_skin_<that family>` sprite and nowhere else.
 '''
 
 
@@ -1918,15 +2059,37 @@ FIXTURE_SVGS = {
     # halves of the `declared` check, and only the second is obvious.
     "undeclared": _svg('<circle cx="32" cy="32" r="24" fill="#2ECC71" '
                        'stroke="#1F8A4C" stroke-width="2"/>'),
+    # A skin of `good`, painted in its OWN family's ramp. Its EXPECTED_SIZE row is not
+    # written anywhere -- it is derived from the parent's -- so a clean result here is
+    # also the assertion that the derivation happened at all. Without it, `declared`
+    # would fire and this file would be indistinguishable from an undeclared sprite.
+    "good_skin_frost": _svg('<circle cx="32" cy="32" r="24" fill="#87CEF2" '
+                            'stroke="#0C618C" stroke-width="2"/>'),
+    # The scoping case, and the reason the ramps are handed out per family rather than
+    # pooled: a FROST anchor in an EMBER sprite. Pooled, this passes; scoped, it is a
+    # `palette` error like any other colour that is on no legal segment.
+    "good_skin_ember": _svg('<circle cx="32" cy="32" r="24" fill="#87CEF2"/>'),
+    # A family the gate declares nowhere. It must NOT quietly borrow whichever ramp
+    # sorts first: with no SKIN_PALETTES row it has no EXPECTED_SIZE row either, so it
+    # is `declared` AND `palette`, and the contract loader says out loud that a family
+    # is missing. Without this sprite the scoping guard in skin_family_of is a line no
+    # fixture case executes -- which is how it survived its own mutation once.
+    "good_skin_gilt": _svg('<circle cx="32" cy="32" r="24" fill="#87CEF2"/>'),
 }
 
 # check name -> how many findings it must produce over the corpus above.
 # Asserted PER CHECK, never as a total: this tool prints a thirteen-way denominator,
 # and a check that stops firing prints `0` exactly as a clean corpus does.
 FIXTURE_BY_CHECK = {
-    "declared": 2,      # undeclared.svg has no row; phantom has a row and no file
+    # undeclared.svg has no row; phantom has a row and no file; good_skin_gilt names a
+    # family the gate does not carry, so no row is derived for it either.
+    "declared": 3,
     "canvas": 1,        # wrong_size is 48x48 against a declared 64
-    "palette": 2,       # off_palette's magenta, no_fill's implied black
+    # off_palette's magenta, no_fill's implied black, good_skin_ember's frost anchor,
+    # good_skin_gilt's frost anchor, and two contract advisories (the fixture gate
+    # declares no MUTANT_PALETTE, and it declares no `gilt` family either -- every
+    # contract note is filed under `palette`).
+    "palette": 6,
     "flat_paint": 3,    # the <linearGradient>, the url(#g) use, the 0.5 opacity
     "outline": 1,       # grey_rim
     "outline_width": 0,
@@ -1941,11 +2104,12 @@ FIXTURE_BY_CHECK = {
 
 FIXTURE_EXPECT_EXIT = 1
 
-# (errors, warnings, advisory) over the whole corpus. 11 findings in total:
-# declared 2 + canvas 1 + palette 2 + outline 1 + black_fill 1 + centred 1 = 8 errors,
-# plus flat_paint's <linearGradient> declaration and its url(#g) use = 10; the one
-# warning is flat_paint's opacity="0.5".
-FIXTURE_EXPECT_SEVERITY = (10, 1, 0)
+# (errors, warnings, advisory) over the whole corpus. 16 findings in total:
+# declared 3 + canvas 1 + palette 4 + outline 1 + black_fill 1 + centred 1 = 11 errors,
+# plus flat_paint's <linearGradient> declaration and its url(#g) use = 13; the one
+# warning is flat_paint's opacity="0.5"; the two advisories are the contract notes that
+# the fixture gate declares no MUTANT_PALETTE and no `gilt` skin family.
+FIXTURE_EXPECT_SEVERITY = (13, 1, 2)
 
 # stem -> the checks that must name it. Named individually because the per-check
 # counts can still be right for the wrong reasons: two `declared` findings is also
@@ -1961,6 +2125,13 @@ FIXTURE_SPRITE_CHECKS = {
     "off_centre": {"centred"},
     "undeclared": {"declared"},
     "phantom": {"declared"},
+    "good_skin_frost": set(),
+    "good_skin_ember": {"palette"},
+    "good_skin_gilt": {"declared", "palette"},
+    # Not a sprite. Every contract-level note is filed against this pseudo-stem, so
+    # naming it here is what stops the doc-vs-gate cross-checks from going silent
+    # without moving any per-sprite count.
+    "(contract)": {"palette"},
 }
 
 
@@ -2234,6 +2405,11 @@ def report(root, results, findings, contract, discovered, args):
              "y" if len(contract.sizes) == 1 else "ies"))
     print("  palette        %-34s PALETTE, %d colour(s)"
           % (GATE_SCRIPT, len(contract.palette)))
+    if contract.mutant or contract.skins:
+        ramps = ["MUTANT_PALETTE %d" % len(contract.mutant)] if contract.mutant else []
+        ramps += ["%s %d" % (f, len(contract.skins[f])) for f in sorted(contract.skins)]
+        print("  variant ramps  %-34s %s (scoped by stem suffix)"
+              % (GATE_SCRIPT, ", ".join(ramps)))
     print("  families       %-34s palette table, %d famil%s"
           % (STYLE_DOC, len(contract.families),
              "y" if len(contract.families) == 1 else "ies"))
