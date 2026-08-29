@@ -534,6 +534,19 @@ var _escapes_untouched: int = 0
 
 func _ready() -> void:
 	add_to_group("game")
+
+	# AUDIO IS WARMED HERE, IN A FRAME THAT IS ALREADY A LOADING FRAME, and that
+	# placement is the whole point of the call. Both caches used to fill lazily, on
+	# first use, which put a `load()` inside the frame that fires a cue -- the first
+	# kill, the first volley, the first bite -- and inside the crossfade that starts a
+	# run. On the Web build the engine mixes in WASM and refills its ring buffer once
+	# per rendered frame (project.godot's [audio] block), so a main-thread stall is a
+	# missed refill and a missed refill is crackle. `output_latency.web=140` gave a
+	# long frame headroom; it gives none to a frame that has not finished decoding.
+	# Ahead of `play_for_scene` so the title bed is resident before it is asked for.
+	Sfx.prewarm()
+	Music.prewarm()
+
 	Music.play_for_scene(scene_file_path)
 
 	# THE PROFILE IS APPLIED FIRST, ahead of every node this method builds

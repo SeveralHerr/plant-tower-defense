@@ -1365,11 +1365,19 @@ func test_the_idle_sway_phase_differs_between_neighbouring_cells() -> String:
 
 
 func test_a_hungry_pest_eats_a_bed_in_exactly_the_time_it_always_did() -> String:
-	## The guard on the entire mechanic. A pest mid-meal calls take_damage() every
-	## physics frame and every one of those resets the quiet clock, so regrowth
-	## contributes zero for the whole meal. Driven through Pest._physics_process
-	## rather than through take_damage() directly, so it is the real eating path
-	## being timed and not a re-implementation of it.
+	## The guard on the entire mechanic, and it is a tighter guard than it looks
+	## since the chop landed. A pest mid-meal used to call take_damage() on every
+	## physics frame, which pinned the quiet clock at zero by brute force; it now
+	## lands three strikes about 1.07s apart (Pest.chop_period()), so the clock
+	## actually RUNS between them and only Plant.REGROWTH_DELAY's 6s margin is
+	## keeping regrowth out of the meal. This is the test that fails if either
+	## number moves far enough for a bed to start healing between bites.
+	##
+	## The 2.86s it pins is Pest.chop_period()'s whole reason for being the number
+	## it is: the cadence is solved so the THIRD strike lands exactly when the old
+	## per-frame drain would have finished the plant. Driven through
+	## Pest._physics_process rather than through take_damage() directly, so it is
+	## the real eating path being timed and not a re-implementation of it.
 	var plant := Plant.new()
 	plant.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
 	var beetle: Pest = _pest(Pest.BEETLE, Vector2(0, -Board.CELL))
@@ -1384,6 +1392,12 @@ func test_a_hungry_pest_eats_a_bed_in_exactly_the_time_it_always_did() -> String
 	plant.set_physics_process(false)
 	plant.health = Plant.MAX_HEALTH
 	plant._quiet_time = Plant.REGROWTH_DELAY
+	# And the beetle's swing with them. The settle frames advanced its chop clock
+	# by about 0.14s, which would land the first strike early and make the elapsed
+	# time below shorter than the cadence actually is — a version of this test that
+	# skipped this line measured 2.717s against the 2.857s the pest really takes.
+	beetle._chop_clock = 0.0
+	beetle._chop_target = null
 
 	var eaten: Array[Plant] = []
 	plant.destroyed.connect(func(p: Plant) -> void: eaten.append(p))
@@ -1411,6 +1425,214 @@ func test_a_hungry_pest_eats_a_bed_in_exactly_the_time_it_always_did() -> String
 	if err == "":
 		err = _T.assert_float_eq(plant.seconds_until_regrowth(), Plant.REGROWTH_DELAY, 0.0001,
 			"the quiet clock never got off zero during the meal, which is why none of it grew back")
+	_T.free_ui(host)
+	return err
+
+
+## THE CADENCE IS DERIVED, and this is the test that says so. Every number here is
+## re-solved from `Plant.MAX_HEALTH` and `Pest.EAT_DPS` rather than typed, so a retune of
+## either moves the chop with it instead of leaving the constants pointing at a rhythm
+## that used to be right.
+func test_the_chop_cadence_is_solved_from_the_rate_it_replaced() -> String:
+	var err: String = _T.assert_float_eq(
+		Pest.chop_damage() * float(Pest.CHOPS_TO_FELL), Plant.MAX_HEALTH, 0.0001,
+		"three chops fell a full bed exactly, with no rounding slack left over")
+	if err == "":
+		# The last strike of the three, in absolute seconds from the moment the pest
+		# engages: CHOPS_TO_FELL - 1 whole cycles plus the fraction into the last one.
+		var last_strike: float = (float(Pest.CHOPS_TO_FELL - 1) + Pest.CHOP_STRIKE_AT) \
+			* Pest.chop_period()
+		err = _T.assert_float_eq(last_strike, Plant.MAX_HEALTH / Pest.EAT_DPS, 0.0001,
+			("and the last of them lands at %.3fs -- the instant the per-frame drain "
+				+ "this replaced would have finished the plant, which is the whole "
+				+ "reason this is a legibility change and not a balance change")
+				% last_strike)
+	if err == "":
+		# The gift the player actually gets, and the reason "chops less often" is true
+		# of the FIGHT and not only of the animation.
+		var window: float = Pest.CHOP_STRIKE_AT * Pest.chop_period()
+		err = _T.assert_gt(window, 0.5,
+			("a bed loses nothing for the first %.2fs, which is a window to answer in "
+				+ "rather than a frame") % window)
+	if err == "":
+		# Against the plant's own recovery clock. Six seconds of quiet is what keeps
+		# regrowth out of a meal now that the bites have gaps between them at all.
+		err = _T.assert_gt(Plant.REGROWTH_DELAY, Pest.chop_period() * 2.0,
+			("and the gap between chops (%.2fs) stays well inside REGROWTH_DELAY "
+				+ "(%.1fs), so a bed still cannot heal between bites")
+				% [Pest.chop_period(), Plant.REGROWTH_DELAY])
+	if err == "":
+		# The wilt is derived from EAT_DPS and the chop is derived from the same
+		# number, so the two land in a fixed relationship: the plant is under the
+		# threshold after the second chop and holds the pose through the third's
+		# entire wind-up rather than flashing it.
+		var after_two: float = (Plant.MAX_HEALTH - 2.0 * Pest.chop_damage()) / Plant.MAX_HEALTH
+		err = _T.assert_true(after_two < Plant.wilt_threshold(),
+			("two chops in, the bed is at %.3f of full and visibly wilting (threshold "
+				+ "%.3f) with a whole wind-up left to watch")
+				% [after_two, Plant.wilt_threshold()])
+	return err
+
+
+## A frame long enough to span a whole cycle owes the plant two chops. Pure, because the
+## suite cannot produce a real 2.5s physics frame and the machine that can is the one
+## nobody is watching.
+func test_a_long_frame_owes_the_plant_every_chop_it_spanned() -> String:
+	var period: float = Pest.chop_period()
+	var strike: float = Pest.CHOP_STRIKE_AT * period
+	var err: String = _T.assert_eq(Pest.chop_strikes_between(0.0, strike - 0.001, period), 0,
+		"nothing lands before the strike phase")
+	if err == "":
+		err = _T.assert_eq(Pest.chop_strikes_between(0.0, strike + 0.001, period), 1,
+			"one lands on it")
+	if err == "":
+		err = _T.assert_eq(Pest.chop_strikes_between(0.0, period * 3.0, period), 3,
+			"and a frame spanning three whole cycles owes three -- a bite rate that "
+				+ "quietly halved itself under load would be a difficulty setting "
+				+ "nobody chose")
+	if err == "":
+		err = _T.assert_eq(Pest.chop_strikes_between(0.5, 0.5, period), 0,
+			"a frame with no time in it costs nothing")
+	if err == "":
+		err = _T.assert_eq(Pest.chop_strikes_between(0.0, 5.0, 0.0), 0,
+			"and a period of zero is a pest that never chops, not a divide by zero")
+	return err
+
+
+## The lump. This is the behaviour the bead was actually about: the damage arrives as
+## THREE events a player can point at, not as sixty invisible ones a second.
+func test_a_hungry_pest_bites_in_lumps_a_player_can_count() -> String:
+	var plant := Plant.new()
+	plant.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+	var beetle: Pest = _pest(Pest.BEETLE, Vector2(0, -Board.CELL))
+	beetle.apply_mutation(Pest.MUTATION_HUNGRY)
+	var host: Node2D = _host([plant, beetle])
+	await _T.instantiate_scene(host)
+	beetle.set_physics_process(false)
+	plant.set_physics_process(false)
+	plant.health = Plant.MAX_HEALTH
+	beetle._chop_clock = 0.0
+	beetle._chop_target = null
+
+	# Every frame on which the bed lost anything, and how much. A drizzle produces
+	# one entry per frame; a chop produces exactly CHOPS_TO_FELL.
+	var bites: Array[float] = []
+	var step: float = 1.0 / 60.0
+	var last: float = plant.health
+	var guard: int = 0
+	while not plant.is_destroyed() and guard < 600:
+		beetle._physics_process(step)
+		if plant.health < last - 0.0001:
+			bites.append(last - plant.health)
+			last = plant.health
+		guard += 1
+
+	var err: String = _T.assert_eq(bites.size(), Pest.CHOPS_TO_FELL,
+		("the bed lost health on exactly %d frames, not on every frame it was being "
+			+ "eaten on") % Pest.CHOPS_TO_FELL)
+	if err == "":
+		for i: int in range(bites.size()):
+			err = _T.assert_float_eq(bites[i], Pest.chop_damage(), 0.0001,
+				"and chop %d landed a whole chop_damage()" % (i + 1))
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_true(plant.is_destroyed(), "three of them still fell the bed")
+	_T.free_ui(host)
+	return err
+
+
+## The same cadence against a Bramble, and the reason to check both is that they were two
+## copies of one line before. A wall chewed on a different rhythm from a bed, for no
+## stated reason, is exactly what sharing `_chop` between them prevents.
+func test_a_wall_is_chopped_on_the_same_beat_a_bed_is() -> String:
+	var wall := Bramble.new()
+	wall.setup(PlantCatalog.BRAMBLE, Vector2i(0, 0), null)
+	# ON the road, which is the whole of what a Bramble is -- Bramble.STOP_RADIUS is
+	# 0.6 of a cell, so the pest has to be standing on top of it, not one cell off.
+	wall.position = Vector2.ZERO
+	# Plain, NOT hungry: a wall stops every pest, which is what the plant sells.
+	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var host: Node2D = _host([wall, beetle])
+	await _T.instantiate_scene(host)
+	beetle.set_physics_process(false)
+	wall.set_physics_process(false)
+	wall.health = Plant.MAX_HEALTH
+	beetle._chop_clock = 0.0
+	beetle._chop_target = null
+
+	var err: String = ""
+	var step: float = 1.0 / 60.0
+	var elapsed: float = 0.0
+	while elapsed < Pest.CHOP_STRIKE_AT * Pest.chop_period() - step:
+		beetle._physics_process(step)
+		elapsed += step
+	err = _T.assert_float_eq(wall.health, Plant.MAX_HEALTH, 0.0001,
+		"the wall loses nothing through the wind-up either")
+	if err == "":
+		err = _T.assert_true(beetle.is_chopping(), "but the pest is plainly swinging at it")
+	if err == "":
+		beetle._physics_process(step * 2.0)
+		# Scaled by the wall's resistance on the way in, exactly as the per-frame
+		# amount it replaced was -- the cadence changed, the wall's answer did not.
+		var expected: float = Pest.chop_damage() * wall.bite_resistance()
+		err = _T.assert_float_eq(Plant.MAX_HEALTH - wall.health, expected, 0.0001,
+			"and then one whole chop lands, resisted the way a Bramble resists")
+	_T.free_ui(host)
+	return err
+
+
+## The chop moves the PICTURE. Everything that decides what happens to a pest reads
+## `position`, and a lunge that hauled the node one cell off the road would silently take
+## a chopping pest out of every cob's line of fire -- the nerf `_carry_offset`'s header
+## refuses for the same reason.
+##
+## Driven through the live pest and read at the SEAM. `_gait` writes `_sprite.position`
+## behind `GardenTheme.animations_enabled()`, which is false headless, so the sprite write
+## itself is not reachable here; `gait_compute`'s "reach" is the value it writes and the
+## composition is asserted in test_selftest.gd. What is left for the running game is the
+## one line `_sprite.position = _carry_offset + Vector2.UP.rotated(aim_facing()) * reach`,
+## and .claude/skills/assert-an-animation is the reason it is only one line.
+func test_a_chopping_pest_swings_through_its_whole_cycle_and_never_moves() -> String:
+	var plant := Plant.new()
+	plant.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+	plant.position = Vector2(0, -Board.CELL)
+	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	beetle.apply_mutation(Pest.MUTATION_HUNGRY)
+	var host: Node2D = _host([plant, beetle])
+	await _T.instantiate_scene(host)
+	beetle.set_physics_process(false)
+	beetle._chop_clock = 0.0
+	beetle._chop_target = null
+	plant.health = Plant.MAX_HEALTH
+
+	var stood_at: Vector2 = beetle.position
+	var reached: Array[float] = []
+	var step: float = 1.0 / 60.0
+	var err: String = ""
+	for _i: int in range(int(ceil(Pest.chop_period() / step))):
+		beetle._physics_process(step)
+		if beetle.position != stood_at:
+			err = "the pest walked while it was chopping: %s" % beetle.position
+			break
+		# The value `_gait` puts on the sprite, read through the same call it makes.
+		reached.append(float(Pest.chop_pose(beetle.swing_phase())["reach"]))
+	if err == "":
+		var furthest: float = reached[0]
+		var nearest: float = reached[0]
+		for value: float in reached:
+			furthest = maxf(furthest, value)
+			nearest = minf(nearest, value)
+		err = _T.assert_float_eq(furthest, Pest.CHOP_LUNGE, 0.35,
+			"one cycle of a live pest reaches CHOP_LUNGE px towards the bed")
+		if err == "":
+			err = _T.assert_true(nearest < -Pest.CHOP_REAR * 0.9,
+				("and pulls about CHOP_REAR px away from it first (%.2f) -- so the "
+					+ "clock the sprite reads is really turning, not stuck at a pose")
+					% nearest)
+	if err == "":
+		err = _T.assert_eq(beetle.position, stood_at,
+			"and after a whole swing it is still standing exactly where it stopped")
 	_T.free_ui(host)
 	return err
 
@@ -12288,4 +12510,100 @@ func test_a_chomp_takes_the_bug_that_has_gone_by_and_leaves_the_one_arriving() -
 		err = _T.assert_true(chomp.held_pest() == arriving,
 			"the bug it let through is caught on the way out")
 	_T.free_ui(host)
+	return err
+
+
+# -- the warm cache ---------------------------------------------------------
+#
+# WHY A LOADING HITCH IS AN AUDIO DEFECT HERE, because that is the part that is not
+# obvious and the part these three tests are guarding.
+#
+# Both stream caches used to fill lazily: `Sfx.stream_for` and `Music._stream_for`
+# call `load()` the first time an id is asked for, which is the frame that first
+# fires the cue -- a run's first kill, first volley, first bite -- and, for the RUN
+# bed, the crossfade that begins a run with a second stream already decoding.
+#
+# On desktop that stall is a frame nobody sees. On the Web build it is crackle, and
+# the chain is written out in project.godot's `[audio]` block: `default_playback_type
+# .web=0` puts every voice through the engine's WASM mixer, `variant/thread_support
+# =false` means that mixer's ring buffer is refilled from the main loop once per
+# rendered frame, so a stalled main thread IS a missed refill. `output_latency.web
+# =140` gave a long frame four frames of headroom; it gives none at all to a frame
+# that has not finished decoding, because that frame does not render until it has.
+#
+# NONE OF THIS IS AUDIBLE TO THE SUITE and no test below pretends otherwise. What is
+# observable is the state that decides it: how many streams are resident, and whether
+# anything warms them before gameplay starts.
+
+
+func test_prewarm_leaves_no_cue_left_to_load() -> String:
+	## Asserts the count against `SOUNDS.size() + 1`, derived rather than typed, so a
+	## seventeenth cue is covered the day it is added.
+	##
+	## The `+ 1` is the ambience bed, and it is the whole reason this is an equality
+	## and not a `>= SOUNDS.size()`. The bed lives outside `SOUNDS` on purpose (see
+	## test_the_bed_is_not_a_cue), it is the longest-running sound the game makes, and
+	## a `prewarm` that looped `SOUNDS` and forgot it would leave the one load that
+	## lands mid-wave exactly where it was.
+	##
+	## Order-independent by construction: it asserts the state AFTER prewarm, which is
+	## the same whether the suite arrived here cold or with the cache already warm from
+	## test_every_sound_the_game_can_play_actually_loads. A test written as "resident
+	## went from 0 to N" would pass or fail on suite order alone.
+	var resident: int = Sfx.prewarm()
+	var err: String = _T.assert_eq(resident, Sfx.SOUNDS.size() + 1,
+		"prewarm reports every cue in the table resident, plus the bed")
+	if err == "":
+		err = _T.assert_eq(Sfx.streams_resident(), Sfx.SOUNDS.size() + 1,
+			"and asking again agrees -- the return value is the cache, not a tally "
+				+ "of what prewarm happened to touch")
+	if err == "":
+		# The denominator. `Sfx.SOUNDS.size() + 1` is a true statement about an empty
+		# table too, and an empty table is how this test goes vacuous.
+		err = _T.assert_gt(Sfx.SOUNDS.size(), 20,
+			"there was a real table to warm (an empty one passes the above trivially)")
+	return err
+
+
+func test_prewarm_covers_the_beds_as_well_as_the_cues() -> String:
+	## The bed cache is the one that hurt most and is the easiest to forget, because
+	## `Music` has two players and looks warm as soon as either has a stream. RUN is an
+	## mp3 and the largest file this project ships; it is loaded during a crossfade, so
+	## its decode overlaps the outgoing bed's.
+	var resident: int = Music.prewarm()
+	var err: String = _T.assert_eq(resident, Music.TRACKS.size(),
+		"every bed in TRACKS is resident after prewarm")
+	if err == "":
+		err = _T.assert_gt(Music.TRACKS.size(), 1,
+			"there is more than one bed, so this is not one lucky load")
+	return err
+
+
+func test_the_game_scene_warms_the_audio_caches_before_it_plays() -> String:
+	## THE CLAIM THE OTHER TWO CANNOT MAKE: that something actually CALLS prewarm.
+	## `Game._ready` deleting those two lines is the regression that puts every load
+	## back into a gameplay frame, and it would leave both tests above green.
+	##
+	## Cold first, via the seam `Sfx.forget_streams` exists for, then build the real
+	## scene and read the caches back. The scene is torn down but the caches are left
+	## warm, which is the state every other test in this file either wants or ignores.
+	Sfx.forget_streams()
+	Music.forget_streams()
+	var err: String = _T.assert_eq(Sfx.streams_resident(), 0,
+		"the cue cache really is cold to start with -- otherwise this test asserts nothing")
+	if err != "":
+		return err
+	err = _T.assert_eq(Music.streams_resident(), 0, "and so is the bed cache")
+	if err != "":
+		return err
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	err = _T.assert_true(game != null, "the game scene loaded")
+	if err == "":
+		err = _T.assert_eq(Sfx.streams_resident(), Sfx.SOUNDS.size() + 1,
+			"_ready warmed every cue and the bed, so the first kill of the run pays "
+				+ "no load")
+	if err == "":
+		err = _T.assert_eq(Music.streams_resident(), Music.TRACKS.size(),
+			"and every bed, so the crossfade into a run decodes nothing new")
+	_T.free_ui(game)
 	return err

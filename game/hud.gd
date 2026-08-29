@@ -457,7 +457,37 @@ const PREP_BAR_PULSE_DIM: float = 0.45
 ## this one is an invitation to click, not a countdown alarm, so it reads as
 ## a calm breathing glow rather than a flashing warning.
 const NEXT_WAVE_PULSE_SECONDS: float = 0.5
-const NEXT_WAVE_PULSE_DIM: float = 0.8
+## How far the breath swings off the button's resting face -- in brightness, and
+## in size (plant-tower-defense-2b8r).
+##
+## The first cut of this cue swung ALPHA alone, 1.0 -> 0.8. Recording a whole
+## cycle at 24fps and averaging the button's own rectangle put it at 193 -> 164
+## of 255 mean channel: an 11% luminance dip, on a pale button, inside a dark
+## bar. Brightness is the one channel a player who is not looking straight at
+## the button cannot pick up, so that cue only ever worked for someone already
+## reading it. Peripheral vision is built for MOTION and for edges that move, so
+## the swing now goes UP in brightness and the button changes SIZE with it.
+##
+## The swell is sized against the button rather than picked as a pleasant-looking
+## fraction: NEXT_WAVE_BUTTON_SIZE is 130x40, so 0.10 is 13px of width and 4px of
+## height, moving every edge ~6.5px and ~2px respectively. That fits, measured on
+## the recorded frames rather than reasoned about: at rest the button clears the
+## window's right edge by 15px and the speed button beside it by about the same,
+## and at the top of the breath those become 8px and 9px -- tight, and nothing is
+## clipped or overlapped. It is also the smallest swell that reads as motion at
+## this size; 0.06, the first number tried here, moves an edge 3.9px, which is
+## close enough to nothing on a 130px button.
+##
+## The pair together measure 24 -> 46 mean channel of swing across a cycle, on
+## the same recorded-and-averaged rectangle that condemned the alpha-only cue.
+##
+## Both stay deliberately small. This fires on a button that is pressable for
+## most of a run, so anything reading as an alarm reads as an alarm for twenty
+## waves; the prep strip's 0.24s/0.45 flash is the alarm and this must not be
+## mistaken for it. Up rather than down for the brightness because a lit button
+## says "ready" where a dimming one says "going away".
+const NEXT_WAVE_PULSE_LIFT: float = 0.18
+const NEXT_WAVE_PULSE_SWELL: float = 0.10
 
 ## How far this wave's stopping depth has to move off the run's average before
 ## the prep line calls it a change rather than noise.
@@ -2104,6 +2134,26 @@ func _set_prep_bar_urgent(urgent: bool) -> void:
 	_prep_bar_pulse.tween_property(_prep_bar, "modulate", Color.WHITE, PREP_BAR_PULSE_SECONDS)
 
 
+## The far end of the next-wave button's breath: the face the tween swells TO,
+## the resting end being Color.WHITE at Vector2.ONE.
+##
+## A static rather than two literals written inline in the tween because
+## headless pumps no frames and runs with animations off, so the state the tween
+## ARRIVES at is unreachable to every gate in this project -- the state it was
+## ARMED with is the only thing a check can hold. See
+## .claude/skills/assert-an-animation.
+static func next_wave_pulse_peak() -> Dictionary:
+	var lit: float = 1.0 + NEXT_WAVE_PULSE_LIFT
+	return {
+		# Alpha stays at 1.0 and the RGB goes ABOVE it: modulate multiplies, so
+		# this drives the paper past its own colour and reads as a light coming up
+		# on the button. Alpha under 1.0 -- the first cut -- instead reads as the
+		# button going away, and on a dark bar it is also the smaller change.
+		"modulate": Color(lit, lit, lit, 1.0),
+		"scale": Vector2.ONE * (1.0 + NEXT_WAVE_PULSE_SWELL),
+	}
+
+
 ## Starts or stops the next-wave button's pressable pulse (plant-tower-defense-jlsc),
 ## edge-detected the same way _set_prep_bar_urgent is and for the same reason: a
 ## refresh() every frame the button stays enabled must not restart the tween on
@@ -2115,14 +2165,27 @@ func _set_next_wave_pulse_active(active: bool) -> void:
 	if _next_wave_pulse != null and _next_wave_pulse.is_valid():
 		_next_wave_pulse.kill()
 	# Reset first, gate second: a wave that goes live mid-pulse (or a headless
-	# run that never had a Tween) must not freeze the button dim.
+	# run that never had a Tween) must not freeze the button lit -- or, now that
+	# the breath moves an edge as well, swollen over its neighbour.
 	_next_wave_button.modulate = Color.WHITE
+	_next_wave_button.scale = Vector2.ONE
 	if not active or not GardenTheme.animations_enabled():
 		return
+	# Centred pivot, or the swell grows rightwards and downwards out of the row
+	# instead of breathing in place. Here rather than where the button is built:
+	# `size` is (0, 0) until StatsRow has laid the row out once, and a pivot of
+	# (0, 0) is exactly the off-centre grow this line exists to prevent.
+	_next_wave_button.pivot_offset = _next_wave_button.size * 0.5
+	var peak: Dictionary = next_wave_pulse_peak()
 	_next_wave_pulse = create_tween().set_loops()
 	_next_wave_pulse.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	_next_wave_pulse.tween_property(_next_wave_button, "modulate", Color(1, 1, 1, NEXT_WAVE_PULSE_DIM), NEXT_WAVE_PULSE_SECONDS)
-	_next_wave_pulse.tween_property(_next_wave_button, "modulate", Color.WHITE, NEXT_WAVE_PULSE_SECONDS)
+	_next_wave_pulse.tween_property(_next_wave_button, "modulate", peak["modulate"], NEXT_WAVE_PULSE_SECONDS)
+	# parallel() so brightness and size are one breath rather than two beats, and
+	# chain() so the return waits for both -- a plain second tween_property would
+	# start the fade back while the swell was still growing.
+	_next_wave_pulse.parallel().tween_property(_next_wave_button, "scale", peak["scale"], NEXT_WAVE_PULSE_SECONDS)
+	_next_wave_pulse.chain().tween_property(_next_wave_button, "modulate", Color.WHITE, NEXT_WAVE_PULSE_SECONDS)
+	_next_wave_pulse.parallel().tween_property(_next_wave_button, "scale", Vector2.ONE, NEXT_WAVE_PULSE_SECONDS)
 
 
 ## How the plant bar arranges `count` plants: one column while they still clear

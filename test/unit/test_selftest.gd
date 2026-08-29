@@ -293,7 +293,26 @@ func test_a_hungry_pest_does_not_advance_while_eating_a_plant() -> String:
 	pest._physics_process(0.1)
 	var err: String = _T.assert_eq(pest.position, start, "hungry + adjacent plant means eat, not walk")
 	if err == "":
-		err = _T.assert_true(plant.health < Plant.MAX_HEALTH, "and the plant actually took damage")
+		# 0.2s is INSIDE the wind-up, and that is the assertion. The bite used to
+		# land on the first physics frame; it now costs the pest
+		# Pest.CHOP_STRIKE_AT * Pest.chop_period() (~0.72s) of visible swing before
+		# the bed loses anything, which is the window the player answers in.
+		err = _T.assert_float_eq(plant.health, Plant.MAX_HEALTH, 0.0001,
+			"the first chop is still winding up at 0.2s, so nothing has landed yet")
+	if err == "":
+		err = _T.assert_true(pest.is_chopping(), "but it is plainly mid-swing at the bed")
+	if err == "":
+		# Past the strike. One chop, one lump, and the lump is the whole of it —
+		# a per-frame drain would have taken 0.8 * Pest.EAT_DPS = 11.2 off here.
+		var guard: int = 0
+		while pest.chop_phase() < Pest.CHOP_STRIKE_AT and guard < 200:
+			pest._physics_process(0.1)
+			guard += 1
+		pest._physics_process(0.1)
+		err = _T.assert_float_eq(plant.health, Plant.MAX_HEALTH - Pest.chop_damage(), 0.0001,
+			"and when it lands it lands whole: exactly one chop_damage() off the bed")
+	if err == "":
+		err = _T.assert_eq(pest.position, start, "still eating, still not walking")
 	_T.free_ui(host)
 	return err
 
@@ -4485,7 +4504,10 @@ func test_the_next_wave_button_pulses_once_it_is_pressable() -> String:
 		err = _T.assert_true(game.hud._next_wave_pulse_active, "so the pulse flag is armed")
 	if err == "":
 		err = _T.assert_true(button.modulate.is_equal_approx(Color.WHITE),
-			"headless never pumps the tween, so the button starts fully opaque")
+			"headless never pumps the tween, so the button starts at its resting face")
+	if err == "":
+		err = _T.assert_true(button.scale.is_equal_approx(Vector2.ONE),
+			"and at its resting size -- the breath swells it, it does not live swollen")
 	if err == "":
 		game._wave_live = true
 		game._refresh()
@@ -4496,10 +4518,53 @@ func test_the_next_wave_button_pulses_once_it_is_pressable() -> String:
 		err = _T.assert_true(button.modulate.is_equal_approx(Color.WHITE),
 			"and leaves it at full opacity, not wherever the pulse left it")
 	if err == "":
+		# The half of the reset that only exists since the breath grew a size
+		# channel (plant-tower-defense-2b8r): a button frozen 6% swollen would
+		# sit over its neighbour for the whole of a live wave.
+		err = _T.assert_true(button.scale.is_equal_approx(Vector2.ONE),
+			"and at its resting size, not wherever the swell left it")
+	if err == "":
 		game._wave_live = false
 		game._refresh()
 		err = _T.assert_true(game.hud._next_wave_pulse_active, "and re-arms once pressable again")
 	_T.free_ui(game)
+	return err
+
+
+## The breath's far end (plant-tower-defense-2b8r), which is the only part of an
+## animation this suite can hold: headless pumps no frames and runs with
+## animations off, so what the tween ARRIVES at is unreachable and what it was
+## ARMED with is not. See .claude/skills/assert-an-animation.
+##
+## Pinned to absolute numbers rather than to NEXT_WAVE_PULSE_LIFT and
+## NEXT_WAVE_PULSE_SWELL themselves: a claim written in terms of the amplitude
+## survives that amplitude being set to zero, which is the exact regression this
+## bead was filed about -- a cue too small to see is a cue that is not there.
+func test_the_next_wave_breath_swells_far_enough_to_be_seen() -> String:
+	var peak: Dictionary = Hud.next_wave_pulse_peak()
+	var lit: Color = peak["modulate"] as Color
+	var swell: Vector2 = peak["scale"] as Vector2
+	var err: String = _T.assert_true(lit.r >= 1.1,
+		"the breath drives the paper ABOVE its own colour (got %.3f)" % lit.r)
+	if err == "":
+		err = _T.assert_true(is_equal_approx(lit.r, lit.g) and is_equal_approx(lit.g, lit.b),
+			"neutrally, so the cue costs nothing to a colourblind player")
+	if err == "":
+		err = _T.assert_true(is_equal_approx(lit.a, 1.0),
+			"and at full alpha: a light coming up, not the button going away")
+	if err == "":
+		# 1.08 of NEXT_WAVE_BUTTON_SIZE's 130px width is 10px of travel, ~5px per
+		# edge. Below that the swell is a couple of pixels and the cue is back to
+		# being one a player has to already be looking at.
+		err = _T.assert_true(swell.x >= 1.08 and is_equal_approx(swell.x, swell.y),
+			"and swells it evenly by enough to move an edge (got %s)" % swell)
+	if err == "":
+		# The other side of the same measurement: the button's right edge sits
+		# 15px inside the window at rest, so ~23% of its 130px width is where the
+		# swell starts growing off-screen. Anything near that has to move the
+		# row's budget first, not just this constant.
+		err = _T.assert_true(swell.x <= 1.2,
+			"but not so far it grows out of the row it is budgeted into (got %s)" % swell)
 	return err
 
 
@@ -9738,6 +9803,220 @@ func test_gait_compute_composes_swing_rate_yaw_and_stretch_from_its_own_pure_pie
 	return ""
 
 
+## THE CHOP'S POSE, and every one of these is a claim about a static that `_gait` writes
+## past the `animations_enabled()` gate -- unreachable headless, which is why the curve
+## lives in `chop_reach` and not inside `_gait`. See .claude/skills/assert-an-animation.
+##
+## Sampled densely rather than at three named phases: the shape of this curve IS the cue,
+## and a test that only checked the endpoints would pass on a straight line.
+func test_the_chop_rears_back_before_it_strikes_and_peaks_where_the_damage_lands() -> String:
+	var err: String = _T.assert_float_eq(Pest.chop_reach(0.0), 0.0, 0.0001,
+		"a swing starts from rest")
+	if err == "":
+		err = _T.assert_float_eq(Pest.chop_reach(1.0), 0.0, 0.0001,
+			"and ends at rest, which is also the next swing's start -- the curve is "
+				+ "continuous across the wrap, so three chops in a row never snap")
+	if err == "":
+		err = _T.assert_float_eq(Pest.chop_reach(Pest.CHOP_STRIKE_AT), Pest.CHOP_LUNGE, 0.0001,
+			"and it is furthest FORWARD on the exact phase the damage lands")
+	if err == "":
+		err = _T.assert_float_eq(Pest.chop_reach(Pest.CHOP_WIND_END), -Pest.CHOP_REAR, 0.0001,
+			"having been furthest BACK at the end of the wind-up")
+	if err == "":
+		# The whole wind-up is behind the body. A curve that drifted forward early
+		# would still hit both endpoints above and read as a shuffle, not a swing.
+		var samples: int = 24
+		for i: int in range(1, samples):
+			var t: float = Pest.CHOP_WIND_END * float(i) / float(samples)
+			err = _T.assert_true(Pest.chop_reach(t) < 0.0,
+				"phase %.3f is inside the wind-up, so the body is drawn BACK" % t)
+			if err != "":
+				return err
+	if err == "":
+		err = _T.assert_gt(Pest.CHOP_LUNGE, Pest.CHOP_REAR,
+			"the forward half out-travels the backward half -- two equal halves read "
+				+ "as a rock back and forth rather than as a blow")
+	if err == "":
+		# Nothing outside the two poses. A peak anywhere else would be a second
+		# beat the player has to read, and the strike would stop being the loudest
+		# frame of the cycle.
+		var steps: int = 200
+		for i: int in range(steps + 1):
+			var t: float = float(i) / float(steps)
+			var reach: float = Pest.chop_reach(t)
+			err = _T.assert_true(reach <= Pest.CHOP_LUNGE + 0.0001
+					and reach >= -Pest.CHOP_REAR - 0.0001,
+				"phase %.3f stays inside the two extremes (%.3f)" % [t, reach])
+			if err != "":
+				return err
+	return err
+
+
+## The second channel of the beat, and the point is that it is DERIVED from the first
+## rather than shaped again: one curve, two renderings, so they cannot drift into
+## disagreeing about which frame the blow is on.
+func test_the_chops_stretch_is_the_same_curve_as_its_reach() -> String:
+	var span: float = maxf(Pest.CHOP_LUNGE, Pest.CHOP_REAR)
+	var err: String = ""
+	for i: int in range(41):
+		var t: float = float(i) / 40.0
+		var expected: float = clampf(Pest.chop_reach(t) / span, -1.0, 1.0) * Pest.CHOP_STRETCH
+		err = _T.assert_float_eq(Pest.chop_stretch(t), expected, 0.0001,
+			"stretch at phase %.3f is reach re-rendered, not a second shape" % t)
+		if err != "":
+			return err
+	if err == "":
+		err = _T.assert_float_eq(Pest.chop_stretch(Pest.CHOP_STRIKE_AT), Pest.CHOP_STRETCH,
+			0.0001, "so the body is longest on the strike frame too")
+	if err == "":
+		# Against the walk cycle it replaces, not against itself: an assertion in the
+		# units of the thing under test passes when that thing is zeroed.
+		err = _T.assert_gt(Pest.CHOP_STRETCH, Pest.GAIT_STRETCH,
+			"and a chop out-reads the scuttle it interrupts (%.3f vs %.3f)"
+				% [Pest.CHOP_STRETCH, Pest.GAIT_STRETCH])
+	return err
+
+
+## `chop_pose` is what `gait_compute` actually calls, so a pose assembled correctly by
+## the two functions above and then dropped on the floor would still pass them both.
+func test_the_chop_pose_carries_both_channels_of_the_beat() -> String:
+	var err: String = ""
+	for i: int in range(11):
+		var t: float = float(i) / 10.0
+		var pose: Dictionary = Pest.chop_pose(t)
+		err = _T.assert_float_eq(float(pose["reach"]), Pest.chop_reach(t), 0.0001,
+			"pose at %.2f carries the reach" % t)
+		if err == "":
+			err = _T.assert_float_eq(float(pose["stretch"]), Pest.chop_stretch(t), 0.0001,
+				"and the stretch at %.2f" % t)
+		if err != "":
+			return err
+	return err
+
+
+## What `gait_compute` does with a chop, which is the composition `_gait` writes and
+## therefore the one thing headless can hold a claim about at all.
+##
+## Both halves matter. The pest STOPS -- that is the readable half of the ask, and a body
+## still scuttling while it swings reads as a bug that happens to be near a plant. But the
+## flinch SURVIVES: `flash_hit`'s own header records that colour and motion are one cue and
+## that a pest speaking on only one of them is the defect that pair exists to prevent.
+func test_a_chopping_pest_stops_scuttling_but_still_recoils_when_it_is_shot() -> String:
+	var gait_time: float = 2.03
+	var phase: float = 0.08
+	var for_speed: float = 39.3
+	var clock: float = gait_time * Pest.gait_rate(for_speed, false, false) + phase
+	var err: String = _T.assert_gt(absf(sin(clock)), 0.05,
+		"sanity: this seed's swing term is well off a zero crossing, so a swing that "
+			+ "survived would be visible in the numbers below")
+	if err != "":
+		return err
+	var walking: Dictionary = Pest.gait_compute(gait_time, phase, for_speed,
+		false, false, false, 0.0, 1.0)
+	var chopping: Dictionary = Pest.gait_compute(gait_time, phase, for_speed,
+		false, false, false, 0.0, 1.0, Pest.CHOP_STRIKE_AT)
+	err = _T.assert_gt(absf(float(walking["yaw"])), 0.001,
+		"a walking pest is mid-swing on this seed")
+	if err == "":
+		err = _T.assert_float_eq(float(chopping["yaw"]), 0.0, 0.0001,
+			"and the same pest mid-chop has stopped swinging entirely")
+	if err == "":
+		err = _T.assert_float_eq(float(chopping["stretch"]),
+			Pest.chop_stretch(Pest.CHOP_STRIKE_AT), 0.0001,
+			"its stretch is the chop's, REPLACING the walk cycle's rather than "
+				+ "multiplying into it")
+	if err == "":
+		err = _T.assert_float_eq(float(chopping["reach"]), Pest.CHOP_LUNGE, 0.0001,
+			"and the reach channel only exists while there is a chop to carry")
+	if err == "":
+		err = _T.assert_float_eq(float(walking["reach"]), 0.0, 0.0001,
+			"a walking pest never lunges")
+	if err == "":
+		# The recoil, on the same seed with the flinch armed. Chopping or not.
+		var shot_walking: Dictionary = Pest.gait_compute(gait_time, phase, for_speed,
+			false, false, false, Pest.FLINCH_SECONDS, 1.0)
+		var shot_chopping: Dictionary = Pest.gait_compute(gait_time, phase, for_speed,
+			false, false, false, Pest.FLINCH_SECONDS, 1.0, Pest.CHOP_STRIKE_AT)
+		err = _T.assert_gt(absf(float(shot_chopping["yaw"])), 0.001,
+			"a chopping pest that gets shot still recoils -- the chop takes the swing, "
+				+ "not the flinch")
+		if err == "":
+			err = _T.assert_float_eq(float(shot_chopping["yaw"]),
+				float(shot_walking["yaw"]) - float(walking["yaw"]), 0.0001,
+				"and what is left is exactly the flinch term, with the swing removed")
+	return err
+
+
+## The quarter-turn table, enumerated rather than sampled -- it is the one rule the walk
+## and the chop now share, and a copy of it that disagreed on one heading would be a bug
+## visible only when a pest ate a plant on that side of the road.
+##
+## STYLE.md's convention is up-screen (-Y) at rest, which is rotation 0; Godot turns
+## clockwise from there, so +X is +PI/2, +Y is PI and -X is -PI/2.
+func test_every_heading_snaps_to_the_cardinal_the_art_was_drawn_for() -> String:
+	var headings: Dictionary = {
+		Vector2.UP: 0.0,
+		Vector2.RIGHT: PI / 2.0,
+		Vector2.DOWN: PI,
+		Vector2.LEFT: -PI / 2.0,
+	}
+	var err: String = ""
+	for heading: Vector2 in headings:
+		var want: float = float(headings[heading])
+		err = _T.assert_float_eq(Pest.cardinal_facing(heading, 99.0), want, 0.0001,
+			"%s snaps to %.3f rad" % [heading, want])
+		if err == "":
+			# Off-axis, since a real leg vector is never exactly a unit cardinal. The
+			# LONGER axis wins, which is what makes a route expanded to one waypoint
+			# per cell land on the same four rotations every time.
+			err = _T.assert_float_eq(
+				Pest.cardinal_facing(heading * 40.0 + heading.orthogonal() * 9.0, 99.0),
+				want, 0.0001, "and so does a %s that is a little off-axis" % heading)
+		if err != "":
+			return err
+	if err == "":
+		err = _T.assert_float_eq(Pest.cardinal_facing(Vector2.ZERO, 1.234), 1.234, 0.0001,
+			"a direction too short to have a heading keeps the one the pest already "
+				+ "had -- a pest standing exactly on its waypoint must not spin")
+	return err
+
+
+## The turn. Two claims, and the second is the one with teeth.
+func test_a_chopping_pest_turns_to_the_plant_without_lying_about_where_it_is_going()\
+		-> String:
+	var plant := Plant.new()
+	plant.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+	plant.position = Vector2(0, -Board.CELL)
+	var pest: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	pest.apply_mutation(Pest.MUTATION_HUNGRY)
+	var host: Node2D = _host([plant, pest])
+	await _T.instantiate_scene(host)
+
+	var walking_heading: Vector2 = pest.travel_direction()
+	var err: String = _T.assert_float_eq(walking_heading.dot(Vector2.RIGHT), 1.0, 0.0001,
+		"sanity: the route runs to the right, so the pest walks right")
+	if err == "":
+		pest._physics_process(0.1)
+		err = _T.assert_true(pest.is_chopping(), "it engages the bed one cell above it")
+	if err == "":
+		err = _T.assert_float_eq(pest.aim_facing(), 0.0, 0.0001,
+			"and the BODY turns to look at it -- 0.0 is up-screen, STYLE.md's rest pose")
+	if err == "":
+		# The half a Chomp depends on. `ChompFlower.is_past_enough` asks a pest which
+		# way it is GOING to decide whether it has passed the mouth; a bug turned to
+		# face the flower it is eating would answer "coming towards you" forever and
+		# never be grabbable again.
+		err = _T.assert_float_eq(pest.travel_direction().dot(Vector2.RIGHT), 1.0, 0.0001,
+			"while travel_direction() still answers the ROAD, which is what every "
+				+ "outcome in the game reads")
+	if err == "":
+		err = _T.assert_true(absf(pest.aim_facing() - pest._facing) > 1.0,
+			"the two are a quarter turn apart, so this test would notice them being "
+				+ "collapsed back into one field")
+	_T.free_ui(host)
+	return err
+
+
 ## Endless mode scales `speed`, and the gait rides it so a hurried pest visibly
 ## hurries -- but a wave-30 beetle must not blur.
 func test_the_gait_rate_follows_speed_but_is_clamped_at_both_ends() -> String:
@@ -13091,8 +13370,8 @@ func test_a_plant_button_says_the_price_and_nothing_else() -> String:
 		for id: StringName in PlantCatalog.ids():
 			longest = maxi(longest, Hud.plant_button_label(true, PlantCatalog.cost(id)).length())
 		err = _T.assert_true(longest <= 4,
-			"the longest label any catalogue plant produces is %d characters -- 'free' is "
-				+ "the ceiling, and a five-figure price would be a different bar" % longest)
+			("the longest label any catalogue plant produces is %d characters -- 'free' is "
+				+ "the ceiling, and a five-figure price would be a different bar") % longest)
 	return err
 
 
@@ -18216,8 +18495,19 @@ func test_a_bramble_stops_an_ordinary_pest_and_it_walks_on_once_the_wall_is_gone
 	var err: String = _T.assert_eq(pest.position, start,
 		"an unmutated aphid standing at a Bramble does not advance")
 	if err == "":
+		# Mid-swing, not mid-bite. 0.2s is inside the wind-up since the chop landed
+		# (Pest.CHOP_STRIKE_AT * Pest.chop_period() is ~0.72s), so a wall that had
+		# already lost health here would mean the telegraph was gone.
+		err = _T.assert_true(pest.is_chopping(),
+			"and it is swinging at the wall rather than merely standing still")
+	if err == "":
+		var guard: int = 0
+		while pest.chop_phase() < Pest.CHOP_STRIKE_AT and guard < 200:
+			pest._physics_process(0.1)
+			guard += 1
+		pest._physics_process(0.1)
 		err = _T.assert_true(wall.health < Plant.MAX_HEALTH,
-			"and it is chewing rather than merely standing still (%.2f health)" % wall.health)
+			"and one chop later the wall has actually lost health (%.2f)" % wall.health)
 	if err == "":
 		# The other half, and the half a "does not advance" assertion alone would let
 		# rot: a wall that is never released is a permanent barricade, which is a
@@ -22318,6 +22608,114 @@ func test_every_plant_has_a_sport_and_every_sport_is_strictly_better() -> String
 		if err != "":
 			return err
 	return ""
+
+
+## Every sport's one buff is big enough to read and small enough not to replace the shop.
+##
+## The band is the design sentence in `PlantMutation`'s header written as numbers, and
+## it exists because the other two tests here cannot see it. "Strictly better" passes
+## at a rate of 0.999, and the seconds band in
+## `test_a_sport_is_rare_enough_to_stay_an_event` grades how OFTEN a sport lands
+## without ever asking what one is worth. Those two numbers were tuned as a pair --
+## rare and large, replacing the frequent and small this shipped with -- and a later
+## hand that walks half the pair back leaves both existing tests green.
+##
+## The FLOOR (0.20) is a legibility claim rather than a balance one: a plant firing
+## 10% faster than the identical plant beside it is a difference no player standing
+## over a 14x9 garden can see, so a sport that small is a free plant that reads as a
+## bug in the sprite. The CEILING is the economy -- a sport is free, and one worth two
+## bought plants makes buying the wrong move.
+##
+## The Mint is the exception at the top and is NAMED rather than skipped, because a
+## loop that quietly excused a row would excuse the next one too. Its `power` is a
+## COUNT that `Game._refresh_neighbour_buffs` rounds to an int, so 2.0 is not the
+## "twice a bought plant" the ceiling is about; it is two neighbours, and the only
+## value above it is three.
+func test_every_sport_buff_is_big_enough_to_read_and_small_enough_to_keep_the_shop() -> String:
+	var NOTICEABLE: float = 0.20
+	var RATE_FLOOR: float = 0.55
+	var POWER_CEILING: float = 1.80
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 6,
+		"the catalogue really has plants to sweep -- a loop over nothing asserts nothing")
+	if err != "":
+		return err
+	var counted: int = 0
+	for id: StringName in ids:
+		var rate: float = PlantMutation.rate_scale(id)
+		var power: float = PlantMutation.power_scale(id)
+		var moved: float = rate if rate < 1.0 else power
+		counted += 1
+		err = _T.assert_true(absf(1.0 - moved) >= NOTICEABLE,
+			("%s's sport moves its number by %.0f%%. Under %.0f%% is a difference nobody "
+				+ "standing over the board can see, so the sport reads as a recolour bug "
+				+ "rather than as the event `CrossBreeder.CHANCE_PER_TICK` prices it as")
+				% [id, absf(1.0 - moved) * 100.0, NOTICEABLE * 100.0])
+		if err == "" and rate < 1.0:
+			err = _T.assert_true(rate >= RATE_FLOOR,
+				("%s's sport is %.2f of its parent's interval. Past %.2f a free plant is "
+					+ "worth two bought ones and the shop becomes the wrong move")
+					% [id, rate, RATE_FLOOR])
+		if err == "" and power > 1.0 and id != PlantCatalog.MINT:
+			err = _T.assert_true(power <= POWER_CEILING,
+				("%s's sport is %.2fx its parent. Past %.2fx a free plant is worth two "
+					+ "bought ones; the Mint is the one row allowed above this, and only "
+					+ "because its `power` is a neighbour COUNT") % [id, power, POWER_CEILING])
+		if err != "":
+			return err
+	if err == "":
+		err = _T.assert_eq(counted, ids.size(),
+			"and every kind in the catalogue was graded, not a subset of it")
+	if err == "":
+		# Named rather than left to the loop's `!=`, so retiring the exception means
+		# deleting a failing assertion instead of finding a silent skip.
+		err = _T.assert_float_eq(PlantMutation.power_scale(PlantCatalog.MINT), 2.0, 0.0001,
+			("the Mint is still the counted row the exception above is written for -- "
+				+ "`Game._refresh_neighbour_buffs` rounds this to an int, so a value that "
+				+ "is not a whole number of neighbours means something else now"))
+	return err
+
+
+## A Tar Sundew holds harder than a Sundew and still leaks, with the clamp not doing it.
+##
+## `StickySundew.MIN_SLOW_FACTOR` is a floor against a design line -- "a Sundew always
+## leaks; the permanent hold is the Chomp Flower's reason to exist" -- and a floor is
+## the worst place for the shipped value to sit. If `PlantMutation`'s power ever pushes
+## the computed factor to or below 0.30 the clamp catches it, and every test asking
+## "does a sport hold harder" still passes, because the clamped answer is still lower
+## than 0.55. The mechanic would be silently pinned at its bound and the next power
+## increase would do nothing at all.
+##
+## So this asserts the factor is STRICTLY INSIDE the clamp and equal to the unclamped
+## arithmetic, which is the only form of the claim that fails when the tuning walks
+## into it.
+func test_the_tar_sundews_hold_is_inside_its_own_clamp_and_not_resting_on_it() -> String:
+	var plain := StickySundew.new()
+	plain.kind = PlantCatalog.SUNDEW
+	var sport := StickySundew.new()
+	sport.kind = PlantCatalog.SUNDEW
+	sport.is_sport = true
+	var plain_factor: float = plain.slow_factor()
+	var sport_factor: float = sport.slow_factor()
+	var err: String = _T.assert_float_eq(plain_factor, StickySundew.SLOW_FACTOR, 0.0001,
+		"an ordinary Sundew is unchanged by any of this")
+	if err == "":
+		err = _T.assert_true(sport_factor < plain_factor,
+			"a Tar Sundew holds harder: %.4f against %.4f" % [sport_factor, plain_factor])
+	if err == "":
+		err = _T.assert_true(sport_factor > StickySundew.MIN_SLOW_FACTOR,
+			("a Tar Sundew's factor is %.4f against a floor of %.4f. At or under the floor "
+				+ "the clamp is what produces the answer, so the power in `PlantMutation` "
+				+ "has stopped meaning anything and the next increase will be a no-op")
+				% [sport_factor, StickySundew.MIN_SLOW_FACTOR])
+	if err == "":
+		var raw: float = 1.0 - (1.0 - StickySundew.SLOW_FACTOR) * PlantMutation.power_scale(PlantCatalog.SUNDEW)
+		err = _T.assert_float_eq(sport_factor, raw, 0.0001,
+			("the shipped factor is the arithmetic and not the clamp's output -- %.4f "
+				+ "computed, %.4f returned") % [raw, sport_factor])
+	plain.free()
+	sport.free()
+	return err
 
 
 ## No sport is named more widely than the catalogue already is.

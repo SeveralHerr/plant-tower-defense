@@ -42,11 +42,21 @@ extends RefCounted
 ## wanted two buffs would be a design change, and it should fail that test on the
 ## way in rather than arrive as a second quiet key.
 ##
-## WHAT THE NUMBER IS NOT. It is deliberately small — 0.70..0.85 on a rate, 1.25..
-## 2.0 on a power. The bead's words were "a slightly different and better effect",
-## and a sport is FREE: nothing was spent on it and nothing can be spent to get one.
-## A free plant that is twice a bought one makes the shop the wrong move, which is
-## the opposite of what a garden mechanic should do to a tower-defense economy.
+## HOW BIG THE NUMBER IS, and what holds it between two walls. 0.62..0.78 on a rate,
+## 1.40..2.0 on a power.
+##
+## The CEILING is the shop. A sport is FREE — nothing was spent on it and nothing can
+## be spent to get one — so a free plant worth two bought ones makes buying the wrong
+## move, which is the opposite of what a garden mechanic should do to a tower-defense
+## economy. Nothing here doubles a plant except the Mint, whose row explains itself.
+##
+## The FLOOR is that it has to be NOTICED. This band was 0.70..0.85 and 1.25..2.0,
+## tuned against a `CrossBreeder.CHANCE_PER_TICK` that threw a sport every 150 s: a
+## cob firing 18% faster, arriving four or five times a campaign, is background income
+## the player stops reading rather than an event. The rate and the size are one
+## decision made in two files, and both halves moved together — the sport is now about
+## two thirds as frequent and roughly half again as strong, so the mechanic costs the
+## economy about what it always did and reads far louder when it fires.
 ##
 ## ---------------------------------------------------------------------------
 ## THE NAMES ARE LENGTH-BUDGETED, not merely chosen. `Hud.selection_corpus()`
@@ -184,19 +194,19 @@ const TREFOIL_SPAN: float = TAU / 6.0
 const TABLE: Dictionary = {
 	PlantCatalog.CORN: {
 		"display": "Popcorn Cobbler",
-		"rate": 0.82,
+		"rate": 0.75,
 		"power": 1.0,
 		"note": "fires faster",
 	},
 	PlantCatalog.CHOMP: {
 		"display": "Snap Flower",
-		"rate": 0.80,
+		"rate": 0.72,
 		"power": 1.0,
 		"note": "chews faster",
 	},
 	PlantCatalog.SUNFLOWER: {
 		"display": "Gold Sunflower",
-		"rate": 0.80,
+		"rate": 0.72,
 		"power": 1.0,
 		"note": "seeds sooner",
 	},
@@ -209,17 +219,19 @@ const TABLE: Dictionary = {
 		# hole in the drawn wash rather than anything the mechanic would notice.
 		#
 		# The cut, not the factor: `StickySundew.slow_factor` scales the 0.45 the
-		# plant takes OFF, so 1.25 here is 0.55 -> 0.4375. See that method and
+		# plant takes OFF, so 1.40 here is 0.55 -> 0.37. See that method and
 		# `MIN_SLOW_FACTOR` beside it, which is the floor that keeps a sport from ever
-		# becoming the stun this plant is documented not to be.
+		# becoming the stun this plant is documented not to be — 0.37 leaves seven
+		# points of headroom against that 0.30, which is what a value this close to a
+		# design line has to be able to say.
 		"display": "Tar Sundew",
 		"rate": 1.0,
-		"power": 1.25,
+		"power": 1.40,
 		"note": "holds harder",
 	},
 	PlantCatalog.DANDELION: {
 		"display": "Burr Dandelion",
-		"rate": 0.85,
+		"rate": 0.78,
 		"power": 1.0,
 		"note": "throws more often",
 	},
@@ -227,8 +239,15 @@ const TABLE: Dictionary = {
 		# The one row whose `power` is a COUNT rather than a multiplier: a sport Mint
 		# is worth two Mints to everything beside it (`Game._refresh_neighbour_buffs`).
 		# Kept in the same key anyway, because the property the table is checked for
-		# is "higher is better", and 2.0 satisfies it exactly as 1.25 does. What it
+		# is "higher is better", and 2.0 satisfies it exactly as 1.40 does. What it
 		# must NOT be is a third key that only one row uses.
+		#
+		# It is also the one row that did NOT move when the rest of the table grew, and
+		# the count is the reason: `Game._refresh_neighbour_buffs` rounds this to an
+		# int, so the only value above 2.0 is 3.0 — three neighbours' worth of buff out
+		# of one plant, which is not a notch larger but a different plant. 2.0 is
+		# already the biggest sport in the table and did not need the notch the rates
+		# did.
 		"display": "Wild Mint",
 		"rate": 1.0,
 		"power": 2.0,
@@ -236,14 +255,14 @@ const TABLE: Dictionary = {
 	},
 	PlantCatalog.NETTLE: {
 		"display": "Iron Nettle",
-		"rate": 0.85,
+		"rate": 0.78,
 		"power": 1.0,
 		"note": "stings more often",
 	},
 	PlantCatalog.ALOE: {
 		"display": "Amber Aloe",
 		"rate": 1.0,
-		"power": 1.40,
+		"power": 1.60,
 		"note": "mends faster",
 	},
 	PlantCatalog.BRAMBLE: {
@@ -252,7 +271,7 @@ const TABLE: Dictionary = {
 		# tougher, so the tougher wall multiplies by less than one exactly as a faster
 		# cob does.
 		"display": "Thorn Bramble",
-		"rate": 0.70,
+		"rate": 0.62,
 		"power": 1.0,
 		"note": "holds longer",
 	},

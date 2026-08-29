@@ -613,7 +613,165 @@ const FOUGHT_RING_COLOR := Color(0.94, 0.93, 0.82, 0.72)
 ## reasoning as ChompFlower.GRAB_RADIUS: a pest walks the road, a plant stands
 ## one cell off it, so anything under one cell can never reach either.
 const EAT_RADIUS: float = Board.CELL * 1.15
+
+## The AVERAGE rate a pest takes a plant apart, and every derived reader in the project
+## still reads it as exactly that — `Plant.wilt_threshold()` prices a second of it,
+## `Bramble.seconds_to_fall()` divides by it, the rain heal is a fraction of it. What it
+## is no longer is the rate damage ARRIVES at: see `chop_period()` below.
 const EAT_DPS: float = 14.0
+
+## THE CHOP, and the whole of it is that a bite is now an EVENT rather than a rate.
+##
+## What it replaced: `take_damage(EAT_DPS * delta)` on every physics frame — about sixty
+## damage applications a second, not one of them a moment the player can point at. The
+## plant's own flinch (`Plant.FLINCH_RADIANS`) was re-armed by every one of them, so a bed
+## being destroyed shuddered continuously instead of jolting once per hit, and
+## `Sfx.REPEAT_MS[PLANT_BITTEN]`'s 420 ms gate was the only thing in the whole game turning
+## that stream back into something a player could count.
+##
+## THE CADENCE IS DERIVED, and that is what makes this a legibility change and not a
+## balance change:
+##
+##   * `CHOPS_TO_FELL` 3 — strikes a full-health plant takes, so `chop_damage()` is
+##     `Plant.MAX_HEALTH / 3` exactly, with no rounding slack. Three is the smallest count
+##     that reads as a repeated ACTION rather than as one hit and a death; it also puts the
+##     plant under `Plant.wilt_threshold()` (0.35, and a third is below it) after the
+##     SECOND chop, so the wilt pose is held through the whole wind-up of the killing blow
+##     instead of flashing past.
+##   * `chop_period()` is solved, not picked: the LAST of the three strikes lands at
+##     exactly `Plant.MAX_HEALTH / EAT_DPS`, the instant the old continuous drain finished
+##     the plant. A bed the player is watching dies when it always died.
+##   * `CHOP_STRIKE_AT` 0.68 — where in the cycle the blow lands. Past the middle because a
+##     wind-up that outlasts its strike is what makes the strike read as one; the remaining
+##     0.32 is the recovery, which has to exist or the body teleports from full lunge back
+##     to rest between cycles.
+##
+## Damage lands on the strike and nowhere else, so the first chop of an engagement costs
+## the pest `CHOP_STRIKE_AT * chop_period()` of wind-up — about 0.7 s in which the plant
+## loses nothing. That window is deliberate, and it is the difference the ask was about.
+const CHOPS_TO_FELL: int = 3
+const CHOP_STRIKE_AT: float = 0.68
+
+## How far the body pulls back through the wind-up, and how far it drives forward on the
+## strike. BOTH DERIVED FROM `Board.CELL`, because the distance that matters is the gap
+## the blow has to cross and that gap is a cell: a pest walks the road and a bed stands one
+## cell off it, so the two sprites' edges are roughly `CELL` minus their two half-heights
+## apart. A quarter of a cell closes that to touching at the scales `SPECIES` actually
+## draws (0.72 to 1.45) without hauling the bug inside the plant.
+##
+## MEASURED, not guessed, and the first pass was too small: at 5/10 px the beat was plainly
+## there at 3.4x zoom and easy to miss at the 1x the game is played at (frames
+## real00000024.png vs real00000032.png). These are the numbers that survived looking at
+## the same two frames again.
+##
+## `CHOP_LUNGE` is deliberately more than twice `CHOP_REAR` — two halves of one beat at the
+## same size read as a rock back and forth, not as a blow.
+const CHOP_REAR: float = Board.CELL * 0.11
+const CHOP_LUNGE: float = Board.CELL * 0.25
+
+## Where the wind-up hands over to the strike. The gap to `CHOP_STRIKE_AT` is 0.13 of the
+## cycle, about 0.14 s at the derived period: short enough to be a snap.
+const CHOP_WIND_END: float = 0.55
+
+## `ease()` curves. Godot's `ease` is `pow(s, curve)` above 1.0 (slow start, fast finish —
+## an ease-IN) and `1 - pow(1 - s, 1 / curve)` below it (fast start, slow finish — an
+## ease-OUT), so each of these three names a different half of the beat:
+##   * the wind-up EASES OUT (0.45): the body whips back and then holds, cocked. A linear
+##     wind-up reads as drifting backwards rather than as preparing.
+##   * the strike EASES IN (2.4): it accelerates the whole way and is at its fastest on
+##     the frame the damage lands.
+##   * the recovery EASES IN (2.0): the body stays buried forward for a beat and then
+##     withdraws, which is what sells contact. An ease-out here would pull the mouth off
+##     the plant instantly and look like a miss.
+const CHOP_WIND_EASE: float = 0.45
+const CHOP_STRIKE_EASE: float = 2.4
+const CHOP_RECOVER_EASE: float = 2.0
+
+## Peak body-axis stretch on the strike, against `GAIT_STRETCH`'s 0.06 walk-cycle amount.
+## FIVE TIMES it, which is not a gentle preference: the travel above is only ten-odd pixels
+## at the size the game is actually played at, and the silhouette changing shape is what
+## carries the blow the rest of the way. A chop that does not plainly out-read the scuttle
+## it interrupts is not a chop.
+const CHOP_STRETCH: float = 0.30
+
+
+## Seconds between two strikes. A static func rather than a const because it reads
+## `Plant.MAX_HEALTH` while `Plant` reads `Pest.EAT_DPS` back — two consts pointing at each
+## other's class at load time is a cycle, and `Plant.wilt_threshold()` is a static func for
+## exactly the same reason.
+static func chop_period() -> float:
+	if EAT_DPS <= 0.0 or CHOPS_TO_FELL <= 0:
+		return 0.0
+	var seconds_to_fell: float = Plant.MAX_HEALTH / EAT_DPS
+	return seconds_to_fell / (float(CHOPS_TO_FELL - 1) + CHOP_STRIKE_AT)
+
+
+## Damage one strike puts into a plant, before whatever the plant does with it — a
+## Bramble's `BITE_RESISTANCE` still scales it on the way in, the same as the per-frame
+## amount it replaced.
+static func chop_damage() -> float:
+	if CHOPS_TO_FELL <= 0:
+		return 0.0
+	return Plant.MAX_HEALTH / float(CHOPS_TO_FELL)
+
+
+## How many strikes land while the chop clock runs from `before` to `after` seconds.
+##
+## Pure, and a COUNT rather than a bool, for the reason `_tick_aura` loops instead of
+## branching: a frame long enough to span a whole period owes the plant two chops, and a
+## bite rate that quietly halves itself when the machine stutters is a difficulty setting
+## nobody chose. `before` is expected in `[0, period)` and `after` past it.
+static func chop_strikes_between(before: float, after: float, period: float) -> int:
+	if period <= 0.0 or after <= before:
+		return 0
+	var offset: float = CHOP_STRIKE_AT * period
+	var landed: int = int(floor((after - offset) / period)) - int(floor((before - offset) / period))
+	return maxi(0, landed)
+
+
+## Pure: how far along the direction it is facing the body sits, in pixels, at `phase`
+## (0..1) of one chop cycle. Negative is drawn back, away from the target.
+##
+## Three segments, and the shape is the whole cue:
+##   * the WIND-UP eases the body BACKWARD to `-CHOP_REAR`. Backward first is what a player
+##     reads as "about to", and it is also the only way the forward half gets any distance
+##     to travel — a lunge that starts at rest is half the stroke.
+##   * the STRIKE crosses from the full rear pose to `+CHOP_LUNGE` in the narrow band
+##     ending at `CHOP_STRIKE_AT`, so the peak of the reach and the frame the damage lands
+##     on are the same instant BY CONSTRUCTION rather than by a tuned pair that can drift.
+##   * the RECOVERY eases back to 0 by phase 1.0, which is also phase 0.0 of the next
+##     cycle: the curve is continuous across the wrap, so a pest chopping three times in a
+##     row never snaps between them.
+static func chop_reach(phase: float) -> float:
+	var t: float = clampf(phase, 0.0, 1.0)
+	if t < CHOP_WIND_END:
+		return -CHOP_REAR * ease(t / CHOP_WIND_END, CHOP_WIND_EASE)
+	if t < CHOP_STRIKE_AT:
+		var strike: float = (t - CHOP_WIND_END) / (CHOP_STRIKE_AT - CHOP_WIND_END)
+		return lerpf(-CHOP_REAR, CHOP_LUNGE, ease(strike, CHOP_STRIKE_EASE))
+	var back: float = (t - CHOP_STRIKE_AT) / (1.0 - CHOP_STRIKE_AT)
+	return lerpf(CHOP_LUNGE, 0.0, ease(back, CHOP_RECOVER_EASE))
+
+
+## Pure: the body-axis stretch at `phase`, on `gait_stretch`'s convention (positive
+## lengthens along the facing axis, negative narrows it).
+##
+## The second channel of the same beat rather than an independent wobble: the body
+## compresses through the wind-up and snaps long on the strike, so the silhouette says
+## "chop" even at the size the pest is actually drawn, where 10 px of travel is easy to
+## miss. DERIVED from `chop_reach` rather than shaped a second time — one curve, two
+## renderings of it, and they cannot drift into disagreeing about when the blow lands.
+static func chop_stretch(phase: float) -> float:
+	var span: float = maxf(CHOP_LUNGE, CHOP_REAR)
+	if span <= 0.0:
+		return 0.0
+	return clampf(chop_reach(phase) / span, -1.0, 1.0) * CHOP_STRETCH
+
+
+## Pure: the whole chop pose at `phase`, in the shape `gait_compute` returns its own — a
+## Dictionary, this file's convention for a multi-value pure return.
+static func chop_pose(phase: float) -> Dictionary:
+	return {"reach": chop_reach(phase), "stretch": chop_stretch(phase)}
 
 ## The health bar's box, and how far above the pest's centre it floats.
 ##
@@ -864,10 +1022,13 @@ var held_by: Node = null
 ## to both health bars, and to the marker ring in `_draw()`. Every reader of the offset is
 ## a drawing.
 ##
-## It shares `_sprite.position` with the death knockback, which is the one other writer of
-## that channel (see `_play_death`). They do not collide: the carry stops updating the
+## It shares `_sprite.position` with two other writers of that channel, and neither can
+## collide with it. The death knockback (see `_play_death`): the carry stops updating the
 ## instant `_alive` goes false, and the corpse folds the last carry offset into its shove
-## so a bug eaten on top of a flower does not drop through it to the path.
+## so a bug eaten on top of a flower does not drop through it to the path. And the chop's
+## lunge in `_gait`: a held pest returns out of `_physics_process` before `_chop` is
+## reached, so its reach is a standing 0 for the whole time an offset is being carried —
+## and `_gait` writes the SUM of the two, so the frame it runs on agrees with this one.
 var _carry_offset: Vector2 = Vector2.ZERO
 
 ## True from the moment a Chomp's vines take hold to the moment it lets go. Distinct from
@@ -1047,6 +1208,26 @@ var _facing: float = 0.0
 var _sway: float = 0.0
 var _gait_time: float = 0.0
 var _gait_phase: float = 0.0
+
+## The chop cycle: seconds into the current swing, and what is being swung at.
+##
+## The target is held so the clock can be RESET when it changes — a pest that finishes one
+## plant and turns to the next starts a fresh wind-up rather than inheriting a phase that
+## would let it strike the new bed instantly. It is a `Plant`, not a bool, for that reason
+## alone; nothing reads it for the plant itself.
+##
+## Deliberately NOT reset when the pest is merely picked up: a Chomp that grabs a pest
+## mid-swing returns early in `_physics_process` before `_chop` is reached, so the clock
+## simply stops where it was, which is the same thing `_hop_clock` and `_heal_clock` do and
+## for the same reason.
+var _chop_clock: float = 0.0
+var _chop_target: Plant = null
+
+## The cardinal the BODY is turned to while chopping. A third rotation term beside
+## `_facing` and `_sway`, kept apart from both for the reason those two are kept apart:
+## one property, one writer per meaning. `_facing` stays the road heading — every
+## OUTCOME in the game reads it — and this is only ever a picture.
+var _chop_facing: float = 0.0
 ## Seconds of recoil left. Armed by flash_hit(), decayed by _gait().
 var _flinch_left: float = 0.0
 ## How hard THIS recoil shakes, 0..1. Set beside `_flinch_left` so the two can never
@@ -1688,13 +1869,14 @@ func _physics_process(delta: float) -> void:
 		# engaged -- the same reason `held_by` marks it above. A wave stalled at a wall
 		# and shot dead by the cobs behind it was fought, not ignored.
 		_mark_engaged()
-		wall.take_damage(EAT_DPS * delta)
+		_chop(wall, delta)
 		return
 	if is_hungry:
 		var meal: Plant = _adjacent_plant()
 		if meal != null:
-			meal.take_damage(EAT_DPS * delta)
+			_chop(meal, delta)
 			return
+	_chop_target = null
 	# The Leafhopper's clock only advances here, in the one branch that actually
 	# walks the pest — the same rule `_heal_clock` follows and for the same
 	# reason: a held or blocked pest is not hopping either, so its cycle waits
@@ -1752,6 +1934,68 @@ func _adjacent_plant() -> Plant:
 			best_distance = d
 			best = plant
 	return best
+
+
+## One frame of the chop: turn to the thing being eaten, advance the swing, and put
+## `chop_damage()` into it once per strike.
+##
+## The one place damage reaches a plant from a pest, and it is shared by both callers —
+## the Bramble in the way and the hungry pest's meal — deliberately. They were two
+## identical `take_damage(EAT_DPS * delta)` lines before, and two copies of a cadence is
+## how a wall ends up chewed on a different rhythm from a bed for no stated reason.
+##
+## The turn is not decoration. A pest kept the direction it WALKED while it ate, so a bug
+## destroying a bed one cell off the road was drawn marching past it — the picture said
+## "walking" while the health bar said "being eaten". It writes `_chop_facing` and NOT
+## `_facing`: see `travel_direction()` for the Chomp this would otherwise starve.
+## `cardinal_facing` snaps to a quarter turn, and a plant is exactly one cell off the road,
+## so the body always ends up looking straight at the meal.
+func _chop(target: Plant, delta: float) -> void:
+	if target != _chop_target:
+		_chop_target = target
+		_chop_clock = 0.0
+	_chop_facing = cardinal_facing(target.global_position - global_position, _facing)
+	_apply_facing()
+	var period: float = chop_period()
+	if period <= 0.0:
+		return
+	var before: float = _chop_clock
+	var after: float = before + delta
+	var strikes: int = chop_strikes_between(before, after, period)
+	_chop_clock = fposmod(after, period)
+	for _i: int in range(strikes):
+		target.take_damage(chop_damage())
+		# A plant that fell on this strike is done taking hits; the next frame finds it
+		# `is_destroyed()` and picks something else, but a frame long enough to owe two
+		# chops must not spend the second one on a corpse.
+		if target.is_destroyed():
+			return
+
+
+## Where this pest is in its swing, 0.0 to 1.0, or 0.0 when it is not eating anything.
+##
+## Public and derived rather than stored: `_gait` reads it to pose the sprite, and a test
+## reads it to say which beat a pose belongs to, so there is one answer and not two.
+func chop_phase() -> float:
+	if not is_chopping():
+		return 0.0
+	var period: float = chop_period()
+	if period <= 0.0:
+		return 0.0
+	return clampf(_chop_clock / period, 0.0, 1.0)
+
+
+## Whether this pest is mid-swing at something. Separate from `chop_phase()` because 0.0
+## is a real phase — the first frame of a wind-up — and not an absence.
+func is_chopping() -> bool:
+	return _chop_target != null and is_instance_valid(_chop_target)
+
+
+## `chop_phase()` for a chopping pest, and a NEGATIVE number for one that is not, which is
+## the one value `gait_compute` reads as "no chop". One function so the two facts leave
+## this object together and cannot be paired up wrongly by a caller.
+func swing_phase() -> float:
+	return chop_phase() if is_chopping() else -1.0
 
 
 ## One frame of the Nurse Beetle's aura clock. A no-op for every other species,
@@ -1943,10 +2187,30 @@ func _advance(distance: float) -> void:
 ## answer to "which way is this bug facing" — `corpse_rotation()` already relies on the
 ## same property.
 ##
+## AND IT IS THE ROAD HEADING EVEN WHILE THE BODY IS TURNED AT A PLANT. `_chop` aims the
+## picture at the meal through `_chop_facing`, not through this, and the split is not
+## cosmetic tidiness: `ChompFlower.is_past_enough` (chomp_flower.gd:769) asks this which way
+## a pest is going to decide whether it has passed the mouth yet, and a bug turned to face
+## the flower it is eating would answer "coming towards you" forever and never be grabbable.
+## Same rule `_carry_offset` states one screen up — what decides outcomes reads the road,
+## what is drawn reads the pose.
+##
 ## STYLE.md's convention is up-screen at rest, so `Vector2.UP.rotated(_facing)` is the
 ## heading `_facing` was built to describe.
 func travel_direction() -> Vector2:
 	return Vector2.UP.rotated(_facing)
+
+
+## Pure: the cardinal rotation that points at `direction`, or `fallback` for a direction
+## too short to have one. Extracted so the walk (`_update_facing`) and the chop's aim
+## (`_chop`) snap by ONE rule — two copies of a quarter-turn table is how a bug ends up
+## walking on one convention and swinging on another.
+static func cardinal_facing(direction: Vector2, fallback: float) -> float:
+	if absf(direction.x) < 0.01 and absf(direction.y) < 0.01:
+		return fallback
+	if absf(direction.x) > absf(direction.y):
+		return PI / 2.0 if direction.x > 0.0 else -PI / 2.0
+	return PI if direction.y > 0.0 else 0.0
 
 
 func _update_facing(direction: Vector2) -> void:
@@ -1954,10 +2218,7 @@ func _update_facing(direction: Vector2) -> void:
 		return
 	if absf(direction.x) < 0.01 and absf(direction.y) < 0.01:
 		return
-	if absf(direction.x) > absf(direction.y):
-		_facing = PI / 2.0 if direction.x > 0.0 else -PI / 2.0
-	else:
-		_facing = PI if direction.y > 0.0 else 0.0
+	_facing = cardinal_facing(direction, _facing)
 	_apply_facing()
 
 
@@ -1966,9 +2227,21 @@ func _update_facing(direction: Vector2) -> void:
 ## `_sway` is a standing 0.0, so this reduces to exactly the bare cardinal
 ## rotation that shipped before the gait existed — a correct static state, not
 ## a half-applied transform.
+##
+## `aim_facing()` rather than `_facing` since the chop landed: a pest eating a plant is
+## drawn looking at it, while everything that DECIDES anything still reads the road
+## heading. See `travel_direction()` for what that split protects.
 func _apply_facing() -> void:
 	if _sprite != null:
-		_sprite.rotation = _facing + _sway
+		_sprite.rotation = aim_facing() + _sway
+
+
+## Which way the BODY is pointed — the road heading normally, and the cardinal towards the
+## meal for as long as this pest is chopping one. Public because the lunge in `_gait` and
+## the rotation here have to agree about it, and a test needs to be able to say the bug
+## turned at all.
+func aim_facing() -> float:
+	return _chop_facing if is_chopping() else _facing
 
 
 ## One step of the walk cycle. Advances the clock unconditionally, the same way
@@ -1984,7 +2257,7 @@ func _gait(delta: float) -> void:
 	# Composed ABOVE the gate -- see gait_compute()'s own header for why. Cheap (four
 	# pure calls and two sines) even on the frames it is about to be thrown away.
 	var composed: Dictionary = gait_compute(_gait_time, _gait_phase, speed, is_armoured,
-		is_winged, is_hungry, _flinch_left, _flinch_force)
+		is_winged, is_hungry, _flinch_left, _flinch_force, swing_phase())
 	if _sprite == null or not GardenTheme.animations_enabled():
 		return
 	_sway = composed["yaw"]
@@ -1998,6 +2271,14 @@ func _gait(delta: float) -> void:
 	# overwritten within one frame and look like nothing happened.
 	var eaten: float = chewed_scale()
 	_sprite.scale = Vector2(_sprite_scale * eaten * (1.0 - stretch), _sprite_scale * eaten * (1.0 + stretch))
+	# The chop's travel, along the direction the body is pointing. `aim_facing()` rather
+	# than `_sprite.rotation`: the sway is a wobble the lunge should not be steered by, and
+	# this node is never itself rotated, so the heading is the same vector in both spaces.
+	#
+	# The SECOND writer of `_sprite.position`, beside `_apply_carry()`. They cannot fight:
+	# a carried pest returns out of `_physics_process` before `_chop` runs, so `reach` is 0
+	# for the whole time an offset is being carried and both writers agree on the value.
+	_sprite.position = _carry_offset + Vector2.UP.rotated(aim_facing()) * float(composed["reach"])
 
 
 ## Pure: the whole walk-cycle composition `_gait` writes, with no gate and no sprite.
@@ -2011,15 +2292,39 @@ func _gait(delta: float) -> void:
 ## and `ChompFlower.champ_scale` is split from `idle_scale_multiplier`: the
 ## composition moves above the gate, the sprite write stays below it, gated.
 ##
-## Returns `{"yaw": float, "stretch": float}` -- a Dictionary, this file's own
-## convention for a multi-value pure return, rather than a bespoke struct.
+## Returns `{"yaw": float, "stretch": float, "reach": float}` -- a Dictionary, this file's
+## own convention for a multi-value pure return, rather than a bespoke struct.
+##
+## `chopping_phase` is where the pest is in its swing, or a NEGATIVE number for a pest that
+## is not eating anything, which is what every walking caller passes. It is one parameter
+## and not a bool-plus-a-float because the two can then never disagree about whether there
+## is a chop to pose. When it is set, the chop takes two of the three channels outright:
+##
+##   * `gait_swing` goes to zero. THE PEST STOPS — that is the readable half of the ask,
+##     and a body still scuttling side to side while it swings reads as a bug that happens
+##     to be near a plant rather than one attacking it. The flinch term is deliberately
+##     kept: `flash_hit`'s header records that colour and motion are one cue and that a
+##     pest speaking on only one of them is the defect that pair exists to prevent, so a
+##     chopping pest that gets shot still recoils.
+##   * the stretch becomes the chop's own, REPLACING the walk cycle's rather than adding
+##     to it. Two sinusoids multiplied into one scale channel is the trap `Plant`'s WILT
+##     header names directly: three states in one channel do not read as three states,
+##     they read as noise.
 static func gait_compute(gait_time: float, phase: float, for_speed: float, armoured: bool,
-		winged: bool, hungry: bool, flinch_left: float, flinch_force: float) -> Dictionary:
+		winged: bool, hungry: bool, flinch_left: float, flinch_force: float,
+		chopping_phase: float = -1.0) -> Dictionary:
+	var chopping: bool = chopping_phase >= 0.0
 	var clock: float = gait_time * gait_rate(for_speed, armoured, winged) + phase
-	var yaw: float = gait_yaw(sin(clock), gait_swing(armoured, winged),
+	var swing: float = 0.0 if chopping else gait_swing(armoured, winged)
+	var yaw: float = gait_yaw(sin(clock), swing,
 		sin(gait_time * FLINCH_RATE), flinch_amount(flinch_left) * flinch_force)
 	var stretch: float = gait_stretch(sin(clock * GAIT_STRETCH_RATE), hungry)
-	return {"yaw": yaw, "stretch": stretch}
+	var reach: float = 0.0
+	if chopping:
+		var chop: Dictionary = chop_pose(chopping_phase)
+		stretch = float(chop["stretch"])
+		reach = float(chop["reach"])
+	return {"yaw": yaw, "stretch": stretch, "reach": reach}
 
 
 ## Pure: how fast this pest's walk cycle runs, in radians of clock per second.

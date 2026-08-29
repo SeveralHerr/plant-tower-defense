@@ -402,8 +402,12 @@ const PITCH_GRADE: Dictionary = {
 ##     single cob to 0.62 * 0.75^4 = 0.196s. Several cobs on a board multiply that again.
 ##   * `PEST_KILLED` / `PEST_KILLED_HARD` — not one source but the whole board, so the 70ms
 ##     gate above IS the rate; a volley landing on a cleared wave spends it.
-##   * `PLANT_BITTEN` — the 420ms gate is likewise the rate, sustained for as long as a pest
-##     is eating, which is the most relentless repetition in the game.
+##   * `PLANT_BITTEN` — the 420ms gate USED to be the rate: a hungry pest applied damage on
+##     every physics frame, so this gate alone decided how often the bite was audible. It is
+##     a safety net now that `Pest.chop_period()` spaces the strikes about 1.07s apart —
+##     every chop of a single pest gets its sound. What the gate still collapses is a CROWD:
+##     several pests arriving at one bed in the same breath chop in phase with each other,
+##     since each starts its clock at zero the frame it engages.
 ##   * `DANDELION_PUFF` — `Dandelion.SHOT_INTERVAL` is 0.45s.
 ##   * `NETTLE_STING` — `Nettle.STING_INTERVAL` is 0.7s, with a 221ms floor under four Mints
 ##     (the arithmetic is written out at that event's `REPEAT_MS` row).
@@ -977,6 +981,94 @@ static func stream_for(event: StringName) -> AudioStream:
 		push_warning("Sfx: no audio stream for '%s' (%s) — that cue will be silent." % [event, path])
 	_streams[event] = stream
 	return stream
+
+
+## How many cue streams are resident — decoded, cached, and costing a `play()`
+## nothing. The observable half of `prewarm`: "the cache is warm" is not
+## something a test can read off a voice, because headless never sounds one, but
+## it is exactly this number. Counts the bed too, which is why the total a warm
+## cache reaches is `SOUNDS.size() + 1` and not `SOUNDS.size()`.
+##
+## Nulls do not count. A cue whose file went missing caches a null in `_streams`
+## so `stream_for` stops re-asking; that entry is a warning already pushed, not a
+## stream anything can play, and counting it would let a table of sixteen broken
+## paths report a full warm cache.
+static func streams_resident() -> int:
+	var count: int = 0
+	for event: StringName in _streams:
+		if _streams[event] != null:
+			count += 1
+	if _ambience_stream != null:
+		count += 1
+	return count
+
+
+## Drops both stream caches, so the next `prewarm` or `play` is a cold one again.
+##
+## THIS EXISTS FOR ONE REASON AND IT IS A TEST, which is worth writing down rather
+## than dressing up. `prewarm`'s own return value proves the function loads what it
+## claims to; it cannot prove anything CALLS it, and "the call in `Game._ready` was
+## deleted" is precisely the regression that puts the loads back into gameplay
+## frames where they cannot be heard by anyone running the suite. A test can only
+## watch a scene warm the cache if the cache can first be made cold.
+##
+## Does not touch the pool or the bed's voice — a resident stream and a live
+## AudioStreamPlayer are different things, and tearing down nodes is the scene-tree
+## side effect `audio_enabled()` keeps out of the suite. It leaves the caches in a
+## state the very next `prewarm()` restores exactly, which is what makes calling it
+## mid-suite safe.
+static func forget_streams() -> void:
+	_streams.clear()
+	_ambience_stream = null
+	_ambience_asked = false
+
+
+## Loads every cue's stream, and builds the pool, BEFORE the first cue fires.
+##
+## `stream_for` caches — but it caches ON FIRST PLAY, so each of the cues in
+## `SOUNDS` pays its own `load()` inside the frame that first fires it: the first
+## kill of a run, the first volley, the first bite, the first denied purchase.
+## Desktop swallows that stall whole. The Web build cannot, and this is the
+## residue the `output_latency.web` bump could not reach.
+##
+## The chain is in project.godot's `[audio]` block and it is worth restating,
+## because it is what makes a *loading* hitch an *audio* defect rather than a
+## dropped frame: `default_playback_type.web=0` puts every voice through the
+## engine's own WASM mixer, and `variant/thread_support=false` means that mixer's
+## ring buffer is refilled from the main loop, once per rendered frame. A stall
+## on the main thread IS a missed refill, and a missed refill is heard as
+## crackle. Raising the buffer to 140ms bought headroom for a frame that runs
+## long; it can buy no headroom at all for a frame that spends its budget
+## decoding a file, because that frame does not render until the decode returns.
+##
+## And the cues that stall are the worst ones to stall on: `PEST_KILLED` first
+## fires in the frame a wave's first pest dies, which is a frame already paying
+## for a husk, a death animation and a HUD update.
+##
+## Deliberately NOT gated on `audio_enabled()` — only on the pool half being
+## gated on `is_headless()`. A muted player can unmute mid-wave (Game binds it to
+## M) and must not then pay sixteen loads across the next sixteen frames; and
+## keeping the load half ungated is what lets a headless test assert the whole
+## table resolves, which is the only claim about this function anything can hold.
+##
+## Called from `Game._ready`, where the frame is a loading frame already and one
+## more decode costs nothing a player can hear.
+##
+## Returns `streams_resident()`, so a caller — and a test — can tell a warm cache
+## from a no-op, and a full table from one with a missing file in it.
+static func prewarm() -> int:
+	for event: StringName in SOUNDS:
+		stream_for(event)
+	ambience_stream()
+	# The pool, and the bed's voice with it. Headless is the one thing left out:
+	# `audio_enabled()`'s doc comment explains why a pool of AudioStreamPlayers
+	# built inside a unit test is a teardown problem the suite would have to know
+	# about. Building it here rather than at the first `play()` also moves nine
+	# node constructions out of a gameplay frame, which is the same win as the
+	# loads above and for the same reason.
+	if not is_headless():
+		_ensure_ambience_voice()
+	return streams_resident()
 
 
 ## Silences every voice — used by mute, and available to a scene teardown. The

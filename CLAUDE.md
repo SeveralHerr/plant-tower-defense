@@ -83,7 +83,7 @@ GODOT=$(python -c "import json;print(json.load(open('tools/gates_config.json'))[
 python tools/check_all.py --quiet                                  # every parallel-safe checker, ~20s
 python tools/run_tests.py --godot "$GODOT"                         # the unit suite, ~3 min
 "$GODOT" --headless --path . --script res://tools/lint_project.gd  # UID + scene + dup-id + shader lint
-"$GODOT" --headless --path . --import                              # after adding a class_name/.tscn/.tres
+python tools/import_check.py --godot "$GODOT"                      # after adding a class_name/.tscn/.tres
 "$GODOT" --headless --path . --script res://tools/render_svg.gd    # art_src/*.svg -> assets/sprites/*.png
 ```
 
@@ -143,7 +143,7 @@ GODOT=$(python -c "import json;print(json.load(open('tools/gates_config.json'))[
 python tools/check_all.py --quiet                                  # every parallel-safe checker, ~20s
 python tools/run_tests.py --godot "$GODOT"                         # the unit suite, ~3 min
 "$GODOT" --headless --path . --script res://tools/lint_project.gd  # UID + scene + dup-id + shader lint
-"$GODOT" --headless --path . --import                              # after adding a class_name/.tscn/.tres
+python tools/import_check.py --godot "$GODOT"                      # after adding a class_name/.tscn/.tres
 ```
 
 **Run `run_tests.py`, not the bare `run_tests.gd`.** A test that aborts mid-method after
@@ -162,10 +162,20 @@ run — a `2` means you verified nothing, not that the code is clean. The Window
 often prints nothing to the console, so redirect to a file and read it back.
 
 **After adding a new `class_name` file (or a new `.tscn`/`.tres`), run
-`godot --headless --path . --import` once before the next lint/test pass.** The class cache
-is built by import; until it is, every script referencing the new class fails to compile
-with `Could not find type "X"`, and it cascades into files you did not touch. Also mint a
-`.uid` for a new `.gd` — lint reports a missing sidecar.
+`python tools/import_check.py` once before the next lint/test pass.** The class cache is
+built by import; until it is, every script referencing the new class fails to compile with
+`Could not find type "X"`, and it cascades into files you did not touch. Also mint a `.uid`
+for a new `.gd` — lint reports a missing sidecar.
+
+**Run `import_check.py`, not the bare `--import`, for the same reason as `run_tests.py`.**
+`godot --headless --path . --import` exits `0` whether or not the scripts it just re-scanned
+compile: the parse errors are printed and never returned, so "the class cache was
+regenerated" and "the project still parses" are one exit code, and a broken game reports as
+a clean import. It fails worst in exactly the case you ran it for — a `class_name` arriving
+from a rebase or a branch switch — because the tool you ran to fix the cascade tells you it
+succeeded. The wrapper runs the same import, captures both streams to `.gates/import.log`
+(and creates `.gates/`, which a fresh worktree does not have), and quotes back the lines
+Godot only prints on a real failure.
 
 **`name_check.py` is the only gate safe to run in parallel** — it opens no project and
 writes nothing to `.godot/`, so it works in a fresh worktree where lint reports a thousand
