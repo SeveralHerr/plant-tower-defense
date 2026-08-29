@@ -25,13 +25,14 @@ must survive its colour being thrown away.
 | **Partial arc** at a fixed radius, sweeping closed | TIME REMAINING on a clock that is already running | `husk_layer.gd:113-122` (a husk's rot timer), `chomp_flower.gd:486-487` (a chew), `selection_marker.gd:206-208` (the uproot confirm window) |
 | **Small solid ring**, cell-sized, centred on a ROAD CELL | a MARKED CELL — "this one, specifically" | **none.** The sole-cover road rings were the only instance and cycle 179 removed them; the row is kept because the CHANNEL is still reserved — a new cell-sized ring means "this cell" and nothing else |
 | **Filled dot**, cell-sized, on a road cell | a CELL YOU WOULD GAIN | `placement_preview.gd:274` |
-| **Straight line through a box** | a STATE, legible with colour discarded | `placement_preview.gd:328` (dead ground), `:337-338` (redundant patch) |
+| **Straight line through a box** | a STATE, legible with colour discarded | `placement_preview.gd:562-563` (redundant patch). Dead ground drew this row until plant-tower-defense-uqer moved it to row 13 — see that row for why |
 | **Corner brackets** | the SUBJECT — "this is the thing being talked about" | `selection_marker.gd:100-101`, and `PlacementPreview` inherits them one size larger and dimmer, so a hover reads as a promise of selection |
 | **Scattered short marks**, much smaller than a cell, not aligned to the grid | the WEATHER, a property of the whole garden | `weather_overlay.gd:97-98` (drought, flat dashes), `weather_overlay.gd:103-104` (rain, slanted streaks) |
 | **Doubled line width** | ARMED — a destructive action is one click away | `SelectionMarker.WARNING_LINE_WIDTH` |
 | **A row of small pips** inside a drawn shape | HOW MANY TIMES OVER — a magnitude the shape's own size and brightness have already saturated on | `husk_layer.gd:117-124` (a husk worth more than `CompostMeter.FULL_VALUE`) |
 | **Hatched stripes filling a road cell**, at one of two mirrored angles | TWO readings of the same cell at once — the ALPHA is how much pressure it took, the ANGLE is whether anything currently aims at it | `lane_pressure_overlay.gd:92-96` |
 | **A translucent sprite of the thing itself**, cell-sized, centred on a cell | the SUBJECT AS IT WOULD BE — "this is the plant, and this is exactly where it lands" | `placement_preview.gd` (`GHOST_ALPHA`, the ghost drawn behind the brackets) |
+| **A padlock**, cell-sized, on a GRASS cell | GROUND THAT IS CLOSED TO THIS PLANT — "you may put it here and it will never fire" | `placement_preview.gd:970` (`dead_lock_points`, the one geometry), drawn at the hover by `:546-547` and on the whole board by `board.gd` (`mark_dead_ground`, one `Line2D` per cell) |
 
 ### The ghost is the one cue that is not a mark, and it carries no verdict
 
@@ -161,6 +162,7 @@ being thrown away**:
 | Small solid ring, cell-sized, on a road cell | SIZE and CENTRE again, and this is the row the exceptions section already argues: 9 px on a cell versus 176 px on a plant. |
 | Filled dot | FILL. A disc and an outline ring are different marks before they are different colours. |
 | Straight line through a box | Its own Means column says so outright: "legible with colour discarded". |
+| A padlock | A closed body with an arc standing on it. No other cue on the board draws a closed figure at all, so the shape survives greyscale, a colourblind reader and a screenshot at half size — and, unlike the slash it replaced, it survives being next to a tile seam. |
 | Corner brackets | The SHAPE. Four detached corners look like nothing else here. |
 | Scattered short marks | SIZE and SCATTER, argued at length in the section below — a quarter of a cell, unaligned to the grid. |
 | Doubled line width | WIDTH, and it is the only row whose channel is asserted mechanically: `SelectionMarker.WARNING_LINE_WIDTH` is pinned strictly above its base in `test_selftest.gd`. |
@@ -179,6 +181,12 @@ HUD's ramps; the board's cues never needed it because they were built to survive
 
 `grep -n "draw_arc(\|draw_circle(\|draw_line(\|draw_rect(" game/*.gd` returns **80 calls
 across 20 files** (it said 55 across 15 when this was written).
+
+**That grep is missing two cues as written, and adding a term does not fix it.** It has no
+`draw_polyline(` (the dead-ground padlock, row 13), and it can never see
+`Board.mark_dead_ground`, which paints `Line2D` CHILDREN and no `_draw()` at all — board.gd
+says why it had to. A census of one drawing API is a census of the asker's assumption;
+`game/cue_legend.gd` records the same trap from the other side.
 
 **AND THAT GREP IS BLIND TO A CUE ON THIS PAGE.** `Board.mark_dead_ground` paints
 `Line2D` children rather than calling `draw_*`, which `board.gd`'s own header explains was

@@ -278,7 +278,7 @@ static func pane_label_for(kind: String) -> String:
 ## `test_the_legend_names_as_many_shapes_as_the_grammar_documents` parses the document's
 ## table and fails when it grows — which is the only way this stays true, since a new
 ## grammar row is added by someone editing markdown who will never open this file.
-const OVERLAY_GRAMMAR_SHAPES: int = 12
+const OVERLAY_GRAMMAR_SHAPES: int = 13
 const OVERLAY_GRAMMAR_PATH := "res://game/OVERLAY_GRAMMAR.md"
 
 

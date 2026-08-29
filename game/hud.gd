@@ -3867,10 +3867,14 @@ static func as_sentence(text: String) -> String:
 ## A zero-argument PRODUCER, for the reason `flight_tip` spells out: the corpus
 ## resolves producer calls and literals, and a `const` is invisible to the row's budget.
 ##
-## NAMES WHERE THE MARK IS, not what shape it is, and that is the one decision in this
-## sentence. "Bar" is a word this board has spent on the road before, so the ground is
-## what a reader can use on first sight; angle (-PI/4) is what the drawing code uses,
-## and it is the wrong channel to hand a reader.
+## NAMES THE SHAPE AND THEN WHERE IT IS, and the order changed with the shape
+## (plant-tower-defense-uqer). While the mark was a slash this sentence deliberately led
+## with the ground — "bar" was a word the board had already spent on the road, and angle
+## (-PI/4) is what the drawing code uses and the wrong channel to hand a reader. A padlock
+## has no such problem: it is the only lock on the screen, so naming it costs nothing and
+## buys the reader the one thing the old wording could not, which is confidence that the
+## thing they are looking at is a mark at all rather than a glitch in the lawn. That is
+## the entire report this cue was changed on.
 ##
 ## "would never fire from" is `Board.mark_dead_ground`'s own wording, kept verbatim for
 ## the reason `CueLegend.ROWS` keeps the grammar's: two descriptions of one mechanic
@@ -3882,7 +3886,7 @@ static func as_sentence(text: String) -> String:
 ## plant" is also true — and it is advice to abandon the purchase they are hovering.
 ## Moving one bed closer is advice they can take without changing their mind.
 static func dead_ground_tip() -> String:
-	return "Slanted bars mark grass this plant would never fire from — plant it closer to the road."
+	return "A padlock marks grass this plant would never fire from — plant it closer to the road."
 
 
 ## Said once ever, the first time the player can actually afford an upgrade on their
@@ -4013,9 +4017,9 @@ const HINT_CARDS: Array[Dictionary] = [
 	},
 	{
 		"id": "seen_dead_ground_tip",
-		"grammar_row": 6,
-		"title": "Slanted bars on the grass",
-		"note": "A plant only shoots as far as its reach, so beds past that never fire at all. Hover a packet and the bars show which beds are dead for THAT plant — a short-reaching one darkens more of the garden than a Corn Cobbler does. They are drawn slanted, and only ever on grass.",
+		"grammar_row": 13,
+		"title": "Padlocks on the grass",
+		"note": "A plant only shoots as far as its reach, so beds past that never fire at all. Hover a packet and the padlocks show which beds are dead for THAT plant — a short-reaching one locks more of the garden than a Corn Cobbler does. They are only ever drawn on grass.",
 	},
 ]
 

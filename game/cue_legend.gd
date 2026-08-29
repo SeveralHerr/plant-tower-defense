@@ -87,18 +87,19 @@ const SHAPE_ARMED := "armed"
 #                                               sole-cover road rings were its only
 #                                               instance and cycle 179 removed them
 #   5  filled dot              TAUGHT  gain     new-cover dots
-#   6  straight line in a box  TAUGHT           hover dead bar, hover redundant pair,
-#                                               BOARD dead-ground bars
-#                                               (by HINT_DEAD_GROUND, cycle 151 -- one
-#                                                hint per BAR, which is what the verdict
-#                                                below asks for and a legend row cannot
-#                                                give. It read `untaught` until cycle 154,
-#                                                and that drift is what tools/
-#                                                teaching_ledger_check.py now catches:
-#                                                the verdict beneath this table is read
-#                                                whenever anyone prices a teaching
-#                                                surface, and it was inviting work that
-#                                                had already shipped)
+#   6  straight line in a box  untaught         hover redundant pair, and nothing else any
+#                                               more. It read TAUGHT (by HINT_DEAD_GROUND,
+#                                                cycle 151) for as long as the dead-ground
+#                                                mark was also a straight line.
+#                                                plant-tower-defense-uqer made that mark a
+#                                                padlock and moved the hint to row 13,
+#                                                which leaves this row one instance and no
+#                                                teaching surface. The cycle-154 drift this
+#                                                line used to record is why tools/
+#                                                teaching_ledger_check.py exists: it reads
+#                                                the hint cards' grammar_row key, so this
+#                                                row and row 13 below cannot disagree with
+#                                                Hud.HINT_CARDS without a red run
 #   7  corner brackets         TAUGHT  subject  live, hover promise, held-over (2 of 4)
 #   8  scattered short marks   untaught         drought dashes, rain streaks
 #   9  doubled line width      TAUGHT  armed    the selection brackets
@@ -113,6 +114,14 @@ const SHAPE_ARMED := "armed"
 #       this ledger are positions in that table, so inserting a row in the middle
 #       renumbers five verdicts below and every one is a chance to point at the
 #       wrong cue)
+#  13  a padlock               TAUGHT           the hover dead mark and the BOARD
+#                                               dead-ground marks -- one glyph
+#                                                (PlacementPreview.dead_lock_points),
+#                                                drawn at two alphas (by
+#                                                HINT_DEAD_GROUND, plant-tower-defense-
+#                                                uqer). Appended rather than slotted in
+#                                                beside the other preview cues, for the
+#                                                reason row 12 gives in as many words
 #
 # WHAT A ROW COSTS, AND HOW MANY ARE LEFT: none. `rows_that_fit()` below answers
 # it mechanically and `test_the_legend_page_is_exactly_full` pins it -- the last
@@ -124,17 +133,30 @@ const SHAPE_ARMED := "armed"
 #
 # THE VERDICT, per untaught cue, against that price:
 #
-#   * BOARD DEAD-GROUND BARS (row 6) -- the strongest case and still no. It is the
-#     only untaught cue that is PERSISTENT: it is repushed from `Game._refresh()`
-#     with no hover, so a player meets it without having asked. But row 6 is the row
-#     a single legend line teaches WORST: its three instances mean three different
+#   * BOARD DEAD-GROUND MARKS (row 13) -- the strongest case, still no, and the
+#     ARGUMENT HAS CHANGED UNDER IT, which is the part worth reading. It is the only
+#     persistent cue outside the legend: repushed from `Game._refresh()` with no
+#     hover, so a player meets it without having asked.
+#
+#     THE OLD REASON, while these marks were row 6: that row was the one a single
+#     legend line teaches WORST, because its three instances meant three different
 #     things (this cell refuses the plant / this second patch buys nothing / this
-#     ground fires at nothing), and the grammar defines the row by its CHANNEL --
-#     "legible with colour discarded" -- rather than by a meaning. A row reading "a
-#     straight line: this one is out of the conversation" is true of all three and
-#     actionable for none. Teaching it honestly is three rows, which is more than a
-#     page. The right home for it is the hints page or a mark-side tooltip, both of
-#     which carry a sentence per instance. Filed as that, not as a legend row.
+#     ground fires at nothing) and the grammar defines the row by its CHANNEL --
+#     "legible with colour discarded" -- rather than by a meaning. A line reading "a
+#     straight line: this one is out of the conversation" was true of all three and
+#     actionable for none. Teaching it honestly was three rows.
+#
+#     THAT REASON IS GONE. plant-tower-defense-uqer split the padlock out as row 13,
+#     and row 13 has ONE meaning across both its instances -- "this ground is closed
+#     to this plant" -- which is exactly the shape a legend line teaches best. What
+#     refuses it now is only the price: `rows_that_fit()` answers six and the page
+#     draws six, so this row costs a smaller swatch, smaller type, or a second page.
+#     It is the first entry in this block whose "no" is arithmetic rather than
+#     editorial, and it is the one to revisit first if a page is ever bought.
+#
+#     Until then the hint carries it, and carries more than a row could: a padlock
+#     says "closed" on sight, and `Hud.dead_ground_tip` is what says "closer to the
+#     road". The icon was never a substitute for the sentence.
 #   * HELD-OVER BRACKETS (row 7, taught row / untaught state) -- no, confidently.
 #     The cue only ever exists because the player just selected a second plant, and
 #     it appears with the LIVE brackets beside it in the same frame: same shape, one

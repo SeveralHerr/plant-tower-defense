@@ -120,12 +120,19 @@ const RISK_DASHES: int = 8
 ## would stand there for the whole run and never fire once.
 ##
 ## Told apart from every other state by *shape*, not hue — this project just
-## shipped mutation cues built on the same rule. The mark is a single straight
-## bar struck through the brackets, and a straight stroke that is not one of the
-## four corner arms appears in no other preview state: `at_risk` is a dashed
-## circle with no straight edges anywhere, `placeable` is brackets plus one
-## solid circle, blocked is brackets alone. In greyscale the bar is still the
-## only thing on screen crossing the cell.
+## shipped mutation cues built on the same rule. The mark is a PADLOCK, and no
+## other preview state draws a closed body with an arc standing on it: `at_risk`
+## is a dashed circle with no straight edges anywhere, `placeable` is brackets
+## plus one solid circle, blocked is brackets alone. In greyscale the lock is
+## still the only thing on screen sitting inside the cell.
+##
+## IT WAS A SINGLE STRAIGHT BAR AT DEAD_BAR_ANGLE UNTIL plant-tower-defense-uqer,
+## and the argument above was true of that bar as well — which is the point worth
+## keeping. Distinctness inside the preview's own vocabulary was never the thing
+## that failed. What failed is that a 45-degree slash on a lawn is a shape a tile
+## seam makes too, so the cue was distinct from every other CUE and not distinct
+## from the board's own noise. A player read it as a rendering defect and
+## reported it as one. See the block at LOCK_BODY_HALF_W.
 ##
 ## The reach ring is still drawn, dimmed to the same slate, because "how far it
 ## would reach" is exactly the evidence for the claim — the player can see the
@@ -150,13 +157,75 @@ const RISK_DASHES: int = 8
 ## on this lawn is not a value that was chosen slightly wrong; it is a direction with no
 ## room in it. `OVERLAY_GRAMMAR.md` defines row 6 by its CHANNEL, and this bar is that
 ## row's one instance: it is told apart from everything else by the ground it lands on
-## and by its angle, which is exactly what `Hud.dead_ground_tip` tells the player.
+## and by its shape, which is exactly what `Hud.dead_ground_tip` tells the player.
+## (It said "by its angle" while the mark was a bar; the slate is unchanged by
+## plant-tower-defense-uqer and every number above still holds, because alpha and
+## luminance do not care what the stroke traces.)
 const DEAD_COLOR := Color(0.24, 0.27, 0.36, 0.80)
 const DEAD_BAR_WIDTH: float = 3.0
 ## Bar length is the bracket box, not the ring: a Corn Cobbler's ring is 176 px,
 ## and a 352 px diagonal slashed across the playfield reads as a board-wide
 ## overlay rather than as a note about one cell.
+##
+## THE DEAD-GROUND CUE NO LONGER DRAWS AT THIS ANGLE (plant-tower-defense-uqer).
+## It is `dead_lock_points()` below. What still uses this constant is the
+## REDUNDANT-patch pair, which is why it is still here and still named for a bar.
 const DEAD_BAR_ANGLE: float = -PI * 0.25
+
+# =============================================================================
+# THE DEAD-GROUND GLYPH: A PADLOCK (plant-tower-defense-uqer)
+#
+# WHY THE SHAPE CHANGED, AND IT IS THE ONLY REASON. It was one straight stroke at
+# DEAD_BAR_ANGLE, and a player looking straight at it reported it as a rendering
+# defect -- "some weird diagonal lines on the corner of the map, in the grass
+# area" -- with a screenshot of the board's own bottom-right corner. That is the
+# whole finding. The cue was legible, it was contrast-checked, it was on the
+# board from the opening screen, and it did not read as a cue at all, because a
+# 45-degree slash on a lawn is a shape a tile seam or a texture bleed also makes.
+# A padlock is not a shape anything else on this board makes by accident.
+#
+# WHAT IT DOES NOT FIX, stated because the temptation is to close the hint with
+# it: a lock says "you cannot do this here" on sight and says nothing about WHY
+# or about the counter-play. `Hud.dead_ground_tip` still carries "plant it closer
+# to the road" and is still spent the same way. The icon fixes the report --
+# a mark misread as an artifact -- and not the sentence.
+#
+# WHY IT IS STILL ONE POLYLINE. `Board.mark_dead_ground` paints `Line2D`
+# children, for the reason board.gd's own header gives: a headless run paints no
+# frame, so a `_draw()` there is a cue no gate can see. One `Line2D` per marked
+# cell keeps that, keeps the pool's index-per-cell pairing, and keeps the board
+# mark and the hover mark provably the SAME geometry -- both read
+# `dead_lock_points()`, which is what
+# test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two asserts.
+#
+# HOW A PADLOCK IS ONE UNICURSAL PATH. It is not, quite: the body is a closed
+# rectangle and the shackle is an arc standing on the middle of that rectangle's
+# top edge, and no single stroke covers both without repeating something. The
+# path below starts at the shackle's left foot, runs the arc over to its right
+# foot, goes right along the top edge to the body's top-right corner, down, back
+# along the bottom, up the left side, and then RETRACES the top edge from the
+# body's top-left corner to its top-right. The retraced piece is drawn twice over
+# identical pixels, which is invisible; the alternative is two nodes per cell,
+# which breaks the pool's one-mark-per-cell index and the tests that pair against
+# it. The order is chosen so the repeated run is the shorter one.
+## Half-width of the lock's body. A fraction of the bracket box rather than a
+## typed px, so a glyph is still inside its brackets if PREVIEW_HALF moves --
+## test_the_dead_lock_fits_inside_the_bracket_box is the gate on that.
+const LOCK_BODY_HALF_W: float = PREVIEW_HALF * 0.42
+## Radius of the shackle arc, whose centre is the middle of the body's top edge.
+## About 0.71 of the body's half-width, and the ratio was set by LOOKING at the
+## running board rather than by arithmetic. At 0.26/0.48 (body 1.85x the shackle)
+## the glyph read as a handbag in a screenshot of the corner it was drawn for; a
+## real padlock's shackle is a larger fraction of its body than it feels like.
+## Much narrower than this and it reads as a keyhole instead.
+const LOCK_SHACKLE_RADIUS: float = PREVIEW_HALF * 0.30
+## Half the glyph's total height, shackle crown to body base. Smaller than the
+## 54 px stroke it replaces on purpose: a slash is read as a direction and can be
+## long, an icon is read as a shape and has to sit inside one cell to be one.
+const LOCK_HALF_HEIGHT: float = PREVIEW_HALF * 0.48
+## Segments in the shackle's half-turn. Eight is where the crown stops reading as
+## a chamfer at this radius; ten is cheap and leaves margin if the radius grows.
+const LOCK_ARC_SEGMENTS: int = 10
 
 ## The redundancy cue (plant-tower-defense-3lu): legal cell, real road under the
 ## reach — and every one of those road cells is already inside a patch of the
@@ -167,9 +236,12 @@ const DEAD_BAR_ANGLE: float = -PI * 0.25
 ##
 ## Drawn in DEAD_COLOR, the same slate as dead ground, on purpose: the two are
 ## the same KIND of statement — "you may put it here, and it will do nothing" —
-## so telling them apart is the *shape's* job, which is the rule the dead bar was
-## built on in the first place. Dead ground is one straight bar; redundant ground
-## is two parallel bars on that same angle. An equals sign laid over the cell:
+## so telling them apart is the *shape's* job, which is the rule the dead mark was
+## built on in the first place. Dead ground is a padlock; redundant ground is two
+## parallel bars at DEAD_BAR_ANGLE. That pairing used to be one-bar-versus-two,
+## and plant-tower-defense-uqer ended it: see `_draw_redundant_bars` for what is
+## carrying this cue now that it is no longer counted against a single bar. An
+## equals sign laid over the cell:
 ## "the same as the patch you already have". Countable at a glance, legible with
 ## the colour thrown away, and still nothing but straight strokes, which no other
 ## preview state draws outside the four corner arms.
@@ -334,7 +406,7 @@ func ghost() -> Sprite2D:
 ## preview stops meaning anything:
 ##
 ## 1. Illegal (road, off-board, occupied, unaffordable) wins outright. Red
-##    brackets and nothing else — no ring, no risk dashes, no dead-zone bar. A
+##    brackets and nothing else — no ring, no risk dashes, no dead-ground lock. A
 ##    cell that already refuses the click is not also told why the plant it
 ##    refuses would have been useless there.
 ## 2. `at_risk` (a defenceless plant beside the road) — only reachable by a
@@ -381,7 +453,7 @@ func _draw() -> void:
 	var ring := Color(base.r, base.g, base.b, RING_ALPHA)
 	draw_arc(Vector2.ZERO, reach, 0.0, TAU, 48, ring, RING_WIDTH, true)
 	if dead:
-		_draw_dead_bar()
+		_draw_dead_lock()
 	if redundant:
 		_draw_redundant_bars()
 	# Last, so the dots sit over the ring rather than under it. Skipped on dead
@@ -471,17 +543,22 @@ func _draw_risk_ring() -> void:
 		draw_arc(Vector2.ZERO, RISK_RADIUS, from, from + step, 4, RISK_COLOR, RISK_WIDTH, true)
 
 
-## One straight stroke through the bracket box. Deliberately the only straight
-## line in any preview state other than the four corner arms, so the state is
-## legible with the colour thrown away.
-func _draw_dead_bar() -> void:
-	var arm_vec: Vector2 = dead_bar_arm()
-	draw_line(-arm_vec, arm_vec, DEAD_COLOR, DEAD_BAR_WIDTH, true)
+## The padlock, drawn at the cell the cursor is on. The same points the board's
+## ambient marks carry, at full DEAD_COLOR rather than at BOARD_DEAD_ALPHA — see
+## that constant for why the hovered one is the louder of the two.
+func _draw_dead_lock() -> void:
+	draw_polyline(dead_lock_points(), DEAD_COLOR, DEAD_BAR_WIDTH, true)
 
 
-## The dead bar, doubled. Same angle, same width, same slate — the difference is
-## that you can count them, which survives greyscale, a colourblind player and a
-## screenshot at half size. See REDUNDANT_BAR_GAP.
+## TWO PARALLEL BARS, AND THEY NO LONGER CONTRAST WITH THE DEAD MARK. This cue
+## was built as "dead ground is one straight bar; redundant ground is two
+## parallel bars on that same angle", so it was counted against a shape that is
+## now a padlock (plant-tower-defense-uqer). The pair is unchanged and the
+## argument for it is not: what makes it legible is no longer that you can count
+## it against a single bar, it is that it is the only straight-stroke state left
+## in a preview. That is a weaker claim than the one this cue shipped with, and
+## it is written down rather than quietly inherited — the equals-sign reading
+## ("the same as the patch you already have") is what is carrying it now.
 func _draw_redundant_bars() -> void:
 	var along: Vector2 = dead_bar_arm()
 	var across: Vector2 = along.orthogonal().normalized() * (REDUNDANT_BAR_GAP * 0.5)
@@ -808,10 +885,12 @@ func _board() -> Board:
 #
 # g8kc's set is therefore a SUBSET of tzz7's set for every plant the player
 # owns, always, by construction. Two overlapping marks on the same cell would
-# not be an occasional accident here; it would be the guaranteed case. Worse,
-# two bars on one cell at DEAD_BAR_ANGLE is _draw_redundant_bars() -- the cue
-# that means "you already have a patch covering this" -- so the failure mode is
-# not clutter, it is a different sentence.
+# not be an occasional accident here; it would be the guaranteed case. Two locks
+# on one cell is a smear rather than a sentence -- and until
+# plant-tower-defense-uqer it was worse, because two marks on one cell at
+# DEAD_BAR_ANGLE is _draw_redundant_bars(), the cue that means "you already have
+# a patch covering this". The overlap used to be a different sentence; it is now
+# only illegible. The mode below is what stops either.
 #
 # The resolution is a MODE, not a union. The board answers one question at a
 # time: with a shop entry hovered it shows dead ground for THAT plant; with
@@ -821,12 +900,17 @@ func _board() -> Board:
 #
 # WHY NOT A TINT, which is the word g8kc uses. OVERLAY_GRAMMAR.md's one rule
 # with teeth is that a cue must be legible with its colour discarded, and a
-# ground tint has no channel but colour. The mark is the existing "straight line
-# through a box = A STATE" row instead (`_draw_dead_bar` above, grammar row
-# `placement_preview.gd:328`) -- same angle, same width, same slate, drawn from
-# the same dead_bar_arm(). No row is added to the grammar, so the notebook
-# legend is untouched and
-# test_the_legend_names_as_many_shapes_as_the_grammar_documents is unaffected.
+# ground tint has no channel but colour. The mark is `_draw_dead_lock()` above --
+# same glyph, same width, same slate, drawn from the same dead_lock_points().
+#
+# WHICH GRAMMAR ROW, and this paragraph is out of date twice over. It read the
+# existing "straight line through a box = A STATE" row and said no row was added
+# to the grammar. plant-tower-defense-uqer added one: the padlock is a shape
+# OVERLAY_GRAMMAR.md did not have, so it is row 13 there and a row of its own in
+# CueLegend's ledger. `CueLegend.ROWS` -- the six lines actually printed in the
+# notebook -- is still untouched, so
+# test_the_legend_names_as_many_shapes_as_the_grammar_documents is still
+# unaffected. The grammar table and the printed legend are not the same list.
 #
 # WHAT THE RESTING STATE HONESTLY CLAIMS, because the bead's wording claims more.
 # "Ground no plant in the catalogue can use" is FALSE of these cells. A Seed
@@ -859,17 +943,51 @@ func _board() -> Board:
 const BOARD_DEAD_ALPHA: float = 0.40
 
 
-## The half-arm of the dead bar: one endpoint of the stroke, measured from the
-## cell centre. The other is its negation.
+## The half-arm of the REDUNDANT bar: one endpoint of the stroke, measured from
+## the cell centre. The other is its negation.
 ##
-## Extracted so the board-wide mark and the hovered-cell bar are provably the
-## SAME stroke rather than two strokes that happen to agree -- Board draws its
-## marks from this vector, `_draw_dead_bar()` draws from this vector, and
-## test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two asserts the
-## endpoints coincide. Two coincident collinear strokes read as one bar; two
-## parallel ones read as the redundancy cue, which is the mistake this closes.
+## It was the dead-ground bar's arm too until plant-tower-defense-uqer moved that
+## cue to `dead_lock_points()`. The name is kept because `_draw_redundant_bars()`
+## is still built out of it and still draws bars; what is gone is the second
+## caller, so this is no longer the place the two dead cues are held together.
+## `dead_lock_points()` is.
 static func dead_bar_arm() -> Vector2:
 	return Vector2.from_angle(DEAD_BAR_ANGLE) * PREVIEW_HALF
+
+
+## The padlock, as one closed-ish polyline centred on the cell's own centre.
+##
+## Extracted so the board-wide mark and the hovered-cell mark are provably the
+## SAME glyph rather than two glyphs that happen to agree -- `Board` gives its
+## `Line2D` marks these points translated to each cell, `_draw_dead_lock()`
+## draws them at the origin, and
+## test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two asserts the two
+## point lists coincide. That test predates the lock and is the reason the shape
+## could be changed in one place at all.
+##
+## Point order, and why it ends where it does: shackle left foot, over the crown,
+## shackle right foot, top-right corner, down, along the bottom, up the left
+## side, then the full top edge left-to-right. Only the top edge's right-hand
+## stretch (LOCK_SHACKLE_RADIUS to LOCK_BODY_HALF_W, ~6 px) is covered twice. See
+## the block at LOCK_BODY_HALF_W for why one polyline and not two nodes.
+static func dead_lock_points() -> PackedVector2Array:
+	var top_y: float = -LOCK_HALF_HEIGHT + LOCK_SHACKLE_RADIUS
+	var base_y: float = LOCK_HALF_HEIGHT
+	var w: float = LOCK_BODY_HALF_W
+	var points := PackedVector2Array()
+	# The shackle: a half turn from PI to TAU, so it rises over the top edge
+	# rather than hanging under it (screen Y grows downward).
+	for i: int in range(LOCK_ARC_SEGMENTS + 1):
+		var t: float = float(i) / float(LOCK_ARC_SEGMENTS)
+		var angle: float = PI + t * PI
+		points.append(Vector2(cos(angle), sin(angle)) * LOCK_SHACKLE_RADIUS
+			+ Vector2(0.0, top_y))
+	points.append(Vector2(w, top_y))
+	points.append(Vector2(w, base_y))
+	points.append(Vector2(-w, base_y))
+	points.append(Vector2(-w, top_y))
+	points.append(Vector2(w, top_y))
+	return points
 
 
 ## DEAD_COLOR at BOARD_DEAD_ALPHA. A function rather than a const because a

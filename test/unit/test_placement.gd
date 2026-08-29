@@ -6462,26 +6462,32 @@ func test_the_resting_cue_never_calls_sunflower_ground_scenery() -> String:
 	return err
 
 
-## The grammar, asserted rather than argued: the board's mark IS the hover bar's
-## stroke, so a cell carrying both shows one bar and never the two parallel bars
-## that mean "redundant patch".
+## The grammar, asserted rather than argued: the board's mark IS the hover mark's
+## glyph, so a cell carrying both shows one padlock and never two marks offset
+## from each other -- which at DEAD_BAR_ANGLE is the "redundant patch" cue.
 ##
 ## Headless never runs `_draw()`, so this reads the Line2D children the Board
-## actually builds. Their endpoints are the same two points `_draw_dead_bar()`
-## passes to draw_line(), offset to the cell -- which is the only way to check a
-## cue whose whole defence is "these two marks coincide".
+## actually builds. Their points are the same points `_draw_dead_lock()` passes
+## to draw_polyline(), offset to the cell -- which is the only way to check a cue
+## whose whole defence is "these two marks coincide".
+##
+## IT WAS A TWO-POINT STROKE UNTIL plant-tower-defense-uqer and this test is why
+## the shape could be changed at all: it names one geometry function, so a lock
+## that had been drawn at the hover and a bar left on the board would fail here
+## rather than in a screenshot nobody takes.
 func test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two() -> String:
 	var board := Board.new()
-	# NOT named `arm`: suite_reach_check matches by bare token, and
-	# SelectionMarker declares an unreached `arm` that a local of that name
-	# silently credits -- which is a false entry in the debt list, not a test.
-	var bar_arm: Vector2 = PlacementPreview.dead_bar_arm()
+	var glyph: PackedVector2Array = PlacementPreview.dead_lock_points()
 	var cells: Array[Vector2i] = PlacementPreview.dead_ground_cells(board,
 		PlantCatalog.reach(PlantCatalog.CORN))
 	var err: String = _T.assert_gt(cells.size(), 0,
 		"there is dead ground to mark -- an empty set would make every check below vacuous")
 	if err == "":
-		err = _T.assert_true(board.mark_dead_ground(cells, bar_arm,
+		err = _T.assert_gt(glyph.size(), 2,
+			("the dead mark is a figure and not a stroke -- a two-point glyph here is "
+				+ "the slash this cue was changed away from"))
+	if err == "":
+		err = _T.assert_true(board.mark_dead_ground(cells, glyph,
 			PlacementPreview.board_dead_color(), PlacementPreview.DEAD_BAR_WIDTH),
 			"marking a fresh board reports the set as changed")
 	if err == "":
@@ -6496,33 +6502,48 @@ func test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two() -> String:
 		for i: int in range(cells.size()):
 			var centre: Vector2 = board.cell_to_world(cells[i])
 			var pts: PackedVector2Array = lines[i].points
-			err = _T.assert_eq(pts.size(), 2,
-				"mark %d is a straight two-point stroke, not a shape" % i)
+			err = _T.assert_eq(pts.size(), glyph.size(),
+				"mark %d carries the whole glyph, point for point" % i)
 			if err == "":
-				err = _T.assert_float_eq(pts[0].distance_to(centre - bar_arm), 0.0, 0.001,
-					"mark %d starts where _draw_dead_bar() would start" % i)
+				# Every point, not the endpoints: a glyph agreeing at its ends and
+				# differing in the middle is exactly the failure a two-point check
+				# could not see, and is what this cue now has a middle for.
+				var worst: float = 0.0
+				for j: int in range(pts.size()):
+					worst = maxf(worst, pts[j].distance_to(centre + glyph[j]))
+				err = _T.assert_float_eq(worst, 0.0, 0.001,
+					("mark %d is dead_lock_points() translated to its cell -- worst "
+						+ "point off by %.4f px") % [i, worst])
 			if err == "":
-				err = _T.assert_float_eq(pts[1].distance_to(centre + bar_arm), 0.0, 0.001,
-					"mark %d ends where _draw_dead_bar() would end" % i)
-			if err == "":
-				# The claim in one number: the mark and the hover bar are the same
-				# line, so their perpendicular separation is zero. The redundancy cue
-				# is the same stroke at REDUNDANT_BAR_GAP apart, and a nonzero gap
-				# here would be that cue said by accident.
+				# The claim in one number: the board mark and the hover mark are the
+				# same figure in the same place, so the glyph's BOUNDING BOX is
+				# centred on the cell. Two marks offset at DEAD_BAR_ANGLE is the
+				# redundancy cue, and a nonzero offset here would be that cue said by
+				# accident.
+				#
+				# The box and not the average of the points -- the shackle carries
+				# LOCK_ARC_SEGMENTS+1 of the sixteen, so the centroid sits well above
+				# the glyph's middle and is not a claim about position at all. The
+				# first draft asserted the centroid, and it failed by 6.4 px against a
+				# perfectly centred lock.
+				var low: Vector2 = pts[0]
+				var high: Vector2 = pts[0]
+				for point: Vector2 in pts:
+					low = Vector2(minf(low.x, point.x), minf(low.y, point.y))
+					high = Vector2(maxf(high.x, point.x), maxf(high.y, point.y))
 				err = _T.assert_float_eq(
-					((pts[0] + pts[1]) * 0.5).distance_to(centre), 0.0, 0.001,
-					("mark %d is centred on the cell, so it lies ON the hover bar rather "
-						+ "than beside it -- any separation at all is the redundant-patch "
-						+ "cue drawn by mistake") % i)
+					((low + high) * 0.5).distance_to(centre), 0.0, 0.001,
+					("mark %d is centred on the cell, so it lies ON the hover mark "
+						+ "rather than beside it") % i)
 			if err == "":
 				err = _T.assert_float_eq(lines[i].width, PlacementPreview.DEAD_BAR_WIDTH, 0.001,
-					"mark %d is the dead bar's own width" % i)
+					"mark %d is the dead mark's own width" % i)
 			if err != "":
 				break
 	if err == "":
 		err = _T.assert_gt(PlacementPreview.REDUNDANT_BAR_GAP, 0.0,
 			("and the picture it must not become is a real one: two bars "
-				+ "REDUNDANT_BAR_GAP apart on this same angle"))
+				+ "REDUNDANT_BAR_GAP apart at DEAD_BAR_ANGLE"))
 	if err == "":
 		# Colour is the channel the grammar says may not carry meaning alone, so
 		# the ambient mark is allowed to be dimmer -- but only dimmer.
@@ -6532,8 +6553,129 @@ func test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two() -> String:
 	if err == "":
 		err = _T.assert_gt(PlacementPreview.DEAD_COLOR.a, PlacementPreview.BOARD_DEAD_ALPHA,
 			("and it is the quieter of the two: up to 36 ambient marks sit under one "
-				+ "focused hover bar, so the hovered cell has to win"))
+				+ "focused hover mark, so the hovered cell has to win"))
 	board.free()
+	return err
+
+
+## The two slate cues stay two cues (plant-tower-defense-uqer).
+##
+## The redundant-patch pair was built as "dead ground is one straight bar;
+## redundant ground is two parallel bars on that same angle" -- it was legible by
+## being COUNTABLE against the dead bar. The dead mark is a padlock now, so that
+## contrast is gone and the pair is carrying itself on being the only straight
+## strokes left in a preview. That is a weaker claim than the one it shipped
+## with, and this is the test that keeps it a claim at all rather than an
+## assumption inherited through a header.
+##
+## It is also what keeps `dead_bar_arm()` honest: it lost its second caller when
+## the dead cue moved, and a static that only one `_draw()` reaches is exactly
+## the thing suite_reach_check exists to notice.
+func test_the_redundant_pair_is_still_told_apart_from_the_dead_lock() -> String:
+	var along: Vector2 = PlacementPreview.dead_bar_arm()
+	# A true diagonal, and the bracket box's own length. Both halves are what the
+	# pair is recognised by now that it is not recognised by counting.
+	var err: String = _T.assert_float_eq(absf(along.x), absf(along.y), 0.001,
+		"the redundant bars run at a true 45 degrees, arm %s" % along)
+	if err == "":
+		err = _T.assert_float_eq(along.length(), PlacementPreview.PREVIEW_HALF, 0.001,
+			"and span the bracket box, %.3f px from the centre" % along.length())
+	# THE CLAIM: a padlock cannot be mistaken for a bar, because a bar is straight
+	# and the lock is not. Measured as the widest departure from the line through
+	# the glyph's own endpoints -- a lock flattened to a stroke by a bad edit would
+	# read as the dead cue AND as half the redundancy cue at once.
+	if err == "":
+		var lock: PackedVector2Array = PlacementPreview.dead_lock_points()
+		var axis: Vector2 = (lock[lock.size() - 1] - lock[0]).normalized()
+		var bulge: float = 0.0
+		for point: Vector2 in lock:
+			var off: Vector2 = point - lock[0]
+			bulge = maxf(bulge, absf(off.cross(axis)))
+		err = _T.assert_gt(bulge, PlacementPreview.REDUNDANT_BAR_GAP,
+			("the padlock departs from a straight line by %.2f px, further than the "
+				+ "%.1f px that separates the redundancy cue's two bars -- so the two "
+				+ "cues cannot be read as each other")
+				% [bulge, PlacementPreview.REDUNDANT_BAR_GAP])
+	return err
+
+
+## The padlock is a padlock, asserted as geometry (plant-tower-defense-uqer).
+##
+## WHY THIS TEST EXISTS AND WHAT IT IS FOR. The cue was changed on a player report
+## that the old mark read as a rendering artifact, so "it is a distinctive shape"
+## is the whole deliverable — and it is exactly the claim a point-count assertion
+## cannot make. Every check below is one of the ways a lock stops being one while
+## `dead_lock_points()` keeps returning sixteen points: the shackle upside down,
+## the shackle wider than the body, the body's top edge never closed, the glyph
+## grown out of its own brackets.
+##
+## `LOCK_*` are read rather than re-typed, so a deliberate resize moves the
+## expectations with it and only a change that breaks the SHAPE fails here.
+func test_the_dead_lock_fits_inside_the_bracket_box() -> String:
+	var lock: PackedVector2Array = PlacementPreview.dead_lock_points()
+	var err: String = _T.assert_eq(lock.size(),
+		PlacementPreview.LOCK_ARC_SEGMENTS + 6,
+		("the shackle's %d+1 samples, the body's three remaining corners, and the top "
+			+ "edge retraced to close it") % PlacementPreview.LOCK_ARC_SEGMENTS)
+	# Inside its own brackets. PREVIEW_HALF is the bracket box's half-extent, and a
+	# glyph poking out of it would sit under the corner arms on a hovered cell.
+	if err == "":
+		for point: Vector2 in lock:
+			err = _T.assert_true(
+				absf(point.x) <= PlacementPreview.PREVIEW_HALF + 0.001
+					and absf(point.y) <= PlacementPreview.PREVIEW_HALF + 0.001,
+				("every point is inside the bracket box (half %.1f); %s is not"
+					% [PlacementPreview.PREVIEW_HALF, point]))
+			if err != "":
+				break
+	# A lock, not a handbag: the shackle is narrower than the body it stands on.
+	if err == "":
+		err = _T.assert_gt(PlacementPreview.LOCK_BODY_HALF_W,
+			PlacementPreview.LOCK_SHACKLE_RADIUS,
+			("the shackle is narrower than the body -- a shackle as wide as its body "
+				+ "reads as a handle and the glyph stops being a lock"))
+	# The crown is the shackle's, the base is the body's, and they are the glyph's
+	# own extremes. Screen Y grows downward, so a sign error inverts the lock and
+	# every count above still passes.
+	if err == "":
+		var top_y: float = -PlacementPreview.LOCK_HALF_HEIGHT 			+ PlacementPreview.LOCK_SHACKLE_RADIUS
+		var crown: Vector2 = lock[0]
+		var base: float = 0.0
+		for point: Vector2 in lock:
+			if point.y < crown.y:
+				crown = point
+			base = maxf(base, point.y)
+		err = _T.assert_float_eq(crown.y, -PlacementPreview.LOCK_HALF_HEIGHT, 0.001,
+			"the crown of the shackle is the top of the glyph, at y %.3f" % crown.y)
+		if err == "":
+			err = _T.assert_float_eq(crown.x, 0.0, 0.001,
+				"and it is centred over the body, at x %.3f" % crown.x)
+		if err == "":
+			err = _T.assert_float_eq(base, PlacementPreview.LOCK_HALF_HEIGHT, 0.001,
+				"the body's base is the bottom of the glyph, at y %.3f" % base)
+		# The shackle's feet stand ON the body's top edge rather than floating over
+		# it or sinking into it.
+		if err == "":
+			err = _T.assert_float_eq(lock[0].distance_to(
+				Vector2(-PlacementPreview.LOCK_SHACKLE_RADIUS, top_y)), 0.0, 0.001,
+				"the shackle's left foot stands on the body's top edge")
+		if err == "":
+			var foot: Vector2 = lock[PlacementPreview.LOCK_ARC_SEGMENTS]
+			err = _T.assert_float_eq(foot.distance_to(
+				Vector2(PlacementPreview.LOCK_SHACKLE_RADIUS, top_y)), 0.0, 0.001,
+				"and the right foot on the other side of the same edge")
+		# The body is CLOSED: the last two points are its whole top edge, corner to
+		# corner. Without them the shackle's feet are the only thing spanning the top
+		# and the glyph reads as an arch on a U.
+		if err == "":
+			err = _T.assert_float_eq(lock[lock.size() - 2].distance_to(
+				Vector2(-PlacementPreview.LOCK_BODY_HALF_W, top_y)), 0.0, 0.001,
+				"the path returns to the body's top-left corner")
+		if err == "":
+			err = _T.assert_float_eq(lock[lock.size() - 1].distance_to(
+				Vector2(PlacementPreview.LOCK_BODY_HALF_W, top_y)), 0.0, 0.001,
+				("and closes the body by drawing its top edge across, which is the "
+					+ "segment that makes this a lock rather than an arch"))
 	return err
 
 
@@ -6543,10 +6685,7 @@ func test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two() -> String:
 ## in-tree accumulation gives.
 func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() -> String:
 	var board := Board.new()
-	# NOT named `arm`: suite_reach_check matches by bare token, and
-	# SelectionMarker declares an unreached `arm` that a local of that name
-	# silently credits -- which is a false entry in the debt list, not a test.
-	var bar_arm: Vector2 = PlacementPreview.dead_bar_arm()
+	var glyph: PackedVector2Array = PlacementPreview.dead_lock_points()
 	var colour: Color = PlacementPreview.board_dead_color()
 	var width: float = PlacementPreview.DEAD_BAR_WIDTH
 	var wide: Array[Vector2i] = PlacementPreview.dead_ground_cells(board,
@@ -6557,7 +6696,7 @@ func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() 
 	if err == "":
 		err = _T.assert_eq(narrow.size(), 3, "and 3 for a Bomb Dandelion")
 	if err == "":
-		board.mark_dead_ground(wide, bar_arm, colour, width)
+		board.mark_dead_ground(wide, glyph, colour, width)
 	var layer: Node2D = board.get_node_or_null(Board.DEAD_GROUND_LAYER) as Node2D
 	if err == "":
 		err = _T.assert_true(layer != null, "marking built the marks layer")
@@ -6565,11 +6704,11 @@ func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() 
 	if err == "":
 		err = _T.assert_eq(pool, 36, "one Line2D per marked cell, %d built" % pool)
 	if err == "":
-		err = _T.assert_false(board.mark_dead_ground(wide, bar_arm, colour, width),
+		err = _T.assert_false(board.mark_dead_ground(wide, glyph, colour, width),
 			("re-marking the identical set reports no change, so Game._refresh() on every "
 				+ "seed payout does not rebuild the pool several times a second"))
 	if err == "":
-		err = _T.assert_true(board.mark_dead_ground(narrow, bar_arm, colour, width),
+		err = _T.assert_true(board.mark_dead_ground(narrow, glyph, colour, width),
 			"shrinking the set does report a change")
 	if err == "":
 		err = _T.assert_eq(layer.get_child_count(), pool,
@@ -6578,7 +6717,7 @@ func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() 
 		err = _T.assert_eq(board.dead_ground_mark_lines().size(), 3,
 			"with only 3 of them visible")
 	if err == "":
-		err = _T.assert_true(board.mark_dead_ground(wide, bar_arm, colour, width),
+		err = _T.assert_true(board.mark_dead_ground(wide, glyph, colour, width),
 			"growing back reports a change")
 	if err == "":
 		err = _T.assert_eq(layer.get_child_count(), pool,
@@ -6591,7 +6730,7 @@ func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() 
 		# A road cell is not ground a plant can be dead on, so it is dropped the way
 		# mark_unaimed_road() drops non-road.
 		var road: Array[Vector2i] = [board.road_cells()[0]]
-		board.mark_dead_ground(road, bar_arm, colour, width)
+		board.mark_dead_ground(road, glyph, colour, width)
 		err = _T.assert_false(board.is_dead_ground(road[0]),
 			"a mark handed a road cell drops it rather than rendering it")
 	if err == "":
@@ -6745,7 +6884,7 @@ func test_every_draw_painted_cue_still_issues_its_draw_calls() -> String:
 	var expect: Array[Dictionary] = [
 		{"file": "res://game/placement_preview.gd", "func": "_draw", "calls": 1},
 		{"file": "res://game/placement_preview.gd", "func": "_draw_risk_ring", "calls": 1},
-		{"file": "res://game/placement_preview.gd", "func": "_draw_dead_bar", "calls": 1},
+		{"file": "res://game/placement_preview.gd", "func": "_draw_dead_lock", "calls": 1},
 		{"file": "res://game/placement_preview.gd", "func": "_draw_redundant_bars",
 			"calls": 2},
 		{"file": "res://game/selection_marker.gd", "func": "_draw_brackets", "calls": 2},
@@ -6901,9 +7040,9 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 	var dead: Color = PlacementPreview.DEAD_COLOR
 	var ring: Color = Color(dead.r, dead.g, dead.b)
 	var rows: Array[Dictionary] = [
-		{"what": "dead-ground bar, board-wide", "mark": dead, "gates": true,
+		{"what": "dead-ground padlock, board-wide", "mark": dead, "gates": true,
 			"alpha": PlacementPreview.BOARD_DEAD_ALPHA, "ground": grass, "on": "grass"},
-		{"what": "dead-ground bar, hovered cell", "mark": dead, "gates": true,
+		{"what": "dead-ground padlock, hovered cell", "mark": dead, "gates": true,
 			"alpha": dead.a, "ground": grass, "on": "grass"},
 		{"what": "redundant-patch bars", "mark": dead, "gates": true,
 			"alpha": dead.a, "ground": grass, "on": "grass"},
@@ -7373,8 +7512,15 @@ func test_the_grammar_rows_the_legend_teaches_are_the_recorded_six() -> String:
 	## `CueLegend.ROWS` shape must be claimed by exactly one recorded row.
 	##
 	## Empty `taught` means the shape is drawn on the board and not on this page. Four of
-	## the six are argued one at a time in cue_legend.gd's wenx block; the short version
+	## the seven are argued one at a time in cue_legend.gd's wenx block; the short version
 	## is that none of them earns the layout price the test above measures.
+	##
+	## The seventh is the dead-ground padlock (plant-tower-defense-uqer), which split off
+	## from "Straight line through a box" when that cue stopped being a straight line.
+	## The page being full decides it a third time, and cue_legend.gd's verdict block
+	## records what changed under it: a padlock has ONE meaning across both its
+	## instances, which is the shape a legend line teaches best, so this is now the
+	## entry whose "no" is arithmetic rather than editorial.
 	##
 	## The fifth is the lane-pressure hatch, and it went red here the moment cycle 110
 	## gave it a grammar row — which is this test working, not this test breaking. It is
@@ -7406,6 +7552,7 @@ func test_the_grammar_rows_the_legend_teaches_are_the_recorded_six() -> String:
 		{"shape": "A row of small pips", "taught": ""},
 		{"shape": "Hatched stripes", "taught": ""},
 		{"shape": "A translucent sprite of the thing itself", "taught": ""},
+		{"shape": "A padlock", "taught": ""},
 	]
 
 	# The document's rows, parsed out of the SECTION rather than the file -- the same
@@ -7508,11 +7655,11 @@ func test_the_grammar_rows_the_legend_teaches_are_the_recorded_six() -> String:
 		# wrong home for it, and the only thing making that true is that adding an
 		# untaught row fails here until someone writes the argument. Derived, it would
 		# rise on its own and the audit would silently fall behind the board.
-		err = _T.assert_eq(rows.size() - claimed.size(), 6,
+		err = _T.assert_eq(rows.size() - claimed.size(), 7,
 			("%d of the board's %d documented shapes go untaught -- the wenx audit "
 				% [rows.size() - claimed.size(), rows.size()])
-				+ "argues each of the six one at a time in cue_legend.gd, so a seventh "
-				+ "needs arguing there too")
+				+ "argues each of the seven one at a time in cue_legend.gd, so an "
+				+ "eighth needs arguing there too")
 	return err
 
 # END plant-tower-defense-wenx

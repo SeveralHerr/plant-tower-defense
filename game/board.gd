@@ -902,10 +902,10 @@ func is_unaimed(cell: Vector2i) -> bool:
 # rendering this cycle. The marks layer is built lazily on the first
 # mark_dead_ground() call, which also means a Board nobody marks costs nothing.
 #
-# WHY THE GEOMETRY IS AN ARGUMENT AND NOT A CONSTANT HERE. The stroke belongs to
-# PlacementPreview -- it is that class's DEAD_BAR_ANGLE, PREVIEW_HALF and
-# DEAD_COLOR, and the whole point is that the board's mark and the hover bar are
-# the SAME stroke. But PlacementPreview already depends on Board, and a Board
+# WHY THE GEOMETRY IS AN ARGUMENT AND NOT A CONSTANT HERE. The glyph belongs to
+# PlacementPreview -- it is that class's LOCK_* constants, PREVIEW_HALF and
+# DEAD_COLOR, and the whole point is that the board's mark and the hover mark are
+# the SAME shape. But PlacementPreview already depends on Board, and a Board
 # that named PlacementPreview back would be a cyclic class_name reference. So the
 # caller pushes the geometry in, exactly the way mark_unaimed_road() has the
 # garden's knowledge pushed in rather than reaching for it: Board goes on knowing
@@ -937,11 +937,16 @@ var _dead_ground_marks: Array[Line2D] = []
 
 ## Mark `cells` as ground the plant in question would never fire from.
 ##
-## `bar_arm` is one endpoint of the stroke measured from the cell centre (the
-## other is its negation) -- PlacementPreview.dead_bar_arm(). Non-buildable cells
-## are dropped, the same filter mark_unaimed_road() applies and for the same
-## reason: the road is not ground a plant can be dead on, so a mark there is one
-## nothing can render and nothing can clear.
+## `glyph` is the mark's whole outline, in points measured from the cell centre
+## -- PlacementPreview.dead_lock_points(). It was a single `bar_arm: Vector2`
+## until plant-tower-defense-uqer made the cue a padlock; a Vector2 could only
+## ever describe a two-point stroke, so the parameter had to widen with the
+## shape. It is still pushed in rather than reached for, for the reason the block
+## above gives: Board must not name PlacementPreview back.
+##
+## Non-buildable cells are dropped, the same filter mark_unaimed_road() applies
+## and for the same reason: the road is not ground a plant can be dead on, so a
+## mark there is one nothing can render and nothing can clear.
 ##
 ## Returns whether the marked SET changed. Called from Game._refresh(), which
 ## fires on every seed payout, so an unchanged set must not rebuild a line pool
@@ -949,8 +954,8 @@ var _dead_ground_marks: Array[Line2D] = []
 ## caller that changes only `colour` or `width` without changing the cells gets
 ## no repaint. Both are constants at the only call site; a caller that wants to
 ## animate them should clear first.
-func mark_dead_ground(cells: Array[Vector2i], bar_arm: Vector2, colour: Color,
-		width: float) -> bool:
+func mark_dead_ground(cells: Array[Vector2i], glyph: PackedVector2Array,
+		colour: Color, width: float) -> bool:
 	var next: Dictionary = {}
 	for cell: Vector2i in cells:
 		if is_buildable(cell):
@@ -958,7 +963,7 @@ func mark_dead_ground(cells: Array[Vector2i], bar_arm: Vector2, colour: Color,
 	if not _dead_ground_differs(next):
 		return false
 	_dead_ground = next
-	_redraw_dead_ground(bar_arm, colour, width)
+	_redraw_dead_ground(glyph, colour, width)
 	return true
 
 
@@ -973,7 +978,8 @@ func _dead_ground_differs(next: Dictionary) -> bool:
 
 ## Row-major, so the mark at index i is always the same cell for the same set --
 ## no sort, and a test can pair the pool against dead_ground_marked() by index.
-func _redraw_dead_ground(bar_arm: Vector2, colour: Color, width: float) -> void:
+func _redraw_dead_ground(glyph: PackedVector2Array, colour: Color,
+		width: float) -> void:
 	var marked: Array[Vector2i] = dead_ground_marked()
 	if marked.is_empty() and _dead_ground_layer == null:
 		# Nothing marked and nothing built: do not build a layer to hold nothing.
@@ -993,7 +999,10 @@ func _redraw_dead_ground(bar_arm: Vector2, colour: Color, width: float) -> void:
 			_dead_ground_marks.append(mark)
 			layer.add_child(mark)
 		var centre: Vector2 = cell_to_world(marked[i])
-		mark.points = PackedVector2Array([centre - bar_arm, centre + bar_arm])
+		var at := PackedVector2Array()
+		for point: Vector2 in glyph:
+			at.append(centre + point)
+		mark.points = at
 		mark.width = width
 		mark.default_color = colour
 		mark.visible = true
