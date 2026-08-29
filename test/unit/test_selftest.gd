@@ -23441,7 +23441,7 @@ func test_holding_a_plant_button_reveals_its_tooltip_and_blocks_the_purchase() -
 	var long_press: HudLongPress
 	var popup: Control
 	if err == "":
-		long_press = game.hud.get_node_or_null("Root/FxLayer/LongPress")
+		long_press = game.hud.get_node_or_null("Root/LongPress")
 		err = _T.assert_true(long_press != null, "the hold-to-reveal node exists")
 	if err == "":
 		popup = long_press.get_node_or_null("LongPressPopup") as Control
@@ -23485,6 +23485,32 @@ func test_a_quick_tap_still_buys_the_plant_it_taps() -> String:
 		button.pressed.emit()
 		err = _T.assert_eq(selected, [id], "an un-held press still selects the plant it taps")
 	_T.free_ui(game)
+	return err
+
+
+## The two tests above exercise `watch`/`consume_suppressed` through a real
+## hold-and-release, but neither calls either by name -- suite_reach_check.py
+## flags exactly that gap. This calls both directly, on a bare button with no
+## HUD around it, rather than waiving the finding.
+func test_hud_long_press_watch_and_consume_suppressed_are_named_directly() -> String:
+	var host: Control = await _T.instantiate_ui(Control.new(), Vector2i(200, 200))
+	var long_press := HudLongPress.new()
+	host.add_child(long_press)
+	var button := Button.new()
+	button.tooltip_text = "blurb"
+	host.add_child(button)
+	long_press.watch(button)
+	var err: String = _T.assert_false(long_press.consume_suppressed(button),
+		"nothing to consume before any hold reached the threshold")
+	if err == "":
+		button.button_down.emit()
+		long_press._on_hold_timeout()
+		err = _T.assert_true(long_press.consume_suppressed(button),
+			"a completed hold leaves exactly one suppression to consume")
+	if err == "":
+		err = _T.assert_false(long_press.consume_suppressed(button),
+			"and consuming it clears the flag -- it does not fire twice")
+	_T.free_ui(host)
 	return err
 
 

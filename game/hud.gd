@@ -16,6 +16,12 @@ extends CanvasLayer
 ## and budget --" block further down.
 const HudSelection := preload("res://game/hud_selection.gd")
 
+## The hold-to-reveal subsystem (plant-tower-defense-crj9): touch has no native
+## hover, so a held plant/packet button shows its own `tooltip_text` in a small
+## popup instead. See that file's header for why it is instantiated rather than
+## called statically like `HudSelection`.
+const HudLongPress := preload("res://game/hud_long_press.gd")
+
 signal plant_selected(id: StringName)
 signal packet_requested(tier: StringName)
 
@@ -1138,6 +1144,8 @@ var _banner_note: Label
 ## Last child of `root`, so anything added here draws over every panel and
 ## button — where a travelling seed glyph belongs. See fly_seed_glyph().
 var _fx_layer: Container
+## Hold-to-reveal for touch (plant-tower-defense-crj9). See game/hud_long_press.gd.
+var _long_press: HudLongPress
 
 var _plant_buttons: Dictionary = {}
 ## Which plant button the cursor is on, &"" for none. Needed because two adjacent
@@ -1258,6 +1266,12 @@ func _ready() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 
+	# Built before the bars below, which call .watch() on it while wiring up
+	# each button. Parented into the tree further down, once _fx_layer exists —
+	# construction order and tree order are different constraints here.
+	_long_press = HudLongPress.new()
+	_long_press.name = "LongPress"
+
 	_build_top_bar(root)
 	_build_side_panel(root)
 	_build_banner(root)
@@ -1285,6 +1299,13 @@ func _ready() -> void:
 	_fx_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_fx_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_fx_layer)
+
+	# A sibling of _fx_layer, not a child of it: test_a_sunflower_payout_carries_
+	# the_flower_it_grew_on and its husk-collection twin both assert _fx_layer
+	# ends a run with ZERO children as proof a headless-skipped glyph left no
+	# trace. Added after it regardless, so its popup still paints on top of
+	# every panel, button and glyph the same way _fx_layer's own children do.
+	root.add_child(_long_press)
 
 	# The builders above create nodes and set everything that is a CONSTANT. Every
 	# number that comes from the viewport is written here instead, once, and again
@@ -1623,6 +1644,7 @@ func _build_side_panel(root: Control) -> void:
 		button.pressed.connect(_on_plant_button.bind(id))
 		button.mouse_entered.connect(_on_plant_hover.bind(id, false))
 		button.mouse_exited.connect(_on_plant_hover.bind(id, true))
+		_long_press.watch(button)
 		_plant_bar.add_child(button)
 		_plant_buttons[id] = button
 
@@ -1664,6 +1686,7 @@ func _build_side_panel(root: Control) -> void:
 		# the one mistake this rewrite could make that two hand-written buttons
 		# could not, and it would wire every button to the last tier.
 		packet.pressed.connect(_on_packet_button.bind(tier))
+		_long_press.watch(packet)
 		# Hover, not press: the question "what is in this packet" is asked before
 		# buying, and a cue you only get by spending 90 seeds is not a cue. These
 		# fire on a DISABLED button too, which is the case that matters most — a
@@ -2272,6 +2295,10 @@ static func design_height() -> int:
 
 
 func _on_plant_button(id: StringName) -> void:
+	# A held press already showed this plant's blurb; the same press must not
+	# also spend seeds on it -- see HudLongPress.consume_suppressed.
+	if _long_press.consume_suppressed(_plant_buttons[id]):
+		return
 	plant_selected.emit(id)
 
 
@@ -2288,6 +2315,8 @@ func _on_plant_hover(id: StringName, leaving: bool) -> void:
 
 
 func _on_packet_button(tier: StringName) -> void:
+	if _long_press.consume_suppressed(_packet_buttons[tier]):
+		return
 	packet_requested.emit(tier)
 
 
