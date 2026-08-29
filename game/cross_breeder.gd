@@ -56,18 +56,26 @@ const TICK_SECONDS: float = 6.0
 
 ## The chance ONE tick produces a sport, given at least one eligible pair.
 ##
-## Priced against a run, not picked: at 0.04 a tick of 6.0 s, a garden holding a
-## pair throws a sport about every 150 seconds. A full campaign is a bit over ten
+## Priced against a run, not picked: at 0.025 a tick of 6.0 s, a garden holding a
+## pair throws a sport about every 240 seconds. A full campaign is a bit over ten
 ## minutes of live play, and a garden does not hold a matching pair for all of it,
-## so a player who plants doubles sees four or five sports in a campaign and a
+## so a player who plants doubles sees two or three sports in a campaign and a
 ## player who plants one of everything sees none. That gap is the mechanic: it pays
 ## for a decision the player was already making (breadth against depth) rather than
 ## adding one.
 ##
+## This was 0.04 — a sport every 150 s, four or five of them a campaign — and it was
+## paired with buffs deliberately kept small. Rate and size are ONE decision made in
+## two files, and both halves moved together: a sport now arrives about two thirds as
+## often and is worth roughly half again as much when it lands (`PlantMutation`, the
+## band under "HOW BIG THE NUMBER IS"). Four small gifts are background income the
+## player stops reading; two large ones are news, and news is the only thing a
+## mechanic nobody can buy has to sell.
+##
 ## `test_a_sport_is_rare_enough_to_stay_an_event` pins both ends of that in seconds
 ## rather than in ticks, so retuning either constant fails against the sentence
 ## above instead of quietly moving it.
-const CHANCE_PER_TICK: float = 0.04
+const CHANCE_PER_TICK: float = 0.025
 
 ## The four cells sharing an edge with a cell. Not `Mint.NEIGHBOUR_OFFSETS` reached
 ## across, deliberately: that constant is Mint's statement about its own buff and
