@@ -126,13 +126,16 @@ var health: float = MAX_HEALTH
 var is_sport: bool = false
 
 ## The cosmetic skin this plant is wearing — purely decorative, chosen by the
-## player on the Skins screen and unlocked by Milestones (plant-tower-defense-ncfv).
-## See `game/skins.gd` for the table and `RunConfig.selected_skin()` for the
-## persisted choice.
+## player on the Skins screen and BOUGHT with petals in the Shop. It used to be
+## unlocked by a milestone (plant-tower-defense-ncfv); it is now owned per target,
+## because a milestone that unlocked a family for all fourteen targets at once made
+## two thirds of the shop unbuyable the day it was earned. See `game/skins.gd` for
+## the table and `RunConfig.selected_skin()` for the persisted choice, which falls
+## back to DEFAULT_SKIN for a family this player does not own.
 ##
 ## Set in `setup()`, before `_build_visuals()` reads it, the same ordering
 ## `is_sport`'s own comment describes — nothing repaints a plant after it is built,
-## so this is the only chance the tint gets.
+## so this is the only chance the skin gets to reach the sprite.
 var skin_id: StringName = Skins.DEFAULT_SKIN
 ## What this plant's firing interval is multiplied by right now. 1.0 is clear
 ## weather; a drought wave sets 2.0 (plant-tower-defense-q3lx).
@@ -486,8 +489,24 @@ func setup(id: StringName, at: Vector2i, on_board: Board) -> void:
 ## sites each remembering to ask is four chances for a mutated plant to revert to
 ## unmutated colours the moment it takes a bite or a hit, which is precisely the frame a
 ## player is looking at it.
+##
+## A SPORT WINS OVER A SKIN, and the branch is deliberate rather than two transforms
+## composed. There is no `_skin_golden_sport` art and there is not meant to be: the
+## rule comes first and the fifty-one files it saves come second.
+## `PlantMutation.SPORT_MODULATE`'s header already argues it for the tint this
+## replaced — a sport is the RUN's own state, thrown by `CrossBreeder` and gone the
+## moment it throws a different one, where a skin is a standing preference set once on
+## another screen. The run's state beats the preference, or a player wearing Hoarfrost
+## has to go and un-pick it before the board will tell them anything mutated.
+##
+## The skin side goes through `Skins.texture_path` and not through a table for the
+## same reason the sport side does not: a plant has SEVENTEEN frames between them, and
+## a table keyed by plant would leave a skinned Chomp reverting to unskinned art the
+## moment it bit something.
 func frame_texture_path(base_path: String) -> String:
-	return PlantMutation.texture_path(base_path, is_sport)
+	if is_sport:
+		return PlantMutation.texture_path(base_path, true)
+	return Skins.texture_path(base_path, skin_id)
 
 
 func _build_visuals() -> void:
@@ -504,7 +523,23 @@ func _build_visuals() -> void:
 	# this was, and for why a sport does not wear a chosen skin.
 	if is_sport:
 		_sprite.modulate = PlantMutation.SPORT_MODULATE
+	elif Skins.has_art(skin_id):
+		# WHITE for exactly the reason SPORT_MODULATE is white, one level up.
+		# `frame_texture_path` above has already handed this sprite the SKIN's own
+		# drawing, painted on that family's ramp with that family's added geometry, and
+		# there is nothing left for a multiplier to add. Multiplying `tint_for()` over
+		# it does not make it more golden: it desaturates toward the tint's own hue,
+		# which is how three deliberate palettes become one muddy one. That is the
+		# mistake the sport tint was deleted to stop making, and shipping it again on
+		# fifty-one new drawings would make it three times over.
+		_sprite.modulate = Color.WHITE
 	else:
+		# The tint path stays, and it is not dead code. DEFAULT_SKIN is an `art: false`
+		# family, so an unskinned plant still comes through here for its white; a family
+		# added to the table before its art is rendered still looks like something
+		# rather than like nothing; and this is the whole of how a PEST skin works
+		# (`Pest.set_pest_skin`), so both sides of the board keep one spelling of "a
+		# family with no drawing is a tint".
 		_sprite.modulate = Skins.tint_for(skin_id)
 	_sway_pivot.add_child(_sprite)
 

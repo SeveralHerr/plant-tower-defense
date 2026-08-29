@@ -5,24 +5,31 @@ extends RefCounted
 ## cosmetic and purely player-chosen (plant-tower-defense-ncfv).
 ##
 ## This file is the pure data and the rule, the same split `Milestones` already
-## draws against `RunConfig`: `Skins` answers "what skins exist and which is X
-## unlocked by", `RunConfig.selected_skins` is the persisted per-player choice, and
-## `RunConfig.selected_skin()` / `set_skin()` are the one reader and the one writer.
+## draws against `RunConfig`: `Skins` answers "what skins exist, what does one cost
+## and does this player own it", `RunConfig.purchased_skins` is the persisted
+## wardrobe, `RunConfig.selected_skins` the persisted per-target choice, and
+## `RunConfig.buy_skin()` / `set_skin()` are the two writers.
 ## Nothing here touches a save file, and nothing here is mutable — every function is
-## `static` and takes whatever player state it needs (an `earned_milestones`
-## Dictionary) as an argument, so the whole table is assertable with no RunConfig,
-## no Game and no Control, the same way `Milestones.earned_by` is.
+## `static` and takes whatever player state it needs (a `purchased` Dictionary) as an
+## argument, so the whole table is assertable with no RunConfig, no Game and no
+## Control, the same way `Milestones.earned_by` is.
 ##
 ## ---------------------------------------------------------------------------
 ## ONE FAMILY TABLE FOR EVERY TARGET
 ##
 ## The obvious shape is one bespoke skin per plant and one per pest — nine-plus-five
-## tints to draw, name and gate, and fourteen individual "why does THIS milestone
-## unlock THIS plant's colour" justifications, for a feature that is purely
-## cosmetic. Instead there is one small table of skin FAMILIES (`FAMILIES` below),
-## and every family applies uniformly to every target: picking "Golden" recolours
-## whichever plant or pest row it was picked on, the same gold, gated on the same
-## milestone, whether that row is the Sunflower or the Aphid.
+## tints to draw, name and price, and fourteen individual "why does THIS skin cost
+## THIS much" justifications, for a feature that is purely cosmetic. Instead there
+## is one small table of skin FAMILIES (`FAMILIES` below), and every family applies
+## uniformly to every target: buying "Heirloom Gold" dresses whichever plant or pest
+## row it was bought on, the same gold, at the same price, whether that row is the
+## Sunflower or the Aphid.
+##
+## OWNERSHIP IS PER TARGET, NOT PER FAMILY, and that is the one place the shop
+## deliberately does not follow the table's uniformity. Buying golden for the
+## Sunflower does not dress the Mint: a purchase that covered every row at once
+## would be the milestone gate back again under a price tag, and would empty the
+## shop in three transactions.
 ##
 ## This is also what makes the feature survive the catalogue growing. `targets()`
 ## derives the actual plant and pest list from `PlantCatalog.ids()` and
@@ -31,66 +38,111 @@ extends RefCounted
 ## add a row to THIS file when the game gains a tenth plant or a sixth pest.
 ##
 ## ---------------------------------------------------------------------------
-## WHY MILESTONE-GATED, AND WHY THESE THREE MILESTONES
+## WHY PURCHASED, AND WHY THE MILESTONE GATE WAS REMOVED RATHER THAN KEPT
 ##
-## Milestones already exist, are already persisted, and are already "the things a
-## run can be the first to do" — see `game/milestones.gd`'s own header, whose first
-## rule is "no new gameplay counters". Gating a skin on an existing milestone id
-## costs nothing that rule would object to: nothing new is counted, an old flag is
-## simply given a second, cosmetic reward. Three families are unlocked this way,
-## chosen for breadth rather than difficulty — a finish, a flawless finish, and a
-## survived worst-case — rather than one skin per milestone in the table (seven),
-## which would be more content than a first cut of a cosmetic feature needs to
-## justify. A follow-up can widen FAMILIES without touching anything that reads it,
-## since `targets()`, `unlocked_families()` and `tint_for()` all walk the table
-## rather than naming its rows.
+## Until the Petal shop these three families were milestone-gated: `campaign_cleared`
+## handed out golden, `unbroken_garden` frost, `threat_peak` ember. That gate is GONE,
+## not layered under a price, and the reason is arithmetic rather than taste. A
+## milestone unlocks a FAMILY, and a family applies to every target — so the day a
+## player cleared the campaign, golden arrived on all fourteen rows at once. With a
+## price on top, two thirds of the shop would have been unbuyable on the one day the
+## player had most reason to open it, and the rest free. One gate or the other, and
+## the one the player can steer is the one worth keeping.
+##
+## Milestones did not lose their reward, they gained a second: `RunConfig.MILESTONE_PETALS`
+## petals apiece, once, so the achievement still feeds the wardrobe — it just buys a skin
+## the player picks instead of dictating one.
+##
+## THE THREE IDS ARE KEPT VERBATIM (`golden`, `frost`, `ember`) so a v10 save's `s` line
+## still names families this build knows. Those selections survive the parse and are then
+## not selectable, because nothing is owned yet — see `RunConfig.selected_skin()`, whose
+## fallback to DEFAULT_SKIN *is* the v10 -> v11 migration.
+##
+## ---------------------------------------------------------------------------
+## A PLANT SKIN IS A DRAWING, A PEST SKIN IS A TINT
+##
+## `tint` is still on every row because a pest skin is still exactly what it always was:
+## one `modulate` multiplier over the species sprite. A PLANT skin is not — it is a
+## generated alternate drawing with its own palette ramp and its own added geometry
+## (`tools/gen_skin_svg.py`), rendered to `assets/sprites/` like every other sprite. So a
+## row carries `art`, and a plant wearing an `art` family takes the drawing and
+## `Color.WHITE`, never both: multiplying a tint over an already-recoloured sprite
+## desaturates three deliberate hues into one muddy one, which is the mistake
+## `PlantMutation.SPORT_MODULATE` was changed to stop making.
+##
+## That is also why the two costs differ. Pricing a drawing and a multiplier the same
+## would have charged the same for two different things.
 
 const KIND_PLANT := &"plant"
 const KIND_PEST := &"pest"
 
-## The skin worn from a fresh save, and by any target nobody has spent a milestone
-## unlocking a skin for: `Color.WHITE`, i.e. the sprite's own art with nothing
-## multiplied over it. Always unlocked — see `is_unlocked()` — and the only skin
+## The skin worn from a fresh save, and by any target the player has not bought one
+## for: `Color.WHITE`, i.e. the sprite's own art with nothing multiplied over it.
+## Always owned — see `is_owned()` — free — see `cost_for()` — and the only skin
 ## `RunConfig.selected_skin()` ever falls back to.
 const DEFAULT_SKIN := &"default"
 
-## id, the label the Skins screen shows, the modulate colour applied over the
-## sprite's own art, and the milestone id that unlocks it — "" for DEFAULT_SKIN,
-## which is the only family with no unlock condition.
+## What a plant skin's drawing is called on disk: `sunflower.png` wearing `golden` is
+## `sunflower_skin_golden.png`. Written here and derived by `texture_path()` rather
+## than typed into any plant script, exactly as `PlantMutation.SPORT_SUFFIX` is — see
+## `texture_path()` for what a literal would have cost.
+const SKIN_SUFFIX := "_skin_"
+
+## Petals a skin costs, by what the purchase actually buys. A plant skin is a
+## generated drawing with its own geometry; a pest skin is a tint. Pricing them the
+## same would have charged the same for two different things.
+##
+## The RATIO is the tuning, not the absolute: a run pays one petal per wave cleared
+## and ten per first-time milestone, so a full campaign is roughly two plant skins.
+## Five and three keep a pest skin reachable inside a single good run while a plant
+## skin is something a player saves toward across two.
+const PLANT_SKIN_COST: int = 5
+const PEST_SKIN_COST: int = 3
+
+## id, the label the Shop and the Skins screen show, the modulate colour applied over
+## the sprite's own art, and whether this family has a generated DRAWING of its own.
 ##
 ## Colours are ordinary `Sprite2D.modulate` multipliers, the same mechanism
 ## `Pest.MUTATION_TINT` uses — a value below 1.0 darkens that channel, above 1.0
 ## brightens it. Chosen to be visibly distinct from `Pest.MUTATION_TINT` so a skinned
 ## pest never reads as a mutated one.
 ##
-## A mutated PLANT is no longer a tint at all and so cannot collide with one of these:
-## a sport wears its own derived drawing and `PlantMutation.SPORT_MODULATE` is white.
-## That also means a sport shows no skin — see that constant for why the run's own state
-## wins over a standing preference, which is the rule the old sport tint already had.
+## `tint` survives the shop because a PEST skin is still a tint and nothing else. A
+## PLANT wearing an `art` family takes the drawing and `Color.WHITE`, never both —
+## see the class header, and `PlantMutation.SPORT_MODULATE` for the same argument the
+## first time this project made the mistake.
+##
+## `unlock_milestone` is GONE rather than emptied. A row with an unused key is a row
+## the next reader has to be told is unused; see the class header for why the gate
+## went instead of sitting under a price.
+##
+## The TITLES changed with the gate. "Golden"/"Frost"/"Ember" named a tint; these name
+## a made thing a player is being asked to spend on, which is what a shop row has to
+## read as. The ids did not change — a v10 save's `s` line names them.
 const FAMILIES: Array[Dictionary] = [
 	{
 		"id": DEFAULT_SKIN,
 		"title": "Default",
 		"tint": Color(1.0, 1.0, 1.0),
-		"unlock_milestone": "",
+		"art": false,
 	},
 	{
-		"id": "golden",
-		"title": "Golden",
+		"id": &"golden",
+		"title": "Heirloom Gold",
 		"tint": Color(1.25, 1.05, 0.55),
-		"unlock_milestone": "campaign_cleared",
+		"art": true,
 	},
 	{
-		"id": "frost",
-		"title": "Frost",
+		"id": &"frost",
+		"title": "Hoarfrost",
 		"tint": Color(0.72, 0.88, 1.15),
-		"unlock_milestone": "unbroken_garden",
+		"art": true,
 	},
 	{
-		"id": "ember",
-		"title": "Ember",
+		"id": &"ember",
+		"title": "Cinder",
 		"tint": Color(1.25, 0.55, 0.45),
-		"unlock_milestone": "threat_peak",
+		"art": true,
 	},
 ]
 
@@ -176,39 +228,118 @@ static func tint_for(id: StringName) -> Color:
 	return row["tint"]
 
 
-## Whether `id` is unlocked given this player's earned milestones.
-## DEFAULT_SKIN (empty `unlock_milestone`) is always true. An id this build does
-## not know is always false — a skin from a newer build sitting in a save is not
-## selectable here even if the save still names it as the current choice, which is
-## exactly why `RunConfig.selected_skin()` falls back to DEFAULT_SKIN rather than
-## trusting a saved id outright.
-static func is_unlocked(id: StringName, earned_milestones: Dictionary) -> bool:
-	var row: Dictionary = family(id)
-	if row.is_empty():
-		return false
-	var needs: String = String(row.get("unlock_milestone", ""))
-	return needs.is_empty() or bool(earned_milestones.get(needs, false))
+## Whether this family has a generated DRAWING of its own, as opposed to being a bare
+## `modulate` multiplier. False for DEFAULT_SKIN and for an id this build does not
+## know, matching the "an unknown reads as off" contract `tint_for` already uses.
+static func has_art(id: StringName) -> bool:
+	return bool(family(id).get("art", false))
 
 
-## Every skin this player can currently pick, in `FAMILIES` order. Always contains
-## at least the `DEFAULT_SKIN` row — see `is_unlocked()`.
-static func unlocked_families(earned_milestones: Dictionary) -> Array[Dictionary]:
+## What `family` costs for a target of this `kind`, in petals.
+##
+## Keyed on the KIND rather than on the row, because the price is a fact about what
+## the purchase gets you — a drawing or a multiplier — and that is decided by whether
+## the target is a plant or a pest, not by which of the three families it is. A
+## per-row price would also mean three numbers to re-argue every time a family joins
+## the table.
+##
+## Zero for DEFAULT_SKIN, which nobody buys, and zero for a family this build does not
+## know. The second is not a free skin: `RunConfig.buy_skin()` refuses an unknown
+## family at the door, before it ever asks the price, exactly as `set_skin()` refuses
+## an unknown target. Answering 0 here rather than erroring keeps this readable from a
+## shop row built off a save from a newer build.
+static func cost_for(kind: StringName, id: StringName) -> int:
+	if id == DEFAULT_SKIN or not has_family(id):
+		return 0
+	return PEST_SKIN_COST if kind == KIND_PEST else PLANT_SKIN_COST
+
+
+## Every family the shop draws a buy button for: FAMILIES minus DEFAULT_SKIN.
+##
+## Derived by dropping the one row rather than by a second list, so a family added to
+## FAMILIES appears in the shop with nothing here to edit — the same rule `targets()`
+## follows for the catalogue (`.claude/skills/derive-the-list`).
+static func buyable_families() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for row: Dictionary in FAMILIES:
-		if is_unlocked(StringName(row["id"]), earned_milestones):
+		if StringName(row["id"]) != DEFAULT_SKIN:
 			out.append(row)
 	return out
 
 
-## The next unlocked skin after `current`, cycling back to the first once the list
-## is exhausted — what the Skins screen's row button advances through. A locked
-## family is simply not in `unlocked_families()`'s output, so this never lands on
-## one; an unknown `current` (a foreign id, or one no longer unlocked) is treated as
-## sitting before the first row, so cycling from it always reaches DEFAULT_SKIN
-## before anything else, never gets stuck, and never raises past the end of a
-## one-entry list.
-static func next_unlocked(current: StringName, earned_milestones: Dictionary) -> StringName:
-	var choices: Array[Dictionary] = unlocked_families(earned_milestones)
+## The drawing a plant frame wears under a skin.
+##
+## PURE PATH TRANSFORM, exactly like `PlantMutation.sport_texture_path` and for exactly
+## its reason: a plant does not have ONE sprite. The Bramble swaps between three by
+## health, the Dandelion between four by fluff count, the Chomp between four by what it
+## is doing, and every one of those has a skin generated from it. A table keyed by
+## PLANT would have covered the standing frames and quietly left a skinned Chomp
+## reverting to unskinned art the moment it bit something.
+##
+## And never a literal in a plant script or in `PlantCatalog`: `gen_sport_svg.plant_stems()`
+## derives its stem list from those two places, so a skin path written down there would
+## make the sport generator demand a `_sport` twin of every skin — fifty-one files for
+## nothing.
+##
+## Returns `base_path` unchanged for DEFAULT_SKIN, for a family this build does not
+## know, for a family with no art (a pest skin is a tint, and there is no drawing to
+## point at), for the empty path, and for a path that already carries a skin suffix —
+## the last so calling this twice is the same as calling it once.
+static func texture_path(base_path: String, skin_id: StringName) -> String:
+	if base_path.is_empty() or skin_id == DEFAULT_SKIN or not has_art(skin_id):
+		return base_path
+	var stem: String = base_path.get_basename()
+	if stem.contains(SKIN_SUFFIX):
+		return base_path
+	return "%s%s%s.%s" % [stem, SKIN_SUFFIX, String(skin_id), base_path.get_extension()]
+
+
+## Whether this player owns `family` FOR THIS TARGET.
+##
+## `purchased` is `RunConfig.purchased_skins`: `selection_key(kind, id)` -> the list of
+## family ids bought on that row. Passed in rather than read off RunConfig, like every
+## other function here, so the whole rule is assertable with no autoload.
+##
+## DEFAULT_SKIN is always owned — it is the sprite's own art, there is nothing to buy —
+## and a family this build does not know is never owned, however the save spells it. A
+## purchase from a newer build sitting in `u` is therefore kept on disk and simply not
+## selectable, the same tolerance `parse_purchase_line` extends to a foreign id.
+static func is_owned(kind: StringName, id: StringName, family_id: StringName,
+		purchased: Dictionary) -> bool:
+	if family_id == DEFAULT_SKIN:
+		return true
+	if not has_family(family_id):
+		return false
+	var owned: Variant = purchased.get(selection_key(kind, id), [])
+	if not (owned is Array):
+		return false
+	for entry: Variant in (owned as Array):
+		if StringName(entry) == family_id:
+			return true
+	return false
+
+
+## Every skin this player can currently wear on this target, in `FAMILIES` order.
+## Always contains at least the `DEFAULT_SKIN` row — see `is_owned()`.
+static func owned_families(kind: StringName, id: StringName,
+		purchased: Dictionary) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for row: Dictionary in FAMILIES:
+		if is_owned(kind, id, StringName(row["id"]), purchased):
+			out.append(row)
+	return out
+
+
+## The next owned skin after `current` on this target, cycling back to the first once
+## the list is exhausted — what the Skins screen's row button advances through. An
+## unowned family is simply not in `owned_families()`'s output, so this never lands on
+## one; an unknown `current` (a foreign id, or one that was never bought here) is
+## treated as sitting before the first row, so cycling from it always reaches
+## DEFAULT_SKIN before anything else, never gets stuck, and never raises past the end of
+## a one-entry list.
+static func next_owned(kind: StringName, id: StringName, current: StringName,
+		purchased: Dictionary) -> StringName:
+	var choices: Array[Dictionary] = owned_families(kind, id, purchased)
 	if choices.is_empty():
 		return DEFAULT_SKIN
 	var at: int = -1
@@ -218,3 +349,22 @@ static func next_unlocked(current: StringName, earned_milestones: Dictionary) ->
 			break
 	var next_index: int = (at + 1) % choices.size()
 	return StringName(choices[next_index]["id"])
+
+
+## What a target is CALLED, as opposed to what its skin is called (`title_of`).
+##
+## Here rather than on either screen, because both screens draw the same row for the
+## same set of targets and had ended up with a copy each — the Skins screen to label a
+## row, the Shop to label a row AND to measure the widest one before any Control exists.
+## Two copies of a two-branch lookup is two places for a species to start reading as its
+## raw id on one screen and its display name on the other; `targets()` already lives
+## here, so the name for a target belongs beside it.
+##
+## Falls back to the raw id for a target this build does not carry, matching the choice
+## `title_of` makes for an unknown family — a row from a save a newer build wrote never
+## renders blank.
+static func display_name(kind: StringName, id: StringName) -> String:
+	if kind == KIND_PLANT:
+		return PlantCatalog.display_name(id)
+	var stats: Dictionary = Pest.SPECIES.get(id, {}) as Dictionary
+	return String(stats.get("display", String(id)))

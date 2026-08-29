@@ -1,10 +1,22 @@
 class_name SkinsScreen
 extends OverlayScreen
 
-## Where a player spends the milestones they have already earned on a colour for a
-## plant or a pest (plant-tower-defense-ncfv). Reads and writes entirely through
+## Where a player puts on a skin they already OWN, for a plant or a pest
+## (plant-tower-defense-ncfv). Reads and writes entirely through
 ## `RunConfig.selected_skin()` / `set_skin()` and the rule table in `game/skins.gd` —
 ## this screen has no state of its own beyond which page it is showing.
+##
+## ## Why this screen survived the Shop
+##
+## The Shop (`ShopScreen`, off the title menu) is where petals become skins. This is
+## the door off the HUD, mid-run, and it is deliberately NOT the same door: buying is
+## a decision made between runs against a balance, and equipping is a decision made
+## while looking at the garden the change lands on. Folding the two together would
+## have put a price and a purchase confirmation on a paused board, and would have made
+## "change what my Sunflowers look like" cost a trip back to the title screen.
+##
+## So this screen only ever offers what is already owned, and never a price. A player
+## who wants more is told where they come from, once, in `NOTE_TEXT`.
 ##
 ## ## Why a pager and not a scroll list
 ##
@@ -28,11 +40,17 @@ extends OverlayScreen
 ## rows are fixed; here the BACKING DATA a fixed row shows also changes with the
 ## page.
 ##
-## Each row's button cycles through `Skins.unlocked_families()` for that target,
-## never through a locked one — a locked skin is never offered, only counted, in
-## the row's second column ("2/4 unlocked"), which is the whole of how this screen
-## tells a player there is more to unlock without needing a locked/greyed button
-## state.
+## Each row's button cycles through `Skins.owned_families()` for that target, never
+## through an unowned one — an unowned skin is never offered, only counted, in the
+## row's second column ("2/4 owned"), which is the whole of how this screen tells a
+## player there is more to have without needing a locked/greyed button state, and
+## without repeating the Shop's price list on a paused board.
+##
+## The count is now PER TARGET rather than per player, because ownership is: buying
+## Hoarfrost for the Sunflower buys nothing for the Aphid. The old
+## `Skins.unlocked_families(earned_milestones)` answered the same number for every
+## row on the page, which was correct while a milestone unlocked a family everywhere
+## at once and would now be a readout that never changes.
 
 const NODE_NAME := "SkinsScreen"
 
@@ -52,11 +70,11 @@ const ROWS_TOP: float = 136.0
 ## Column x offsets from the panel's left edge. Same NAME_X the other overlays use,
 ## so the Back button lines up under this screen's rows the way it does under
 ## theirs; the other two are this screen's own, since neither of the other screens
-## has an "N/M unlocked" column.
+## has an "N/M owned" column.
 const NAME_X: float = 32.0
 const NAME_WIDTH: float = 280.0
-const UNLOCK_X: float = 328.0
-const UNLOCK_WIDTH: float = 170.0
+const OWNED_X: float = 328.0
+const OWNED_WIDTH: float = 170.0
 const BUTTON_X: float = 518.0
 
 ## The pager row, in the footer strip beside the Back button — same y, same
@@ -70,19 +88,31 @@ const PAGER_LABEL_WIDTH: float = 90.0
 const PAGER_NEXT_X: float = 556.0
 const PAGER_NEXT_WIDTH: float = 70.0
 
-const NOTE_TEXT := ("Pick a colour for each plant and pest you have unlocked one for. "
-	+ "Locked colours need their milestone first.")
+## Deliberately shorter than the sentence it replaces, and the reason is mechanical
+## rather than editorial: `add_note_label` gives this string the panel's full 700px
+## with `clip_text` and OVERRUN_TRIM_ELLIPSIS, so a sentence over budget is not a
+## warning, it is a sentence the player never reads the end of. The old text was 107
+## characters against `OptionsScreen.NOTE_TEXT`'s 78 in a panel of exactly the same
+## width; this is 76. `test_the_skins_screen_note_fits_the_paper_it_is_printed_on`
+## measures the built Label through `_T.text_width` -- its own resolved theme font,
+## not a character count and not the eye. `get_minimum_size()` is no use here: it
+## reports the clip stub on exactly the labels that carry `clip_text`.
+##
+## It names the Shop because this screen no longer has any way to say "there is more":
+## the second column counts what is owned, and a player who owns one family sees
+## "1/4 owned" with nothing telling them where the other three live.
+const NOTE_TEXT := "Pick a colour for each plant and pest you own one for. Buy more in the Shop."
 
 var _name_labels: Array[Label] = []
-var _unlock_labels: Array[Label] = []
+var _owned_labels: Array[Label] = []
 var _skin_buttons: Array[Button] = []
 var _page_label: Label
 var _prev_button: Button
 var _next_button: Button
 
 ## Every (kind, id) pair this screen can page through, fixed for the life of the
-## screen — a save recording a new milestone mid-session cannot add a target, only
-## unlock a skin for one already here.
+## screen — a purchase made mid-session cannot add a target, only add a family to
+## one already here.
 var _all_targets: Array[Dictionary] = []
 ## The current page's targets, one entry per row slot in `_skin_buttons` order — an
 ## empty Dictionary for a slot past the end of `_all_targets` on the last page.
@@ -137,8 +167,8 @@ func _build_rows() -> void:
 	for i: int in page_capacity():
 		_name_labels.append(add_row_label("SkinName%d" % i, "",
 			Vector2(left + NAME_X, y + 8.0), Vector2(NAME_WIDTH, 24.0), GardenTheme.INK))
-		_unlock_labels.append(add_row_label("SkinUnlock%d" % i, "",
-			Vector2(left + UNLOCK_X, y + 8.0), Vector2(UNLOCK_WIDTH, 24.0), GardenTheme.INK_SOFT))
+		_owned_labels.append(add_row_label("SkinOwned%d" % i, "",
+			Vector2(left + OWNED_X, y + 8.0), Vector2(OWNED_WIDTH, 24.0), GardenTheme.INK_SOFT))
 		# Bound, not read off the loop variable — OptionsScreen._build_rows carries the
 		# same comment for the same reason: a lambda closing over `i` directly is how
 		# every button ends up pressing the last slot.
@@ -210,7 +240,7 @@ func _show_page(page: int) -> void:
 		var idx: int = start + i
 		var visible: bool = idx < _all_targets.size()
 		_name_labels[i].visible = visible
-		_unlock_labels[i].visible = visible
+		_owned_labels[i].visible = visible
 		_skin_buttons[i].visible = visible
 		_page_targets.append(_all_targets[idx] if visible else {})
 		if visible:
@@ -223,7 +253,7 @@ func _show_page(page: int) -> void:
 		_next_button.disabled = _page >= total_pages() - 1
 
 
-## Redraws one slot from RunConfig — the current choice and the unlocked count —
+## Redraws one slot from RunConfig — the current choice and the owned count —
 ## the same "redraw from the owner, never trust what the button already says"
 ## rule `OptionsScreen.refresh()` follows.
 func _refresh_slot(i: int) -> void:
@@ -232,14 +262,19 @@ func _refresh_slot(i: int) -> void:
 		return
 	var kind: StringName = target["kind"]
 	var id: StringName = target["id"]
-	_name_labels[i].text = _display_name(kind, id)
-	var unlocked: Array[Dictionary] = Skins.unlocked_families(RunConfig.earned_milestones)
+	_name_labels[i].text = Skins.display_name(kind, id)
+	# Asked per target, with this row's own kind and id, because that is the grain
+	# ownership actually has now — `RunConfig.purchased_skins` is keyed by
+	# `Skins.selection_key(kind, id)`. Reading it once outside the loop and reusing it
+	# for every row is the shape this had while a milestone unlocked a family for the
+	# whole board, and it would now print the Sunflower's count on the Aphid's row.
+	var owned: Array[Dictionary] = Skins.owned_families(kind, id, RunConfig.purchased_skins)
 	var tag: String = "Plant" if kind == Skins.KIND_PLANT else "Pest"
-	_unlock_labels[i].text = "%s - %d/%d unlocked" % [tag, unlocked.size(), Skins.FAMILIES.size()]
+	_owned_labels[i].text = "%s - %d/%d owned" % [tag, owned.size(), Skins.FAMILIES.size()]
 	_skin_buttons[i].text = Skins.title_of(RunConfig.selected_skin(kind, id))
 
 
-## Advances the slot's target to its next unlocked skin and persists the choice.
+## Advances the slot's target to its next OWNED skin and persists the choice.
 ## The only writer this screen has — "changed on screen" and "changed in
 ## RunConfig" cannot come apart if there is one door, the same argument
 ## `OptionsScreen.flip()` makes for its own single writer.
@@ -252,16 +287,9 @@ func _on_skin_button_pressed(slot: int) -> void:
 	var kind: StringName = target["kind"]
 	var id: StringName = target["id"]
 	var current: StringName = RunConfig.selected_skin(kind, id)
-	var next: StringName = Skins.next_unlocked(current, RunConfig.earned_milestones)
+	var next: StringName = Skins.next_owned(kind, id, current, RunConfig.purchased_skins)
 	RunConfig.set_skin(kind, id, next)
 	_refresh_slot(slot)
-
-
-func _display_name(kind: StringName, id: StringName) -> String:
-	if kind == Skins.KIND_PLANT:
-		return PlantCatalog.display_name(id)
-	var stats: Dictionary = Pest.SPECIES.get(id, {}) as Dictionary
-	return String(stats.get("display", String(id)))
 
 
 ## Every real (non-empty) target on the page currently shown — for tests and the

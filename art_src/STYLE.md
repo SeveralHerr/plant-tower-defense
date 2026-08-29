@@ -98,6 +98,67 @@ block, and a bare run of that tool fails if the two disagree. This table is the 
 reader and the only one a person reads, so it is checked too: `tools/svg_style_check.py`
 reports any shade one carries and another does not.
 
+## The skin ramps — bought skins only
+
+A **skin** is what a plant wears when the player has bought one in the Petal shop, and it
+is not a tint. `<plant>_skin_<family>.svg` is generated from the parent by
+`tools/gen_skin_svg.py`, which makes **two** changes where a sport makes one:
+
+1. **Paint** is remapped onto the family's eight-rung ramp by the same luminance-nearest,
+   order-preserving, nothing-collapses rule the mutant ramps use. Achromatic paint is left
+   alone, so the Chomp Flower's teeth are bone under every skin.
+2. **Geometry** is appended — a family motif, drawn in that family's own anchors, as a
+   single `<g>` before `</svg>`. That is the point of the feature: a skin the player paid
+   for has to change the silhouette, not just the hue. `golden` wears a wheat-and-laurel
+   crown over the top of the tile and a narrow band at the base; `frost` stands three ice
+   shards at the base under one hexagonal crystal; `ember` burns a scorch crescent at the
+   base with three flecks rising off it.
+
+   Every motif is mirror-symmetric about **x = 32** and lives inside **x, y ∈ [3, 61]**.
+   Neither is taste: `test_content_is_bilaterally_centred` allows 1.0 px of midline error
+   and `test_content_stays_inside_the_canvas` wants a 1 px transparent margin on all four
+   sides, and mirroring about x = 32 makes the first hold by construction whatever the
+   parent's bounds are. The motifs sit in tile margins measured from the union of all
+   seventeen rendered parents (free at y ≤ 5, y ≥ 58, x ≤ 5, x ≥ 58, plus both top
+   corners) — a motif that ignored that map would bury the plant it decorates.
+
+These twenty-four shades are legal in a `_skin_*` sprite and **nowhere else**, and each
+ramp is legal only in **its own family's** sprites: `test_sprite_style.gd`'s `_palette_rgb`
+hands a `_skin_frost` stem the frost anchors and no others, so an ember shade that leaked
+into a frost sprite is still a finding. The thirty-four hand-drawn sprites stay held to
+exactly the kit palette above, unwidened.
+
+| Ramp | 1 (deepest) | 2 | 3 | 4 | 5 | 6 | 7 | 8 (palest) |
+|---|---|---|---|---|---|---|---|---|
+| Golden (45°) | `#463604` | `#695006` | `#8C6B09` | `#AF870E` | `#D0A218` | `#E8BC37` | `#F5D36E` | `#FCE8AA` |
+
+| Ramp | 1 (deepest) | 2 | 3 | 4 | 5 | 6 | 7 | 8 (palest) |
+|---|---|---|---|---|---|---|---|---|
+| Frost (200°) | `#053046` | `#084969` | `#0C618C` | `#147BAF` | `#2896CD` | `#50B3E4` | `#87CEF2` | `#B9E4FA` |
+
+| Ramp | 1 (deepest) | 2 | 3 | 4 | 5 | 6 | 7 | 8 (palest) |
+|---|---|---|---|---|---|---|---|---|
+| Ember (15°) | `#481504` | `#6C2108` | `#902D0C` | `#B43910` | `#D6491A` | `#EC6B40` | `#F89B7C` | `#FDC7B5` |
+
+Eight rungs, again, and this time it is the tighter constraint: a sport splits its colours
+across two ramps by hue, a skin puts **all** of them on one, and the widest parents (Corn
+Cobbler, Sunflower, the Chomp's late eating frame) carry eight distinct chromatic shades.
+Nothing may collapse, so eight is the floor and the generator fails loudly rather than
+flattening a sprite that outgrows it.
+
+Each anchor derives its **third channel** from the other two, the same trick the mutant
+ramps use, so all eight of a ramp sit within half a degree of one hue and the outline rule
+("the rim is a darker shade of the fill's own hue") survives a recolour that knows nothing
+about it. Both end rungs stop short of white and black for the reason recorded above about
+rung 8 and the Aloe: below saturation 0.12 the outline check reads a fill as grey and warns
+that a coloured rim is circling bare paper. Every palest anchor here sits at 0.26 or above.
+
+Do not hand-pick a shade from these tables, and do not edit a `_skin_*` file: a skin is a
+function of its parent and its ramp, and `python tools/gen_skin_svg.py` fails on any edit
+the two do not explain — including a fifty-second file for a family that does not exist.
+`--palette` prints these as the gate's `SKIN_PALETTES` block, and `tools/svg_style_check.py`
+reports any shade this page carries and the gate does not, or the reverse.
+
 ## Rendering
 
 `art_src/*.svg` are the sources; they never ship. Godot rasterises them:

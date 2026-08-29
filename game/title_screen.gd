@@ -105,9 +105,21 @@ const HINT_HEIGHT: float = 22.0
 ## size: "Difficulty · Standard" draws 173 and does not fit, while the profile's own
 ## label ("Standard", 80) does. The word the label omits is carried by the Start row
 ## above, which names the profile it will start.
+## SEVEN SINCE THE PETAL SHOP, and the seventh sits at the END rather than beside the
+## difficulty button. It is appended because it is the only destination on this menu a
+## player reaches with something to SPEND: the six above are all read-or-configure
+## doors, and the shop is where a run's earnings go. Appending puts it alone on a
+## full-width row of its own (`menu_rows(7)` is `[[0],[1],[2,3],[4,5],[6]]`), which is
+## the shape the grid was designed to give a lone trailing secondary and reads as a
+## decision rather than as a hole beside Options.
+##
+## IT SPENDS THE LAST SPARE ROW BUT ONE. `menu_capacity()` is 8 and this is the
+## seventh, so an EIGHTH destination fits beside this one and a ninth does not fit at
+## any pitch — the arithmetic and what would have to change is written out at
+## `test_the_title_menu_has_room_for_the_next_destination`.
 const MENU_BUTTON_NAMES: Array[String] = [
 	"StartButton", "EndlessButton", "DifficultyButton",
-	"NotebookButton", "KeysButton", "OptionsButton",
+	"NotebookButton", "KeysButton", "OptionsButton", "ShopButton",
 ]
 
 
@@ -371,9 +383,11 @@ var _difficulty_button: Button
 var _notebook_button: Button
 var _keys_button: Button
 var _options_button: Button
+var _shop_button: Button
 var _notebook: NotebookScreen = null
 var _keys_screen: KeyBindingScreen = null
 var _options_screen: OptionsScreen = null
+var _shop_screen: ShopScreen = null
 
 ## The gradient behind everything, held rather than re-found by name:
 ## `_apply_viewport_layout()` re-sizes it on every window change.
@@ -763,6 +777,13 @@ func _build_buttons() -> void:
 	_options_button = _make_button(5, count, "Options")
 	_options_button.pressed.connect(_open_options)
 
+	# "Shop", not "Petal Shop": the label has a full-width row and could afford the
+	# longer name, but the currency is a thing the player meets INSIDE the screen
+	# (the balance line and the note both name it) and a menu entry naming a currency
+	# a first-time player has never seen explains less than the plain noun does.
+	_shop_button = _make_button(6, count, "Shop")
+	_shop_button.pressed.connect(_open_shop)
+
 	# Explicit wrap-around, so Down off the last button returns to the first
 	# instead of dead-ending — the geometric default only ever walks the list.
 	_link_focus(menu_buttons())
@@ -1120,15 +1141,45 @@ func _close_options() -> void:
 	_options_button.grab_focus()
 
 
-## True while any overlay covers the menu. One shared guard rather than three:
-## the notebook, the keys screen and the options screen all go inert-behind-me,
-## and independent "is mine open" checks would happily stack one on another.
+## The shop, same overlay contract a fourth time — see _open_keys. Built through
+## ShopScreen.build() rather than here for the same reason the other two are: the
+## PROCESS_MODE_ALWAYS that keeps an overlay alive over a paused tree is a property
+## of the screen, and a second construction site is how one of them ends up without
+## it. This screen has one door today, and that is exactly when it is cheapest to
+## build it the way a second door would need.
+##
+## The connection stays direct rather than deferred: nothing on the title screen
+## answers Escape, so there is no keystroke for a mid-event close to fall through to.
+## The pause card defers its own for exactly that reason -- see PauseScreen._open_keys.
+func _open_shop() -> void:
+	if overlay_open():
+		return
+	_shop_screen = ShopScreen.build()
+	_shop_screen.back_requested.connect(_close_shop)
+	add_child(_shop_screen)
+	_set_menu_active(false)
+
+
+func _close_shop() -> void:
+	if _shop_screen != null and is_instance_valid(_shop_screen):
+		_shop_screen.queue_free()
+	_shop_screen = null
+	_set_menu_active(true)
+	_shop_button.grab_focus()
+
+
+## True while any overlay covers the menu. One shared guard rather than four:
+## the notebook, the keys screen, the options screen and the shop all go
+## inert-behind-me, and independent "is mine open" checks would happily stack one on
+## another.
 func overlay_open() -> bool:
 	if _notebook != null and is_instance_valid(_notebook):
 		return true
 	if _keys_screen != null and is_instance_valid(_keys_screen):
 		return true
-	return _options_screen != null and is_instance_valid(_options_screen)
+	if _options_screen != null and is_instance_valid(_options_screen):
+		return true
+	return _shop_screen != null and is_instance_valid(_shop_screen)
 
 
 func _set_menu_active(active: bool) -> void:

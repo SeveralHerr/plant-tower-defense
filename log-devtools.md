@@ -11051,3 +11051,73 @@ letting both stand as open.
   `mark_script_reached` shape in CLAUDE.md, and the voice pool gave a better answer than a
   direct call would have: it proves the game's own call path ran, not just that a function
   returns the right string.
+
+## 2026-08-29 — Lane B of the Petal-shop fan-out: 51 generated skin drawings
+
+- Value: **warranted** — the Godot rasteriser produced the one number no static reader
+  here could: how much of each parent every motif actually covers, measured off the
+  rendered pixels.
+  - Expected: that the three motifs would clear the parents, since every coordinate was
+    placed against a union-occupancy map built from the 17 rendered parent PNGs.
+  - Got: worst occlusion 5.6% (`dandelion_bare` under ember) and 5.3%
+    (`sunflower` under golden, the crown resting on the topmost petals, by design);
+    every other pair under 3%. And the ember motif came back at **116 opaque px**
+    against frost's 174 and golden's 440 — the one family a player could miss.
+  - Found: the ember crescent was too thin, fixed mid-run by thickening the belly to
+    4.25 px and pushing the tips to x = 7 / 57 (now 159 px, still entirely in rows no
+    parent paints). Also found `aloe_skin_ember`'s best-major luminance gap against
+    grass is 33 where the parent aloe's is 74 — reported, not fixed.
+  - Cheaper: nothing. The occlusion and the ink counts are properties of rasterised
+    pixels; `svg_style_check.py` says so itself under NOT COVERED, and it was right.
+
+- Gap: **no gaps this turn.** `render_svg.gd` rendered 105 of 105 and `--import` came
+  back 0 twice; the file-based bus was never needed, because nothing about this change
+  is a running-game question. The one harness-adjacent friction was not the harness:
+  a bash heredoc ate a level of backslash escaping and turned a `\n` inside a regex
+  into a real newline, exactly as `.claude/skills/house-static-checker` records. Its
+  own advice (prefer an editing tool over a heredoc for a needle containing a
+  backslash) is what fixed it, twice.
+  - Improvement: none needed; the skill already states the rule and it worked.
+
+## 2026-08-29 — the Petal shop: a meta-currency, a title-screen shop, and skins that are drawings
+
+Four lanes in one worktree behind `docs/skin-shop-contract.md`; this entry is the
+integrator's, covering the runtime pass none of the four were allowed to run.
+
+- Value: **warranted** — runtime produced two claims the diff could not, and one of them
+  was a defect four gates and 28,829 headless assertions had already passed over.
+  - Expected: the funnel change would resolve `<stem>_skin_<family>.png`, the modulate
+    would be white, and the save would gain `p`/`u` lines. All three were readable in the
+    diff; I expected the run to confirm them and find nothing.
+  - Got: `get-state` on the placed plant's sprite returned
+    `texture: (res://assets/sprites/corn_cobbler_skin_golden.png)` with
+    `modulate: {"a":1.0,"b":1.0,"g":1.0,"r":1.0}`, and the on-disk save read `p7` /
+    `u1 plant:corn_cobbler=golden` after a real `press` on a real button took the balance
+    12 → 7. That is the whole feature end to end, and no headless test asserts the loaded
+    texture because none of them can `load()` a PNG that only exists after a render.
+  - Found: **two.** (1) `ShopScreen`'s two pager widths were the only hand-typed sizes on
+    a screen whose every other column is measured, and `Control.set_size` clamps to
+    `get_combined_minimum_size()` — a Button asked for 70 draws at 93, so Prev sat 13px
+    under the page label. Caught by Lane C's own containment sweep, then *diagnosed*
+    windowed: `node-bounds` reported `768, 560, 93x40` against a reserved 70. Fixed by
+    deriving both widths through `GardenTheme.measure` like the other three, and pinned by
+    `test_the_shop_pager_reserves_the_width_its_buttons_actually_take`, which asserts the
+    reservation against the engine's own `get_combined_minimum_size()` rather than the
+    drawn rects against each other — the containment sweep already had the latter and
+    could not say why. (2) `✿` U+273F and `✓` U+2713 had no `Glyphs.TABLE` row, which
+    `test_every_glyph_in_the_source_has_a_row` caught headlessly; the live screen then
+    showed the *interesting* half — the price draws as `Heirloom Gold  5` with no mark at
+    all, so `Font.has_char()` returned false and Lane C's fallback branch is the one that
+    actually ships. A mark assumed present would have drawn as a hex box with a normal
+    advance and passed every width assertion on the screen.
+  - Cheaper: nothing. The texture claim needs a rendered PNG, an imported project and a
+    placed plant; the font claim needs a resolved font. Reading the diff would have given
+    neither, and the headless suite was green on the pager overlap's *cause* while red on
+    its symptom.
+
+- Gap: **no gaps this turn.** Four lanes sharing one `.godot/` was the only real
+  constraint and the harness already documents it (`name_check` is the parallel-safe gate,
+  everything else serialises through the integrator); that worked exactly as written.
+  `launch --isolated --snapshot-userstate` did its job with six other Godot processes on
+  the machine — `quit` reported `restored 1 file(s)` and the developer's save is back at
+  `v10`, which is the one thing a run that writes a persisted balance had to get right.
