@@ -1917,6 +1917,9 @@ func test_the_spawn_pacing_measures_the_road_the_pests_actually_walk() -> String
 	## Board.PATH_CORNERS rather than from a real Board, which is fast and pure and
 	## would go silently wrong the day the path shape changed — so this walks the
 	## polyline Board really hands the pests and compares.
+	# BOARD.NEW() VERDICT: PINS the shipped board -- WaveDirector.route_length()
+	# hardcodes Board.PATH_CORNERS internally with no road parameter, so this
+	# comparison is only meaningful against the default board.
 	var board := Board.new()
 	var route: PackedVector2Array = board.route()
 	var walked: float = 0.0
@@ -2639,6 +2642,9 @@ func test_the_entrance_rise_agrees_with_the_heading_about_won() -> String:
 ## sixteen killed at the exit is a run in trouble, while "one lit cell at each
 ## end" reads as a tidy 50% either way.
 func test_the_run_depth_is_weighted_by_losses_not_by_lit_cells() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- the weighted-mean formula is
+	# road-general, but this reads Board.PATH_CORNERS[0] directly rather than a
+	# corpus-supplied corner, so the site itself pins the default road's entry cell.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var err: String = _T.assert_true(board != null, "the board stood up")
@@ -2684,6 +2690,8 @@ func test_the_run_depth_is_weighted_by_losses_not_by_lit_cells() -> String:
 ## and the tint therefore always describe the SAME wave -- the last one that drew
 ## blood -- which is the property that stops the sentence contradicting the paint.
 func test_a_clean_wave_leaves_both_the_tint_and_the_prep_reading_alone() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- relies on Vector2i(0,0)
+	# being grass under the default layout for its "off-road" probe.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var err: String = _T.assert_true(board != null, "the board stood up")
@@ -3019,6 +3027,8 @@ func test_escapes_cannot_buy_the_exit_a_chokepoint_it_never_earned() -> String:
 
 ## Board-level, no Game: what stops_at subtracts, and what it refuses to.
 func test_a_cells_stops_are_its_losses_minus_the_pests_that_walked_out() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- reads Board.PATH_CORNERS[0]
+	# directly and relies on Vector2i(0,0) being grass under the default layout.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var err: String = _T.assert_true(board != null, "the board stood up")
@@ -3297,6 +3307,9 @@ func test_the_map_legend_clears_the_card_the_road_and_the_bottom_of_the_screen()
 	# number below would have been measured against a cell that does not exist —
 	# a whole test passing on nothing, which is the failure mode is_path()'s own
 	# docstring was written about.
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- this is a UI pixel
+	# layout check (caption clears the card/road-row/viewport bottom); the board is
+	# only a probe for a valid exit cell, not a road-shape claim.
 	var probe := Board.new()
 	var way_out: Vector2i = probe.exit_cell()
 	var err: String = _T.assert_true(way_out.x >= 0 and way_out.y >= 0,
@@ -3950,6 +3963,9 @@ func test_every_plant_that_can_touch_a_pest_is_named_as_one() -> String:
 ## flag calls every road cell reached while the cob beside the entry can touch
 ## four of them.
 func test_the_engagement_flag_can_only_ever_mark_a_prefix_of_the_road() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- staged against the real
+	# (default) road with a hardcoded cob cell Vector2i(1, 0); the docstring above
+	# says so explicitly ("staged against the real road and a real reach").
 	var probe := Board.new()
 	var road: Array[Vector2i] = probe.road_cells()
 	var route: PackedVector2Array = probe.route()
@@ -4267,6 +4283,9 @@ func test_the_coverage_note_fits_the_status_row() -> String:
 	# The widest reachable frontier is 0.0, and it is not hypothetical: a lone
 	# Chomp on (0, 0) reaches the road cell 64px below it and misses the next at
 	# 90.5px, which is one covered cell at path index 0.
+	# BOARD.NEW() VERDICT: PINS the shipped board -- (0,0)'s 64px/90.5px distances
+	# to the road are specific to the default layout; also a non-road UI-text-fit
+	# gate underneath.
 	var probe := Board.new()
 	var lone: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
 		probe, Vector2i(0, 0), ChompFlower.GRAB_RADIUS)
@@ -4608,6 +4627,9 @@ func test_planting_a_cob_rotates_the_stripes_under_the_ground_it_now_covers() ->
 ## and the assertions below re-derive every number from the cells themselves
 ## rather than restating one.
 func test_a_kernel_can_kill_on_ground_the_coverage_map_calls_unaimed() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- post/beyond are hand-picked
+	# cells re-derived by hand each time the default road's shape moves (see the
+	# docstring above: "the pair moved when the road grew its climb").
 	var probe := Board.new()
 	var post := Vector2i(0, 7)
 	var beyond := Vector2i(4, 7)
@@ -4712,6 +4734,9 @@ func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
 		corn_level: int, roll_seed: int, max_frames: int,
 		road_corners: Array[Vector2i] = []) -> Dictionary:
 	var dt: float = 1.0 / 60.0
+	# BOARD.NEW() VERDICT: PROPERTY -- this helper already takes `road_corners` and
+	# refuses (rather than silently defaulting) a bad one, so a caller can drive a
+	# whole-wave simulation over any corpus road; see callers below for defaults.
 	var board := Board.new()
 	if not road_corners.is_empty():
 		var refusal: String = board.set_road(road_corners)
@@ -5163,6 +5188,10 @@ func _mixed_garden() -> Array:
 ## whole-road garden reaches all of the road, and the mixed garden reaches most but
 ## not all of it.
 func test_the_recorded_gardens_still_have_the_property_they_claim() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- _whole_road_garden() and
+	# _mixed_garden() are recorded, taste-based cell lists for the default road
+	# ("not derivable", per the docstring above them), so this checks the default
+	# board specifically.
 	var probe := Board.new()
 	var road: int = probe.road_cells().size()
 	var err: String = _T.assert_gt(road, 2, "the probe board built a road to measure against")
@@ -5531,6 +5560,10 @@ func test_a_winged_pest_only_outruns_the_map_in_a_garden_with_no_corn_in_it() ->
 	# cells against the pre-climb road and twenty-six against the current one; it is
 	# now whatever the road needs, and the assertion below reads `road_cells` rather
 	# than a literal so it cannot disagree with the garden it was built from.
+	# BOARD.NEW() VERDICT: PINS the shipped board -- the cover derivation itself is
+	# road-general, but this is one driven wave-simulation demonstration against
+	# the freshly-constructed default board, not swept across the corpus, because
+	# _over_promise_run is expensive to run per-road.
 	var walled_probe := Board.new()
 	var walled: Array = _cover_greedily(walled_probe, ChompFlower.GRAB_RADIUS, -1)
 	walled_probe.free()
