@@ -5072,7 +5072,7 @@ func _collect_scenes(dir_path: String, out: Array[String]) -> void:
 		return
 	dir.list_dir_begin()
 	var name: String = dir.get_next()
-	while name != "":
+	while name != "":  # loop-bound-check: ok - DirAccess.get_next() over a finite real directory; "" is the documented end.
 		if name.begins_with("."):
 			name = dir.get_next()
 			continue
@@ -7921,7 +7921,7 @@ func _code_without_strings(src: String) -> String:
 		var kept: String = ""
 		var quote: String = ""
 		var i: int = 0
-		while i < line.length():
+		while i < line.length():  # loop-bound-check: ok - a string index bounded by that string's own length.
 			var c: String = line[i]
 			if quote != "":
 				if c == "\\" and i + 1 < line.length():
@@ -7962,7 +7962,7 @@ func _test_corpus() -> String:
 		return ""
 	dir.list_dir_begin()
 	var name: String = dir.get_next()
-	while name != "":
+	while name != "":  # loop-bound-check: ok - DirAccess.get_next() over a finite real directory; "" is the documented end.
 		if name.ends_with(".gd"):
 			chunks.append(_code_without_strings(
 				FileAccess.get_file_as_string("res://test/unit".path_join(name))))
@@ -7980,7 +7980,7 @@ func _game_class_names() -> Dictionary:
 	var finder := RegEx.create_from_string("(?m)^class_name\\s+([A-Za-z_][A-Za-z0-9_]*)")
 	dir.list_dir_begin()
 	var name: String = dir.get_next()
-	while name != "":
+	while name != "":  # loop-bound-check: ok - DirAccess.get_next() over a finite real directory; "" is the documented end.
 		if name.ends_with(".gd"):
 			var path: String = "res://game".path_join(name)
 			var m: RegExMatch = finder.search(_code_only(FileAccess.get_file_as_string(path)))
@@ -10394,8 +10394,10 @@ func test_the_dandelions_drawn_head_follows_its_seed_count() -> String:
 		aphid.position = plant.position + Vector2(40, 0)
 		var pests: Array[Pest] = [aphid]
 		var seen: Array[String] = []
-		while err == "" and plant.fluff() > 0:
+		var fired: int = 0
+		while err == "" and plant.fluff() > 0 and fired < Dandelion.FLUFF_MAX + 2:
 			plant._act(Dandelion.SHOT_INTERVAL, pests)
+			fired += 1
 			var path: String = plant.head_texture_path()
 			err = _T.assert_eq(path, Dandelion.texture_for_fluff(plant.fluff()),
 				"at %d seed(s) the head wears the frame drawn for %d" % [plant.fluff(), plant.fluff()])
@@ -14398,16 +14400,20 @@ func test_the_cheapest_upgrade_skips_a_plant_with_no_rung_left() -> String:
 	if err == "":
 		# Walk the cheap one to the top. It still HAS a ladder; it can no longer
 		# climb one, and that is exactly the difference under test.
-		while cheap.can_upgrade():
+		var cheap_climbs := 0
+		while cheap.can_upgrade() and cheap_climbs < CornCobbler.LEVELS.size() + 2:
 			cheap.level += 1
+			cheap_climbs += 1
 		err = _T.assert_true(cheap.has_upgrades(),
 			"a maxed plant still has a ladder, so has_upgrades() cannot tell them apart")
 	if err == "":
 		err = _T.assert_eq(Game.cheapest_upgrade([cheap, dear]), dear,
 			"so the maxed plant is stepped over and the dearer one is named")
 	if err == "":
-		while dear.can_upgrade():
+		var dear_climbs := 0
+		while dear.can_upgrade() and dear_climbs < ChompFlower.LEVELS.size() + 2:
 			dear.level += 1
+			dear_climbs += 1
 		err = _T.assert_eq(Game.cheapest_upgrade([cheap, dear]), null,
 			"and a board with nothing left to climb answers null, not a maxed plant")
 	if err == "":
@@ -18569,7 +18575,7 @@ func test_the_holds_line_is_priced_by_the_selection_budget() -> String:
 func _focusable_under(root: Node) -> Array[Control]:
 	var out: Array[Control] = []
 	var stack: Array[Node] = [root]
-	while not stack.is_empty():
+	while not stack.is_empty():  # loop-bound-check: ok - a DFS over the actual scene tree, which is finite; every pop is one node consumed.
 		var node: Node = stack.pop_back()
 		var control := node as Control
 		if control != null and control.focus_mode == Control.FOCUS_ALL:
@@ -18601,7 +18607,7 @@ func _overlay_subclasses() -> Dictionary:
 			continue
 		var script := load(String(entry.get("path", ""))) as Script
 		var walk: Script = script
-		while walk != null:
+		while walk != null:  # loop-bound-check: ok - walks get_base_script() up a finite engine class hierarchy, which cannot cycle.
 			walk = walk.get_base_script()
 			# Identity against the class itself, not against the string
 			# "OverlayScreen": a typo in a string is a silently empty sweep, and a typo

@@ -223,7 +223,7 @@ func test_the_lane_hatch_runs_at_one_angle_and_stays_inside_its_own_cell() -> St
 		Vector2(float(Board.CELL), float(Board.CELL))).grow(0.001)
 	var checked: int = 0
 	var i: int = 0
-	while i + 1 < segments.size():
+	while i + 1 < segments.size():  # loop-bound-check: ok - bounded by the segment list's own size, not by the code under test.
 		var from: Vector2 = segments[i]
 		var to: Vector2 = segments[i + 1]
 		i += 2
@@ -1371,7 +1371,7 @@ func _greedy_garden_size(board: Board, reach_px: float) -> int:
 	for cell: Vector2i in board.road_cells():
 		uncovered[cell] = true
 	var placed: int = 0
-	while not uncovered.is_empty():
+	while not uncovered.is_empty():  # loop-bound-check: ok - breaks below on best_gain == 0, and every other pass erases at least one cell from `uncovered`.
 		var best_gain: int = 0
 		var best_cell := Vector2i(-1, -1)
 		for y: int in range(Board.ROWS):

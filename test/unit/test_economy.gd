@@ -96,12 +96,14 @@ func test_a_packet_never_hands_back_something_you_already_own() -> String:
 	# above it and rare's cap dropped to 2, at which point the same spin came back.
 	# Twice is enough: the tier that reaches everything is now derived.
 	var top: StringName = SeedBank.PACKET_ORDER[SeedBank.PACKET_ORDER.size() - 1]
-	while not bank.locked_plants().is_empty():
+	var guard: int = 0
+	while not bank.locked_plants().is_empty() and guard < 20:
 		var got: StringName = bank.buy_packet(top)
 		var err: String = _T.assert_false(seen.has(got), "packet rolled %s twice" % got)
 		if err != "":
 			return err
 		seen.append(got)
+		guard += 1
 	var err2: String = _T.assert_gt(seen.size(), 0, "at least one packet was opened")
 	if err2 != "":
 		return err2

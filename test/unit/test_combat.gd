@@ -4467,7 +4467,7 @@ func test_the_road_marks_pressured_ground_the_garden_is_not_aimed_at() -> String
 		if err != "":
 			break
 		var i: int = 0
-		while i + 1 < segments.size():
+		while i + 1 < segments.size():  # loop-bound-check: ok - bounded by the segment list's own size, not by the code under test.
 			var span: Vector2 = segments[i + 1] - segments[i]
 			checked += 1
 			err = _T.assert_gt(span.x * span.y * want, 0.0,
@@ -4892,7 +4892,7 @@ func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
 			tally["slow"] = int(tally["slow"]) + 1
 
 	var frame: int = 0
-	while frame < max_frames:
+	while frame < max_frames:  # loop-bound-check: ok - max_frames is a caller-supplied int, a hard cap by construction.
 		frame += 1
 		# 1. the schedule
 		director._process(dt)
@@ -5099,7 +5099,7 @@ static func _cover_greedily(probe: Board, reach: float, target: int) -> Array:
 			if not hit.is_empty():
 				reaches[at] = hit
 	var garden: Array = []
-	while road.size() - uncovered.size() < want and not reaches.is_empty():
+	while road.size() - uncovered.size() < want and not reaches.is_empty():  # loop-bound-check: ok - breaks below on best_gain == 0, and every other pass erases an entry from `reaches`.
 		var best: Vector2i = Vector2i(-1, -1)
 		var best_gain: int = 0
 		for at: Vector2i in reaches:
@@ -11498,7 +11498,7 @@ func test_only_the_sundew_calls_the_hit_cue_glancing() -> String:
 		if name == "pest.gd":
 			continue  # the declaration itself, not a call site
 		var from: int = 0
-		while true:
+		while true:  # loop-bound-check: ok - breaks below the moment src.find() returns -1; from only ever advances.
 			var at: int = src.find("flash_hit(", from)
 			if at < 0:
 				break
