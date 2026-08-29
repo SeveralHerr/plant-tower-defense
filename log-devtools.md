@@ -10801,3 +10801,38 @@ is likely to be at least as productive.
     `.devtools/session_lock.json` (pid + session id + mtime, written on first Edit/Write
     and checked on `bd update --claim`) that warns rather than blocks would have named
     this at claim time instead of at `git log` time.
+
+## 2026-08-29 — next-wave button pulses once it's pressable (jlsc)
+
+- Value: **warranted** — the live game is the only thing that could confirm the Tween
+  actually animates a real Control's `modulate.a` under a real render loop, since
+  `GardenTheme.animations_enabled()==false` headless means every unit assertion here is
+  necessarily about the edge-detect flag and the at-rest reset, never about the motion
+  itself.
+  - Expected: `_next_wave_button.modulate.a` oscillates between 1.0 and
+    `NEXT_WAVE_PULSE_DIM` while `can_start_wave` is true, and snaps back to 1.0 the
+    instant the button is pressed (wave goes live, `can_start_wave` flips false).
+  - Got: `get-state _next_wave_pulse_active -> true`, `node-bounds` alpha `0.9` and a
+    separate `get-state modulate` read `a: 0.843` mid-cycle — two independent reads
+    catching two different points on the same real, running Tween. `press` on the button
+    then `get-state` showed `disabled: true`, `_next_wave_pulse_active: false`,
+    `modulate.a: 1.0` in the same call — the reset-before-gate ordering holds live, not
+    just in the headless edge-detect test.
+  - Found: nothing wrong — this confirmed the mirrored `_set_prep_bar_urgent` shape
+    behaves identically for a second Control, which is exactly what "mirror the existing
+    pattern" was betting on.
+  - Cheaper: the unit test alone (mirroring
+    `test_the_prep_strip_pulses_in_its_final_seconds`) already proves the edge-detect and
+    the headless-reset; the live pass bought confidence in the actual animation frame
+    values a headless run cannot produce, at the cost of one launch + four bridge calls.
+
+- Gap: no gaps this turn.
+  - [G-158] status: open | seen: 2 | harness: 0.38.0 — same concurrent-session-on-one-
+    checkout hazard the crj9 entry above named: this session and another both had commits
+    to `main` land within the same few minutes (`3a16b21`/`9da3dc4` here vs. the other
+    session's independent `sha 9da3dc4` verify-ledger row above), plus a stray
+    `run_tests.py`/`godot --editor` process count in the double digits from unrelated
+    concurrent worktrees (`chomper-anim`, `currency-juice`, `placement-ghost`,
+    `playtest-driver`) sharing this machine. Nothing was lost, but `git status`/`tasklist`
+    had to be read defensively before any `quit --kill` to avoid hitting someone else's
+    live run.
