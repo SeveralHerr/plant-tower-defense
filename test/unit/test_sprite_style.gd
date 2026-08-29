@@ -128,7 +128,7 @@ const SPORT_SUFFIX := "_sport"
 ## The derivation and why it has these properties are in that file's docstring.
 const MUTANT_PALETTE: PackedStringArray = [
 	"2A3A05", "415A08", "597A0B", "709A0E", "88BA12", "9DD618", "C0EC5A", "E7FCB6",
-	"46063B", "690859", "910C7B", "B91A9E", "DE34C2", "F56EDE", "FCB0EF", "FFE8FB",
+	"46063B", "690859", "910C7B", "B91A9E", "DE34C2", "F56EDE", "FCB0EF", "FFCEF7",
 ]
 
 ## An anti-aliased edge between two flat fills lands *on the line between them*

@@ -64,6 +64,40 @@ palette that the build enforced as 32. `tools/svg_style_check.py` now cross-chec
 the two and reports the difference as an advisory, so the next drift is noticed
 rather than discovered.
 
+## The mutant ramps — sports only
+
+A sport (`PlantMutation`) wears its own drawing: `<plant>_sport.svg`, generated from the
+parent by `tools/gen_sport_svg.py`. Geometry is copied byte for byte, so every measurement
+above holds for a sport because it holds for its parent. **Only the paint moves**, onto one
+of two ramps picked by the source colour's hue — foliage and blue-grey (60–200°) go acid
+green, everything warm goes hot magenta, and achromatic paint is left alone.
+
+These sixteen shades are legal in a `_sport` sprite and **nowhere else**. The gate scopes
+them by stem (`test_sprite_style.gd`'s `_palette_rgb`), so the thirty-four hand-drawn
+sprites are held to exactly the kit palette above, unwidened.
+
+Do not hand-pick a shade from here: a sport is a function of its parent, and
+`python tools/gen_sport_svg.py` fails on any edit the parent does not explain. The anchors
+are derived too — each ramp's third channel is computed from the other two so all eight sit
+at one hue, which is what lets the outline rule ("the rim is a darker shade of the fill's
+own hue") survive a recolour that knows nothing about it.
+
+| Ramp | 1 (deepest) | 2 | 3 | 4 | 5 | 6 | 7 | 8 (palest) |
+|---|---|---|---|---|---|---|---|---|
+| Toxic (78°) | `#2A3A05` | `#415A08` | `#597A0B` | `#709A0E` | `#88BA12` | `#9DD618` | `#C0EC5A` | `#E7FCB6` |
+| Mutagen (310°) | `#46063B` | `#690859` | `#910C7B` | `#B91A9E` | `#DE34C2` | `#F56EDE` | `#FCB0EF` | `#FFCEF7` |
+
+Eight rungs because the Barrier Bramble carries eight distinct warm shades in one drawing
+and none of them may collapse into another. Both palest rungs stop short of white on
+purpose: at saturation below 0.12 the outline check reads a fill as grey and warns that a
+coloured rim is circling bare paper, which is what the first draft of rung 8 did to the
+Aloe on five shapes at once.
+
+`python tools/gen_sport_svg.py --palette` prints this list as the gate's `MUTANT_PALETTE`
+block, and a bare run of that tool fails if the two disagree. This table is the third
+reader and the only one a person reads, so it is checked too: `tools/svg_style_check.py`
+reports any shade one carries and another does not.
+
 ## Rendering
 
 `art_src/*.svg` are the sources; they never ship. Godot rasterises them:
