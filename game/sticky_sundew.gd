@@ -81,8 +81,18 @@ const PATCH_COLOR := Color(0.54, 0.64, 0.65, 0.10)
 ## than as a patch and an unrelated circle. Derived from PATCH_COLOR rather than
 ## re-typed, so a change to the sap's colour moves the ring with it.
 const RING_COLOR := Color(PATCH_COLOR, Plant.REACH_RING_ALPHA)
-const DROPLET_COLOR := Color(0.64, 0.76, 0.78, 0.90)
-const DROPLET_RIM_COLOR := Color(0.46, 0.55, 0.56, 0.90)
+## DARKENED (plant-tower-defense-75os): a Sundew stands only on grass, and the
+## droplets are the patch's actual legibility -- the wash they sit on is a deliberately
+## near-invisible 0.10-alpha sheen (see PATCH_COLOR above), so these two are the whole
+## cue. The original pair, `Color(0.64, 0.76, 0.78)` and `Color(0.46, 0.55, 0.56)`, sit
+## at luminance 0.736 and 0.532 against grass's 0.642 -- separations of 0.094 and 0.111
+## that scale by the 0.90 alpha to 0.084 and 0.100, both under
+## `GardenTheme.GROUND_SEPARATION_MIN`. Same blue-grey family, `.darkened()` further:
+## the fill by 0.35 (luminance 0.478, drawn separation 0.148) and the rim by a further
+## step so it still reads as the darker of the two (luminance 0.426, drawn separation
+## 0.195). See test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at.
+const DROPLET_COLOR := Color(0.42, 0.49, 0.51, 0.90)
+const DROPLET_RIM_COLOR := Color(0.32, 0.39, 0.39, 0.90)
 const DROPLET_RIM_WIDTH: float = 1.2
 
 ## The wash is painted as a UNION, not as one disc per plant, and that is a
