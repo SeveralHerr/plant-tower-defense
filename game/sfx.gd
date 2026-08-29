@@ -402,8 +402,12 @@ const PITCH_GRADE: Dictionary = {
 ##     single cob to 0.62 * 0.75^4 = 0.196s. Several cobs on a board multiply that again.
 ##   * `PEST_KILLED` / `PEST_KILLED_HARD` — not one source but the whole board, so the 70ms
 ##     gate above IS the rate; a volley landing on a cleared wave spends it.
-##   * `PLANT_BITTEN` — the 420ms gate is likewise the rate, sustained for as long as a pest
-##     is eating, which is the most relentless repetition in the game.
+##   * `PLANT_BITTEN` — the 420ms gate USED to be the rate: a hungry pest applied damage on
+##     every physics frame, so this gate alone decided how often the bite was audible. It is
+##     a safety net now that `Pest.chop_period()` spaces the strikes about 1.07s apart —
+##     every chop of a single pest gets its sound. What the gate still collapses is a CROWD:
+##     several pests arriving at one bed in the same breath chop in phase with each other,
+##     since each starts its clock at zero the frame it engages.
 ##   * `DANDELION_PUFF` — `Dandelion.SHOT_INTERVAL` is 0.45s.
 ##   * `NETTLE_STING` — `Nettle.STING_INTERVAL` is 0.7s, with a 221ms floor under four Mints
 ##     (the arithmetic is written out at that event's `REPEAT_MS` row).
