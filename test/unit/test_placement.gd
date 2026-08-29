@@ -4817,7 +4817,7 @@ func test_a_click_lands_on_its_cell_wherever_the_board_is_centred() -> String:
 	# Walk left along the bottom row to the first plantable cell that is STILL past the old
 	# guard's threshold. Derived rather than hardcoded: the road's shape decides which cells
 	# are plantable and it has been reshaped before.
-	while target.x > 0 and not game.would_plant_at(target):
+	while target.x > 0 and not game.would_plant_at(target):  # loop-bound-check: ok - target.x is floored at 0 regardless of would_plant_at()'s answer.
 		target.x -= 1
 	screen = offset + game.board.cell_to_world(target)
 
@@ -5048,7 +5048,7 @@ func _plant_family_sources() -> Dictionary:
 	var subclass := RegEx.create_from_string("(?m)^extends\\s+Plant\\s*$")
 	dir.list_dir_begin()
 	var entry: String = dir.get_next()
-	while entry != "":
+	while entry != "":  # loop-bound-check: ok - DirAccess.get_next() over a finite real directory; "" is the documented end.
 		if entry.ends_with(".gd"):
 			var path: String = "res://game".path_join(entry)
 			var text: String = FileAccess.get_file_as_string(path)
@@ -5084,7 +5084,7 @@ func _tween_durations(text: String) -> Array[String]:
 		var depth: int = 0
 		var last_comma: int = -1
 		var quote: String = ""
-		while i < code.length():
+		while i < code.length():  # loop-bound-check: ok - a string index bounded by that string's own length.
 			var c: String = code[i]
 			if quote != "":
 				if c == "\\":
@@ -8249,7 +8249,7 @@ func _test_unit_code() -> String:
 		return ""
 	dir.list_dir_begin()
 	var entry: String = dir.get_next()
-	while entry != "":
+	while entry != "":  # loop-bound-check: ok - DirAccess.get_next() over a finite real directory; "" is the documented end.
 		if entry.ends_with(".gd"):
 			chunks.append(_lines_without_comments(
 				FileAccess.get_file_as_string("res://test/unit".path_join(entry))))
@@ -8856,7 +8856,7 @@ const READOUT_BAND_KNOWN_COLLISIONS: Array[String] = []
 ## way, as the unstripped-source scan this file's other source checks warn about.
 func _script_declaring_draw(node: Node) -> String:
 	var script: Script = node.get_script() as Script
-	while script != null:
+	while script != null:  # loop-bound-check: ok - walks get_base_script() up a finite engine class hierarchy, which cannot cycle.
 		var path: String = script.resource_path
 		if path != "":
 			var text: String = _lines_without_comments(FileAccess.get_file_as_string(path))
