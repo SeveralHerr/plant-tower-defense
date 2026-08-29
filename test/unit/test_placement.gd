@@ -7433,6 +7433,38 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 		{"what": "blocked cursor hover wash", "mark": GardenTheme.DANGER,
 			"alpha": Game.CURSOR_HOVER_ALPHA, "ground": dirt, "on": "dirt",
 			"gates": false},
+		# THE AMBIENT BEE (plant-tower-defense-qz4j), all four of its paints and both
+		# grounds, because a bee crosses grass and road alike and is the only drawn thing
+		# on this board that is deliberately NOT a cue. It owes the floor anyway, and for
+		# the opposite of the usual reason: an unreadable cue withholds information, while
+		# an unreadable bee is a smear of gold that a player cannot identify and therefore
+		# has to wonder about.
+		#
+		# The rim is the row that moved a constant. `#8A6D00`, the kit's own darkest gold
+		# and the shade `art_src/STYLE.md` lists for corn face features, is luminance 0.420
+		# and clears dirt by only -0.006 -- a fail, on the ground half the board is made
+		# of. BeeSwarm.RIM_COLOR is darker gold at 0.256 and clears dirt by 0.158, which is
+		# the whole reason it is not simply the palette entry.
+		{"what": "bee body", "mark": BeeSwarm.BODY_COLOR, "gates": true,
+			"alpha": BeeSwarm.BODY_COLOR.a, "ground": grass, "on": "grass"},
+		{"what": "bee body", "mark": BeeSwarm.BODY_COLOR, "gates": true,
+			"alpha": BeeSwarm.BODY_COLOR.a, "ground": dirt, "on": "dirt"},
+		{"what": "bee rim and stripes", "mark": BeeSwarm.RIM_COLOR, "gates": true,
+			"alpha": BeeSwarm.RIM_COLOR.a, "ground": grass, "on": "grass"},
+		{"what": "bee rim and stripes", "mark": BeeSwarm.RIM_COLOR, "gates": true,
+			"alpha": BeeSwarm.RIM_COLOR.a, "ground": dirt, "on": "dirt"},
+		{"what": "bee wing", "mark": BeeSwarm.WING_COLOR, "gates": true,
+			"alpha": BeeSwarm.WING_COLOR.a, "ground": grass, "on": "grass"},
+		{"what": "bee wing", "mark": BeeSwarm.WING_COLOR, "gates": true,
+			"alpha": BeeSwarm.WING_COLOR.a, "ground": dirt, "on": "dirt"},
+		# The shadow is the channel that says a bee is ABOVE the garden rather than a mark
+		# about the cell under it, so it is load-bearing rather than decorative -- which is
+		# what makes it owe this floor at all. Same value as the seed bomb's shadow, whose
+		# rows sit further up this table and clear by the same margins.
+		{"what": "bee shadow", "mark": BeeSwarm.SHADOW_COLOR, "gates": true,
+			"alpha": BeeSwarm.SHADOW_COLOR.a, "ground": grass, "on": "grass"},
+		{"what": "bee shadow", "mark": BeeSwarm.SHADOW_COLOR, "gates": true,
+			"alpha": BeeSwarm.SHADOW_COLOR.a, "ground": dirt, "on": "dirt"},
 	]
 	var err: String = ""
 	var checked: int = 0
@@ -7458,7 +7490,7 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			return err
 	# The denominator, because a table that lost its rows would pass in silence.
 	if err == "":
-		err = _T.assert_eq(checked, 43,
+		err = _T.assert_eq(checked, 51,
 			"the sweep visited every board mark and both grounds for the ring")
 	if err == "":
 		# AND the exception set is pinned by membership, not by count alone. A new mark

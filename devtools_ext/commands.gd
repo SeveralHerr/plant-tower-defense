@@ -98,6 +98,11 @@ func register_commands(dev: Node) -> void:
 	_dev.register_command("collect_husk", _cmd_collect_husk)
 	_dev.register_command("budgets", _cmd_budgets)
 	_dev.register_command("messages", _cmd_messages)
+	# The ambient bees. Two verbs rather than one because reading them is useless on its
+	# own: a bout happens for ten seconds out of every forty, so an unforced read is a
+	# read of an empty garden four times in five.
+	_dev.register_command("bee_state", _cmd_bee_state)
+	_dev.register_command("bee_bout", _cmd_bee_bout)
 	# Not a game verb: it answers "which checkout am I actually driving?" before any
 	# of the above are believed. Registered with a literal name so `list-commands
 	# --offline` can still find it with no game running.
@@ -154,6 +159,58 @@ func _budget_status(game: Game) -> String:
 
 func _fail(message: String) -> Dictionary:
 	return {"success": false, "message": message, "data": {}}
+
+
+## What the bees are doing right now.
+##
+## `processing` is the load-bearing field and not a debug detail: the whole cost claim for
+## this layer is that an idle garden has no frame callback, so a reply that says a bout is
+## closed AND processing is true is the leak, reported rather than inferred.
+func _cmd_bee_state(_args: Dictionary) -> Dictionary:
+	var game: Game = _game()
+	if game == null:
+		return _fail("no Game in the tree")
+	var swarm := game.get_node_or_null("BeeSwarm") as BeeSwarm
+	if swarm == null:
+		return _fail("no BeeSwarm under Game -- built only when animations are enabled")
+	return {"success": true, "message": "ok", "data": {
+		"flying": swarm.flying_count(),
+		"next_bout_seconds": swarm.next_bout_seconds(),
+		"processing": swarm.is_processing(),
+		"weather": String(game.weather),
+		"weather_allows_bees": BeeSwarm.bout_allowed(game.weather),
+	}}
+
+
+## Send a bout now instead of waiting up to forty seconds for one.
+##
+## Returns the number of bees it put in the air, which is 0 when the weather refused it --
+## a distinction the caller needs, because "no bees appeared" is both the rain behaviour
+## working and the layer being broken.
+func _cmd_bee_bout(_args: Dictionary) -> Dictionary:
+	var game: Game = _game()
+	if game == null:
+		return _fail("no Game in the tree")
+	var swarm := game.get_node_or_null("BeeSwarm") as BeeSwarm
+	if swarm == null:
+		return _fail("no BeeSwarm under Game -- built only when animations are enabled")
+	# WHY it sent none, read BEFORE the call, because zero has two causes and the reply
+	# cannot tell them apart afterwards: the weather refused the bout, or a bout was
+	# already in the air and this one was dropped. Verified the hard way -- a rain check
+	# during this feature's own runtime pass read "sent 0" from a bout that was flying,
+	# and the rain rule looked confirmed when it had not been exercised at all.
+	var refused: String = ""
+	if not BeeSwarm.bout_allowed(game.weather):
+		refused = "weather is %s" % String(game.weather)
+	elif swarm.flying_count() > 0:
+		refused = "a bout is already flying"
+	var sent: int = swarm.open_bout_now()
+	return {"success": true, "message": "sent %d bee(s)" % sent, "data": {
+		"bees": sent,
+		"refused": refused,
+		"weather": String(game.weather),
+		"processing": swarm.is_processing(),
+	}}
 
 
 # --- Required arguments, and the defaults that are deliberate ---------------
