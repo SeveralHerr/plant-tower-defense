@@ -592,6 +592,16 @@ const PLANT_BUTTON_DIM: Color = Color(1, 1, 1, 0.55)
 ## channel, matching the seed packet's own paper rather than any threat colour —
 ## nothing here is a warning.
 const PACKET_HINT_TINT: Color = Color(1.0, 0.94, 0.62, 1.0)
+## A plant that IS unlocked but costs more than the bank holds right now
+## (plant-tower-defense-q7z6). Distinct from PLANT_BUTTON_DIM on purpose: the old
+## code tinted "locked" and "too poor" identically, and the only surviving
+## difference — whether a price number is drawn at all — is easy to miss at 55%
+## alpha. This sits at higher alpha (still readable, not a second lock) and
+## carries GardenTheme's own DANGER hue, the same "not yet" the readout flash
+## below borrows for a spend. See plant_button_tint_on / GardenTheme.SAFE_BAD for
+## the colourblind-safe twin.
+const PLANT_BUTTON_POOR: Color = Color(GardenTheme.DANGER, 0.85)
+const PLANT_BUTTON_POOR_SAFE: Color = Color(GardenTheme.SAFE_BAD, 0.85)
 
 
 ## Where the packet button for the `index`th tier sits, in the side panel's own
@@ -1100,6 +1110,26 @@ const SEED_ROLL_STEPS: int = 10
 ## plant price and every wave bonus clears it by a wide margin.
 const SEED_ROLL_MIN_JUMP: int = 5
 
+## THE SPEND/GAIN FLASH (plant-tower-defense-q7z6). The roll above already gives a
+## purchase and a payout different MOTION — the digits visibly count down for a spend
+## and up for a payout, which is the channel that survives the colour being thrown
+## away (see game/OVERLAY_GRAMMAR.md's two-channel rule). This adds colour ON TOP of
+## that, not instead of it: a player watching the number itself, not the roll, still
+## gets the "this cost you seeds" read the report was filed about.
+##
+## Slightly longer than SEED_ROLL_SECONDS so the tint is still visibly lit once the
+## roll has settled on the final digits, rather than fading out under the motion.
+const SEEDS_FLASH_SECONDS: float = 0.45
+## LEAF for a payout, DANGER for a spend — the same pair HEALTH_FULL/HEALTH_LOW
+## already use for "good" and "bad", so the Seeds readout is not inventing a third
+## meaning for either hue. SAFE_GOOD/SAFE_BAD are the colourblind-safe pair for the
+## same reason threat and health have one: green/red is exactly the confusion a
+## deuteranope hits on a currency counter that is otherwise unmarked.
+const SEEDS_GAIN_TINT := GardenTheme.LEAF
+const SEEDS_GAIN_TINT_SAFE := GardenTheme.SAFE_GOOD
+const SEEDS_SPEND_TINT := GardenTheme.DANGER
+const SEEDS_SPEND_TINT_SAFE := GardenTheme.SAFE_BAD
+
 ## The denial shake: rotation, not position. The plant bar's buttons are
 ## GridContainer children, and a Container's sort pass writes `position` and
 ## `size` on every child every time it runs — which a refresh() landing mid-shake
@@ -1249,6 +1279,11 @@ var _seeds_shown: int = 0
 ## `_readout_tweens` exists for one member up. A second roll armed while the first is
 ## mid-count would have two tweens writing the same Label from two different `from`s.
 var _seeds_roll: Tween
+## The live spend/gain flash — killed and restarted for the same reason as
+## `_seeds_roll` one line up: a second purchase landing mid-flash must retarget
+## the colour, not fight the first tween's callback for the last word on
+## `font_color`.
+var _seeds_flash_tween: Tween
 
 ## The three surfaces whose geometry comes from the viewport rather than from a
 ## constant. Held as members for one reason: `_apply_viewport_layout()` has to be
@@ -2093,7 +2128,7 @@ static func uproot_button_tooltip(plant_name: String, refund: int, replant: int)
 		+ "so the round trip costs you %d.") % [plant_name, refund, replant, -net]
 
 
-## What a plant button is tinted, in the three states it can be in.
+## What a plant button is tinted, in the four states it can be in.
 ##
 ## `hinted` is the packet rack talking to the plant bar: while the cursor rests on
 ## a packet button, every locked plant that packet could still hand over lifts out
@@ -2108,13 +2143,33 @@ static func uproot_button_tooltip(plant_name: String, refund: int, replant: int)
 ## the right edge. `modulate` costs nothing and is already the channel these buttons
 ## speak in.
 ##
-## The lift is brightness first and hue second — a locked button sits at 55% alpha,
-## a hinted one at 100% — because a hue-only cue is the one a colourblind player
-## does not get. See GardenTheme's own note on the threat ramp for the same argument.
+## LOCKED and UNLOCKED-BUT-TOO-POOR used to collapse onto the same PLANT_BUTTON_DIM
+## (plant-tower-defense-q7z6) — the only surviving difference was whether a price
+## number was drawn at all, which a 55%-alpha button makes easy to miss. They are
+## split here: "too poor" carries GardenTheme's DANGER/SAFE_BAD hue at higher
+## alpha, "locked" keeps the plain dim. Hue-plus-brightness for the same reason a
+## hinted button is full alpha, not just warm — a hue-only cue is the one a
+## colourblind player does not get, so `safe` picks the paired colour rather than
+## turning the cue off.
+##
+## `plant_button_tint_on`'s branch table and `test_selftest.gd`'s assertions for it
+## are both generated from tools/specs/plant_button_tint.json via
+## tools/gen_bool_classifier.py — edit the spec and regenerate both rather than
+## hand-editing either; see the spec file for why.
 static func plant_button_tint(unlocked: bool, affordable: bool, hinted: bool) -> Color:
+	return plant_button_tint_on(unlocked, affordable, hinted, RunConfig.colorblind_safe)
+
+
+static func plant_button_tint_on(unlocked: bool, affordable: bool, hinted: bool, safe: bool) -> Color:
 	if hinted:
 		return PACKET_HINT_TINT
-	return Color.WHITE if (unlocked and affordable) else PLANT_BUTTON_DIM
+	if not unlocked:
+		return PLANT_BUTTON_DIM
+	if unlocked and not affordable and safe:
+		return PLANT_BUTTON_POOR_SAFE
+	if unlocked and not affordable and not safe:
+		return PLANT_BUTTON_POOR
+	return Color.WHITE
 
 
 ## What a plant button says on hover: its name, its blurb, and — for a plant still
@@ -2409,6 +2464,7 @@ func refresh(state: Dictionary) -> void:
 	if seeds_moved:
 		_punch_readout(_seeds_label)
 		_arm_seeds_roll(seeds_from, bank.seeds)
+		_flash_seeds_tint(seeds_flash_tint(bank.seeds > seeds_from))
 	if bool(state.get("endless", false)):
 		# "∞" rather than "— endless": at wave 509 with a threat level appended,
 		# the spelled-out version measured 397px against a 320px budget and was
@@ -2946,6 +3002,55 @@ func _arm_seeds_roll(from_value: int, to_value: int) -> void:
 	counting.set_ease(Tween.EASE_OUT)
 	tween.tween_callback(restore)
 	_seeds_roll = tween
+
+
+## Which colour the Seeds readout flashes for this change's direction. Pure and
+## static for the reason seeds_roll_value is — a Tween does not run headless, so
+## the decision has to live somewhere a test can call it with no HUD, no frame,
+## and no renderer.
+##
+## `seeds_flash_tint_on`'s branch table and `test_selftest.gd`'s assertions for it
+## are both generated from tools/specs/seeds_flash_tint.json via
+## tools/gen_bool_classifier.py — edit the spec and regenerate both rather than
+## hand-editing either; see the spec file for why.
+static func seeds_flash_tint(increased: bool) -> Color:
+	return seeds_flash_tint_on(increased, RunConfig.colorblind_safe)
+
+
+static func seeds_flash_tint_on(increased: bool, safe: bool) -> Color:
+	if increased and not safe:
+		return SEEDS_GAIN_TINT
+	if increased and safe:
+		return SEEDS_GAIN_TINT_SAFE
+	if not increased and not safe:
+		return SEEDS_SPEND_TINT
+	return SEEDS_SPEND_TINT_SAFE
+
+
+## Lands the flash colour on the Seeds readout and eases it back to its resting
+## PAPER, the same killed-and-restarted shape every other readout tween in this
+## file uses. `tween_method` rather than `tween_property`, because a Control theme
+## override is not a plain property Tween can address — the same reason
+## `_ease_threat_tint` drives `_tint_wave_label` through a lambda instead of
+## tweening `_wave_label`'s font colour directly.
+##
+## Only `font_color`, not `font_outline_color` too: unlike the wave label, Seeds
+## has no outline override of its own to restore (_make_label sets font_color
+## only), so touching the outline here would leave it needing a value to settle
+## back to that this function has no way to know.
+func _flash_seeds_tint(target: Color) -> void:
+	if not GardenTheme.animations_enabled() or _seeds_label == null:
+		return
+	if _seeds_flash_tween != null and _seeds_flash_tween.is_valid():
+		_seeds_flash_tween.kill()
+	_seeds_label.add_theme_color_override("font_color", target)
+	var apply := func(c: Color) -> void:
+		if is_instance_valid(_seeds_label):
+			_seeds_label.add_theme_color_override("font_color", c)
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_method(apply, target, PAPER, SEEDS_FLASH_SECONDS)
+	_seeds_flash_tween = tween
 
 
 ## A refused plant placement, shaking the bar slot the player picked it from —
