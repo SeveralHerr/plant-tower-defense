@@ -85,6 +85,23 @@ its readers to discount the number, which is worse than not printing it.
   Excused, not credited, and named in full on the printed line: this says the run
   could not have seen the file, never that the file works.
 
+**The NOT-reached list has a deadline, and it used to go unsaid** (plant-tower-defense-
+fs2b, log-devtools.md G-136). `reached`/`unreached` is a set intersection against
+whichever `--scene-tree` snapshot(s) and `--scripts-seen` capture(s) were actually
+passed in — never against the session's history. Cycle 137 opened
+`key_binding_screen.gd`'s screen, drove all nine of its labels, backed out to the
+board, and captured `scene-tree` only after closing it: `NOT reached:
+game/key_binding_screen.gd` printed, correct on its own terms and indistinguishable
+from a screen genuinely never opened, for a file the session had just spent ten verbs
+inside. The fix is not the snapshot mechanism (a union across repeated `--scene-tree`
+captures already existed, and `--scripts-seen` already accumulates every script ever
+attached to any node for the *whole* session, surviving a screen that closed before
+the last capture) — it is that the printed line never said the intersection has an
+evidence deadline, so a clean read of `NOT reached` was mistaken for "never opened"
+when it only ever meant "not in what you handed me". The line below now says so
+directly, every time the list is non-empty, rather than leaving it to be re-discovered
+per cycle.
+
 **Reach has three states, not two.** `reached N/M` is one; `reach not computed` (no
 capture) is the second; and `reach: unavailable (not a git repository)` is the third,
 added in 0.17.0 after a project with no `.git` was handed `reached 0/0 changed file(s)`
@@ -1386,6 +1403,19 @@ def _reach_line(split):
     if unreached:
         detail += "; NOT reached (loadable, and this run did not load them): " \
                   + ", ".join(unreached)
+        # plant-tower-defense-fs2b: this list is a set intersection against the
+        # snapshot(s)/capture(s) actually PASSED to this command, not against the
+        # session's history - a screen opened, driven, and closed before every capture
+        # given here reads identically to one that was never opened. Said every time
+        # the list is non-empty, because that is exactly when the ambiguity bites and
+        # "NOT reached" alone reads as a stronger claim than this line can support.
+        detail += (". CAVEAT: computed from the snapshot(s)/capture(s) given, not from "
+                   "the session's history - a screen closed before every capture here "
+                   "reads exactly like one never opened. Before trusting this list, "
+                   "check whether a --scene-tree was taken while each screen above was "
+                   "still open, or pass --scripts-seen (accumulates every script ever "
+                   "attached to any node for the whole session, so a screen that has "
+                   "since closed still counts)")
     elif total > len(reached):
         # "reached 1/4" with three credited files reads as a bad run at a glance, and a
         # number that has to be read twice to be read right is a number people stop
