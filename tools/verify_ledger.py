@@ -130,11 +130,12 @@ Three states, and the difference between the last two is the whole point:
 * `null` — not recorded. Every row written before 0.10.0 is this, permanently; `stats`
   excludes them from the rate rather than scoring them as zeros.
 
-Three subcommands:
+Four subcommands:
 
     python3 tools/verify_ledger.py reach  --scene-tree tree.json --scripts-seen seen.json
     python3 tools/verify_ledger.py record --scene-tree tree.json --scripts-seen seen.json --run run.json
     python3 tools/verify_ledger.py stats
+    python3 tools/verify_ledger.py fixture
 
 `record` derives the mechanical fields itself (timestamp, sha, branch, changed files,
 reach) and takes only the run-specific ones it cannot know — runner exit codes, the
@@ -148,6 +149,18 @@ null reach is the well-formed-zeros failure this file exists to prevent. `--no-r
 is the deliberate escape hatch for aborted runs — it writes `reach: null` on purpose,
 so the failure mode is a choice, not a default.
 
+`record` also **refuses** to write a row whose `--run` omits `verdict`, or omits
+`lint`/`tests` while `verdict` is anything other than `"aborted"` (plant-tower-defense-
+4ulq, log-devtools.md G-137). This is the last guard before an append-only write, not
+a standing checker: `tools/run_json_check.py` already names a dropped key as an
+advisory finding, and a run.json missing `lint`/`tests` on an otherwise-clean pass was
+recorded with both `null` anyway, permanently, because nothing made this write depend
+on that finding. `REQUIRED_RUN_KEYS` is the full list this applies to; every other
+accepted key (`runtime`, `duration_s`, `harness`, `expected`, `cheaper_alternative`,
+`checks`, `found`, `value`) keeps its existing silent-default behaviour, because each
+one has a real and common reason to be legitimately absent — see the comment beside
+`REQUIRED_RUN_KEYS` for the historical evidence either way.
+
 `reach` computes reach without writing a row, because the verdict depends on it: a run
 that never loaded the changed file is `insufficient` however well its checks went, and
 that has to be knowable before the row is written.
@@ -156,17 +169,23 @@ that has to be knowable before the row is written.
 release's effect is visible; the value mix and the collected `cheaper_alternative` lines
 are the part that can tell you to run /verify less often.
 
-Exit codes: 0 fine, 1 bad input, 2 nothing to report (no ledger yet).
+`fixture` proves the required-key refusal above actually refuses — not just a nonzero
+exit code, but no row appended and a message naming the missing key. KEPT, not written
+and deleted; see `cmd_fixture`'s docstring for the cases and what each one asserts.
+
+Exit codes: 0 fine, 1 bad input (or fixture failure), 2 nothing to report (no ledger yet).
 """
 
 import argparse
 import datetime
+import io
 import json
 import os
 import re
 import statistics
 import subprocess
 import sys
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 
@@ -1073,12 +1092,67 @@ def _restrict_to_about(changed, about):
     return changed & about
 
 
+# The subset of accepted --run keys that `record` refuses to see missing
+# (plant-tower-defense-4ulq, log-devtools.md G-137). Every other accepted key --
+# runtime, duration_s, harness, expected, cheaper_alternative, checks, found, value --
+# has a real and common reason to be absent: an aborted run before Phase 4, a harness
+# that fills in its own current version, a run.json genuinely written before /verify
+# grew the field. Measured against this ledger's own history (2026-08-29, 206 rows):
+# `duration_s` null in 71, `runtime` in 58, `expected` in 58 -- none of them a defect,
+# just an optional field nobody happened to fill in.
+#
+# These three are different. A run that actually executed Phase 1/2 and knows its own
+# outcome has no honest reason to omit them -- and 50 of those 206 rows are already
+# `verdict: "unknown"`, the exact silent default this refuses, with `lint`/`tests`
+# fully populated: proof the omission was an accident of the run.json, not a fact
+# about the run. The one legitimate way to omit `lint`/`tests` is a run that genuinely
+# never reached them, and that has an honest name already: `verdict: "aborted"`. That
+# value is the only exemption `_missing_required_keys` grants, and it does not extend
+# to `verdict` itself -- a run cannot use it to also hide its own outcome.
+REQUIRED_RUN_KEYS = ("verdict", "lint", "tests")
+
+
+def _missing_required_keys(run):
+    """REQUIRED_RUN_KEYS entries genuinely absent from `run`, honouring the one
+    legitimate exemption.
+
+    Reports only keys that are truly missing -- a key present in `run` is never
+    named here, even alongside a genuinely missing one, so the refusal message
+    never claims something is absent that the caller can see is not. `lint`/`tests`
+    drop out of the result when `run["verdict"] == "aborted"`: a run that says
+    outright it did not reach Phase 1/2 has an honest reason to lack them. `verdict`
+    itself carries no such exemption -- there is no honest way to omit a run's own
+    outcome, aborted or otherwise.
+    """
+    missing = [k for k in REQUIRED_RUN_KEYS if k not in run]
+    if run.get("verdict") == "aborted":
+        missing = [k for k in missing if k not in ("lint", "tests")]
+    return missing
+
+
 def cmd_record(args, root):
     run = _load_run(args)
     if run is None:
         return 1
     if not isinstance(run, dict):
         print("verify_ledger: run payload must be a JSON object", file=sys.stderr)
+        return 1
+
+    missing = _missing_required_keys(run)
+    if missing:
+        print(
+            "verify_ledger: refusing to record -- --run omits %s, which `record` "
+            "accepts and would otherwise default silently. This is the last guard "
+            "before an append-only write: the row cannot be corrected afterward, so "
+            "a run.json that lost a key here must not become a permanent record that "
+            "looks complete.\n"
+            "  fix: add the missing key(s) -- `verdict` is one of "
+            "pass|partial|fail|aborted; `lint`/`tests` are objects (e.g. "
+            "{\"exit\": 0, \"failed\": 0}).\n"
+            "  If this run genuinely never reached Phase 1/2, say so: set verdict to "
+            "\"aborted\", and lint/tests may then be omitted."
+            % ", ".join(repr(k) for k in missing),
+            file=sys.stderr)
         return 1
 
     worktree = changed_worktree(root)
@@ -1695,11 +1769,135 @@ def cmd_stats(args, root):
     return 0
 
 
+# (label, --run object, want the row actually written, a substring the refusal
+# message must carry when it is NOT written -- None when it should write clean)
+_FIXTURE_CASES = [
+    ("missing_lint",
+     {"verdict": "pass", "tests": {"exit": 0, "failed": 0}, "checks": [], "found": [],
+      "value": "warranted", "cheaper_alternative": "nothing"},
+     False, "'lint'"),
+    ("missing_tests",
+     {"verdict": "pass", "lint": {"exit": 0}, "checks": [], "found": [],
+      "value": "warranted", "cheaper_alternative": "nothing"},
+     False, "'tests'"),
+    ("missing_verdict",
+     {"lint": {"exit": 0}, "tests": {"exit": 0, "failed": 0}, "checks": [], "found": [],
+      "value": "warranted", "cheaper_alternative": "nothing"},
+     False, "'verdict'"),
+    ("aborted_may_omit_lint_and_tests",
+     {"verdict": "aborted", "checks": [], "found": [], "value": "inconclusive",
+      "cheaper_alternative": "nothing"},
+     True, None),
+    ("complete_run_writes_clean",
+     {"verdict": "pass", "lint": {"exit": 0, "new": 0}, "tests": {"exit": 0, "failed": 0},
+      "checks": [], "found": [], "value": "warranted",
+      "cheaper_alternative": "nothing"},
+     True, None),
+]
+
+
+def cmd_fixture(args, root):
+    """Prove `record`'s required-key refusal actually refuses.
+
+    THE DEFECT THIS EXISTS FOR (plant-tower-defense-4ulq, log-devtools.md G-137). A
+    run.json missing `lint`/`tests` was recorded anyway with both null, on a run
+    where both had actually gone fine -- append-only, so the row stands wrong
+    forever. `run_json_check.py` already named the two missing keys as findings and
+    exited 1, and that changed nothing, because nothing made `record`'s own write
+    depend on it. A fixture that only checks record's exit code cannot tell "refused
+    and wrote nothing" apart from "printed a warning and wrote anyway" -- both can
+    exit 1 for unrelated reasons (a bad --run path, an aborted git call) -- so this
+    one asserts the row count in the ledger file before and after each case, and the
+    refusal message's own wording, never just the exit code.
+
+    Driven through the real `cmd_record` over a throwaway root with no git repository
+    (`--no-reach` is forced for every case, and every case is checked BEFORE reach is
+    computed, so a missing .git here proves nothing about the rule under test) --
+    never by poking `_missing_required_keys` directly, so deleting the call site in
+    `cmd_record` fails this fixture even with the helper intact.
+
+    Cases: `lint` absent / `tests` absent / `verdict` absent (all three refuse) /
+    `verdict: "aborted"` omitting both `lint` and `tests` (writes -- the one honest
+    exemption) / a fully populated run (writes clean). Every case checks BOTH that
+    the file grew by exactly one line when a write was expected and by zero when it
+    was not, AND that a refusal names the right key -- a rule that stopped firing for
+    one case while still firing for another would otherwise leave "some case failed"
+    indistinguishable from "the whole rule passed".
+
+    mutations: `REQUIRED_RUN_KEYS = ()` -> RED, 3 of 5 (measured 2026-08-29): the
+    three refusal cases all write a row instead (rows +1, want +0) and their needle
+    assertion goes false in the same breath -- the aborted/complete cases are
+    unaffected, which is the fixture correctly saying WHICH behaviour broke.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="verify_ledger_fixture_"))
+    fails = 0
+    try:
+        ledger_path = tmp / LEDGER_PATH
+        for label, run_obj, want_write, needle in _FIXTURE_CASES:
+            run_path = tmp / ("%s.json" % label)
+            run_path.write_text(json.dumps(run_obj), encoding="utf-8")
+            before = len(ledger_path.read_text(encoding="utf-8").splitlines()) \
+                if ledger_path.exists() else 0
+
+            fake_args = argparse.Namespace(run=str(run_path), scene_tree=None,
+                                            scripts_seen=None, no_reach=True, about=None)
+            old_out, old_err = sys.stdout, sys.stderr
+            sys.stdout, sys.stderr = io.StringIO(), io.StringIO()
+            try:
+                code = cmd_record(fake_args, tmp)
+                err = sys.stderr.getvalue()
+            finally:
+                sys.stdout, sys.stderr = old_out, old_err
+
+            after = len(ledger_path.read_text(encoding="utf-8").splitlines()) \
+                if ledger_path.exists() else 0
+            ok = (after - before) == (1 if want_write else 0)
+            if needle is not None:
+                seen = needle in err
+                ok = ok and seen
+            else:
+                seen = None
+            if not ok:
+                fails += 1
+            print("  %-6s %-32s rows +%d (want +%d)%s  exit=%d"
+                  % ("ok" if ok else "FAIL", label, after - before,
+                     1 if want_write else 0,
+                     ("  refusal names %s: %s" % (needle, seen) if needle else ""),
+                     code))
+            if not ok:
+                print("    stderr: %s" % (err.strip() or "(empty)"))
+
+        print("verify_ledger fixture: %d case(s), %d failure(s). Every case asserts "
+              "the LEDGER LINE COUNT before/after, not just the exit code -- a refusal "
+              "that still wrote a row, or a write that silently failed, would leave "
+              "the exit code exactly where a correct run leaves it."
+              % (len(_FIXTURE_CASES), fails))
+        # Deliberately NOT phrased as the house checker contract's marker line --
+        # verify_ledger.py is intentionally NOT_A_CHECKER in check_all.py (it appends
+        # the ledger; it does not check anything), and that marker is a substring
+        # match over this file's own source, not its printed output. Spelling it out
+        # here would make check_all.py report this file as UNCLASSIFIED: listed as
+        # NOT_A_CHECKER but its source declares the checker contract's line after all.
+        print("  LIMITS: this drives cmd_record's required-key refusal directly, with "
+              "git absent and --no-reach forced, so it says nothing about reach or "
+              "about a real checkout's git state. It also does not exercise "
+              "run_json_check.py's own findings -- see that tool's own --fixture for "
+              "that half.")
+    finally:
+        for child in sorted(tmp.rglob("*"), reverse=True):
+            if child.is_file():
+                child.unlink()
+            else:
+                child.rmdir()
+        tmp.rmdir()
+    return 1 if fails else 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Append-only ledger of /verify runs, and stats over it.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__.split("Three subcommands:")[-1],
+        epilog=__doc__.split("Four subcommands:")[-1],
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -1739,6 +1937,11 @@ def main():
     p.add_argument("--verbose", "-v", action="store_true",
                    help="Always break reach out per harness version")
     p.set_defaults(func=cmd_stats)
+
+    p = sub.add_parser(
+        "fixture", help="Prove record's required-key refusal actually refuses "
+                        "(KEPT, not written and deleted)")
+    p.set_defaults(func=cmd_fixture)
 
     args = parser.parse_args()
     if not getattr(args, "func", None):
