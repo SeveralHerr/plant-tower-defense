@@ -10760,8 +10760,14 @@ is likely to be at least as productive.
   is unavailable to every session until someone finds and edits the offending row by hand.
   `record` still works, so the ledger keeps growing while nothing can read it.
   - [G-158] status: open | seen: 1 | harness: 0.38.0
-  - Improvement: `cmd_stats` should coerce a non-dict `runtime` to `{}` and count the row
-    in a `malformed: N` line rather than raising — the same shape as `findings`' "1
-    check(s) did NOT run", where a thing that could not be read is named instead of
-    vanishing. `record`'s required-key guard (which refused this session's first row for
-    a missing `verdict`, correctly) should grow the matching type check on `runtime`.
+  - Improvement: **done locally this turn, still open upstream.** `cmd_stats` now reads
+    `lint`/`tests`/`runtime` through a `_row_dict` helper that coerces a scalar to `{}`
+    and COUNTS the row, printing `2 row(s) carry a scalar where lint/tests/runtime should
+    be an object` — the same shape as `findings`' "1 check(s) did NOT run", where a thing
+    that could not be read is named instead of vanishing. Registered in
+    `tools/harness_patch_check.py` (marker `_row_dict`, now 3 guarded patches) so
+    `/scaffold-godot-harness` cannot silently revert it. The offending rows are 201 and
+    202 of this repo's own ledger (`"runtime": "windowed"`, and a sentence about G-152);
+    201 also carries `"lint": 0, "tests": 0`, which is why the coercion is not
+    `runtime`-only. Left `open` because `record`'s required-key guard still accepts a
+    scalar there — the write side is where this should have been stopped.

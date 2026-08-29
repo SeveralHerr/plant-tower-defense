@@ -1551,6 +1551,30 @@ def _pct(num, denom):
     return "n/a" if not denom else "%.0f%%" % (100.0 * num / denom)
 
 
+# LOCAL PATCH (marker: _row_dict). See tools/harness_patch_check.py.
+#
+# `stats` assumed every object-shaped field on a row really was an object, and this
+# ledger already contains three rows where one is not: two with `"runtime": "windowed"`
+# and one with `"lint": 0, "tests": 0`. `row.get("runtime") or {}` hands back the string,
+# `.get` on it raises AttributeError, and the WHOLE aggregate dies -- so the ledger's own
+# read-back, which is the denominator this project keeps it for, was unavailable to every
+# session while `record` happily kept appending.
+#
+# Coerced rather than skipped, and counted rather than swallowed: the row's verdict,
+# duration and reach are all still readable and still belong in the totals; it is only the
+# one malformed field that cannot be asked. `stats` prints how many rows were coerced, in
+# the same spirit as `findings`' "1 check(s) did NOT run" -- a thing that could not be read
+# is named, never dropped into a clean number.
+def _row_dict(row, key):
+    """The object at `key`, or `{}` -- plus whether it had to be coerced to get there."""
+    value = row.get(key)
+    if isinstance(value, dict):
+        return value, False
+    if value is None:
+        return {}, False
+    return {}, True
+
+
 def cmd_stats(args, root):
     path = root / LEDGER_PATH
     if not path.exists():
@@ -1580,6 +1604,8 @@ def cmd_stats(args, root):
     per_version = defaultdict(lambda: [0, 0])
     runtime_findings = 0
     static_only_findings = 0
+    # Rows carrying a scalar where an object belongs -- see `_row_dict`.
+    malformed_rows = 0
     no_snapshot = 0
     # Rows whose reach was unknown because there was no VCS (0.17.0+). Both land in the
     # excluded-from-the-ratio pile, but reporting one as the other would be this file
@@ -1660,14 +1686,15 @@ def cmd_stats(args, root):
 
         failed_checks = [c for c in (row.get("checks") or [])
                          if c.get("result") == "fail"]
-        runtime = row.get("runtime") or {}
+        runtime, runtime_bad = _row_dict(row, "runtime")
+        lint, lint_bad = _row_dict(row, "lint")
+        tests, tests_bad = _row_dict(row, "tests")
+        if runtime_bad or lint_bad or tests_bad:
+            malformed_rows += 1
         if failed_checks or runtime.get("orphan_growth_exceeded"):
             runtime_findings += 1
-        else:
-            lint = row.get("lint") or {}
-            tests = row.get("tests") or {}
-            if lint.get("new") or tests.get("failed"):
-                static_only_findings += 1
+        elif lint.get("new") or tests.get("failed"):
+            static_only_findings += 1
 
         if isinstance(row.get("duration_s"), (int, float)):
             durations.append(row["duration_s"])
@@ -1678,6 +1705,10 @@ def cmd_stats(args, root):
         " | ".join("%s %d" % (k, v) for k, v in sorted(verdicts.items())) or "no verdicts",
     ))
 
+    if malformed_rows:
+        print("       %d row(s) carry a scalar where lint/tests/runtime should be an "
+              "object; those fields read as empty here and the rest of each row counts "
+              "normally (see _row_dict)" % malformed_rows)
     denom = reached_n + unreached_n
     print("reach: %s of changed reachable files exercised at runtime (%d/%d)"
           % (_pct(reached_n, denom), reached_n, denom))

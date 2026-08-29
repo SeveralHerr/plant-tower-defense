@@ -3,8 +3,8 @@ r"""Guard the local patches this project carries on top of the installed harness
 
 WHY THIS EXISTS. `/scaffold-godot-harness` refreshes every harness file from the plugin's
 templates, in place, without asking. Any local edit is silently reverted -- and this repo
-carries two that matter, both filed upstream and neither fixed in the newest release on
-this machine (0.60.0):
+carries three that matter, none of them fixed in the newest release on this machine
+(0.66.0):
 
   * `addons/godot_selftest/dev_tools.gd` -- the exported-build guard (upstream #58, still
     OPEN). Without it the bus polls and the `entry_hook` fires inside a PLAYER'S copy, so
@@ -16,8 +16,8 @@ this machine (0.60.0):
     0.60.0; this half has not.
 
 Cycle 173 measured all fourteen harness files against the release history: twelve are
-cleanly stale at 0.38.0 and would simply be updated, and these two are the whole reason
-the refresh is not a one-command job. A checker is the difference between "someone
+cleanly stale at 0.38.0 and would simply be updated, and these are the whole reason the
+refresh is not a one-command job. A checker is the difference between "someone
 remembers" and "the gate says so".
 
 WHICH GATE WOULD HAVE CAUGHT THIS, AND WHY IT DOES NOT. None. `name_check` resolves
@@ -70,6 +70,18 @@ PATCHES = [
             "worktree/union split beside it HAS been upstreamed and needs no guard"
         ),
         "upstream": "not yet filed",
+    },
+    {
+        "file": "tools/verify_ledger.py",
+        "marker": "_row_dict",
+        "why": (
+            "`stats` assumed lint/tests/runtime were always objects; three rows already "
+            "in this ledger carry a scalar there, and one `.get` on a str took the WHOLE "
+            "aggregate down with an AttributeError. The ledger's own read-back was "
+            "unavailable to every session while `record` kept appending. Coerces and "
+            "COUNTS instead, printing how many rows were affected"
+        ),
+        "upstream": "not yet filed (G-158)",
     },
 ]
 
