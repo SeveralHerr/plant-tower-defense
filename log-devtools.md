@@ -10476,3 +10476,48 @@ is likely to be at least as productive.
   `/scaffold-godot-harness` refresh is what brings it in. No upstream issue filed —
   already fixed, filing one would duplicate a change the maintainer already shipped
   citing this project's own gap number.
+
+## 2026-08-29 — reconciling [G-140] against the installed harness (plant-tower-defense-9vvy)
+
+- Value: **warranted** — the bead's premise reproduced exactly as claimed, and reading
+  the installed source (not the changelog, not the reference doc) is what actually
+  answers "did 0.6x fix this" rather than guessing from a version number.
+  - Expected: `verify_ledger.py record --about game/chomp_flower.gd game/plant.gd`
+    still fails on the 0.38.0 this project pins, and the question is only whether the
+    newer harness already installed on this machine fixed it.
+  - Got: reproduced first, on this repo's own `tools/verify_ledger.py` (0.38.0):
+    `echo '{}' | python tools/verify_ledger.py record --no-reach --about
+    game/chomp_flower.gd game/plant.gd` → `error: unrecognized arguments: game/plant.gd`,
+    matching the bead verbatim. `python tools/devtools.py harness-version --client`
+    reports this machine's plugin cache and marketplace clone both at **0.66.0** (not
+    the 0.60.0 the bead text guessed — the machine had moved on again by the time this
+    lane ran). Grepped the installed 0.66.0 source
+    (`~/.claude/plugins/cache/godot-selftest-harness/godot-selftest-harness/0.66.0/templates/tools/verify_ledger.py:1872`
+    and `:1890`): both the `record` and `reach` subcommands' `--about` argument now read
+    `action="extend", nargs="+"` (was `action="append"` with no `nargs`, one path per
+    flag). Then ran the installed 0.66.0 script itself, not just read it: the same
+    two-path invocation against a scratch `--run` file produced a *different* class of
+    message entirely — `--about names 2 path(s) not in the changed set` (a semantic
+    warning about the scratch cwd having no real diff) with no argparse error at all,
+    proving both paths were consumed by the one `--about` flag.
+  - Found: the fix is real and it is exactly the `nargs="+"` the gap's own
+    `Improvement:` line predicted. Also found the bead's cited "0.60.0" was already
+    stale by the time this lane ran (machine is on 0.66.0) — reconciling against
+    "installed", not the number a bead happened to quote, is what the `gap-reconcile`
+    skill says to do and is why this didn't chase the wrong version.
+  - Cheaper: nothing — this needed the installed source and a real invocation of it,
+    not the changelog. Reading intent (docs, help text) would not have caught the
+    `action="append"` vs `action="extend", nargs="+"` distinction, which is exactly
+    the kind of "flag parsed but wrong" gap `gap-reconcile` warns is easy to miss.
+  - [G-140] status: fixed | seen: 2 | harness: 0.66.0 | note: installed
+    `verify_ledger.py`'s `--about` (both `record` and `reach` subparsers) now declares
+    `action="extend", nargs="+"` at templates/tools/verify_ledger.py:1872,1890 in the
+    0.66.0 plugin-cache/marketplace source, and a live run of that script with
+    `--about a.gd b.gd` consumes both paths under one flag with no argparse error.
+    Still open on the 0.38.0 this project pins (unchanged, by design — gh#43 pins it).
+    No upstream issue filed: the fix already exists upstream, so there is nothing to
+    report against the skill's own repo this time.
+
+- Gap: **no new gaps this turn.** `gap-reconcile`'s procedure (read the installed
+  source, then actually run it, before believing either the doc or the version number)
+  worked exactly as documented and needed no addition.
