@@ -6476,6 +6476,10 @@ func test_the_resting_cue_never_calls_sunflower_ground_scenery() -> String:
 ## that had been drawn at the hover and a bar left on the board would fail here
 ## rather than in a screenshot nobody takes.
 func test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- checks that the
+	# board's dead-ground mark glyph matches the hover mark glyph point-for-point;
+	# the default board only supplies a non-empty set of dead-ground cells to draw
+	# on, and the claim under test does not depend on which road produced them.
 	var board := Board.new()
 	var glyph: PackedVector2Array = PlacementPreview.dead_lock_points()
 	var cells: Array[Vector2i] = PlacementPreview.dead_ground_cells(board,
@@ -6684,6 +6688,10 @@ func test_the_dead_lock_fits_inside_the_bracket_box() -> String:
 ## read as node churn on `performance --by-type`, which is the only signal an
 ## in-tree accumulation gives.
 func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- "36 cells... for a Chomp Flower"
+	# and "3... for a Bomb Dandelion" below are the default board's literal dead-
+	# ground counts, reused here as a pool-size probe for the reuse/pooling
+	# behaviour under test.
 	var board := Board.new()
 	var glyph: PackedVector2Array = PlacementPreview.dead_lock_points()
 	var colour: Color = PlacementPreview.board_dead_color()
@@ -6880,13 +6888,46 @@ func _a6rf_guns(cells: Array[Vector2i], id: StringName) -> PackedFloat32Array:
 ##
 ## Comments are blanked before counting, because several of these functions carry
 ## paragraphs that name `draw_arc` while explaining the call below them.
+##
+## THREE ROWS LEFT (plant-tower-defense-vlpg), DOWN FROM SIX. The reach ring
+## (`_draw`'s own literal `draw_arc()`), the dead-ground lock (`_draw_dead_lock`)
+## and the redundant-coverage bars (`_draw_redundant_bars`) are Line2D children
+## now -- `PlacementPreview.refresh_cue_nodes()` and its three siblings push real
+## `points` onto `reach_ring()` / `dead_lock_mark()` / `redundant_bars()`, and
+## test_the_reach_ring_is_a_real_line2d_carrying_the_radius and its two siblings
+## below assert that state with no frame drawn, the way board.gd's own
+## DeadGroundMarks pool has always been asserted. `_draw_risk_ring` and the two
+## `SelectionMarker` rows are still here on purpose, not by omission -- each
+## carries a verdict at its own row for why it stays `_draw()`-painted.
 func test_every_draw_painted_cue_still_issues_its_draw_calls() -> String:
 	var expect: Array[Dictionary] = [
-		{"file": "res://game/placement_preview.gd", "func": "_draw", "calls": 1},
+		# VERDICT: kept. The dashes have no per-instance state beyond a bool
+		# gate (`at_risk and placeable`) -- RISK_RADIUS/RISK_COLOR/RISK_WIDTH/
+		# RISK_DASHES are constants already priced directly by the contrast
+		# table above, with nothing that varies per preview instance. A Line2D
+		# cannot draw eight disjoint dashes either; matching the dashed look
+		# needs eight pooled Line2Ds per preview for a cue whose only claim a
+		# node could add is "the gate fired", which the census row already
+		# tests. board.gd:914's own argument for Line2D is "a headless run
+		# cannot see a cue with real per-cell state"; this cue has no state a
+		# node would let a test see that the existing constant assertions do
+		# not already cover.
 		{"file": "res://game/placement_preview.gd", "func": "_draw_risk_ring", "calls": 1},
-		{"file": "res://game/placement_preview.gd", "func": "_draw_dead_lock", "calls": 1},
-		{"file": "res://game/placement_preview.gd", "func": "_draw_redundant_bars",
-			"calls": 2},
+		# VERDICT: kept, on both selection_marker.gd rows. Unlike the three
+		# converted above, this file's own header already hoisted BOTH cues'
+		# real state out of the paint call into pure static functions --
+		# `bracket_corners(held)` / `held_ink(base, held)` for the brackets,
+		# `uproot_arc_end(seconds_left, window_seconds)` for the confirm arc --
+		# specifically so a test could hold them with no `_draw()` at all (see
+		# each function's own header). A Line2D conversion here would assert
+		# state this file's own comments say is already assertable, at a real
+		# node-churn cost the ring/lock/bars above do not pay: brackets and the
+		# confirm arc are drawn on EVERY selected plant on the board (not one
+		# hover preview), and the confirm arc's points would need repainting on
+		# every one of the four seconds its window is open rather than once
+		# per hover move. That is exactly the "node churn" `performance
+		# --by-type` is built to catch, spent on a claim two pure functions
+		# already let a test make for free.
 		{"file": "res://game/selection_marker.gd", "func": "_draw_brackets", "calls": 2},
 		{"file": "res://game/selection_marker.gd", "func": "_draw_uproot_window",
 			"calls": 1},
@@ -6911,7 +6952,7 @@ func test_every_draw_painted_cue_still_issues_its_draw_calls() -> String:
 				% [row["file"], row["func"], found, int(row["calls"])])
 		if err != "":
 			return err
-	return _T.assert_eq(checked, 6,
+	return _T.assert_eq(checked, 3,
 		"every listed cue was read -- a shrunken table would pass over nothing")
 
 
@@ -6975,6 +7016,134 @@ func _count_draw_calls(body: String) -> int:
 				reached = true
 				break
 	return n
+
+
+## The reach ring, held against real Line2D state rather than a source scan
+## (plant-tower-defense-vlpg). `refresh_cue_nodes()` is called directly with no
+## frame ever drawn -- the same discipline board.gd's own DeadGroundMarks pool
+## is asserted with.
+func test_the_reach_ring_is_a_real_line2d_carrying_the_radius() -> String:
+	var preview := PlacementPreview.new()
+	preview.reach = PlantCatalog.reach(PlantCatalog.CORN)
+	preview.placeable = true
+	var err: String = _T.assert_true(preview.reach_ring() != null,
+		"the ring is a real node, built in _init, never null")
+	if err == "":
+		err = _T.assert_false(preview.reach_ring().visible,
+			"and hidden before anything has asked it to draw")
+	if err == "":
+		preview.refresh_cue_nodes()
+		err = _T.assert_true(preview.reach_ring().visible,
+			"a placeable cell with reach makes the ring visible with no frame ever drawn")
+	if err == "":
+		err = _T.assert_eq(preview.reach_ring().points.size(), 48,
+			"48 points, the same segment count draw_arc() was always called with")
+	if err == "":
+		var worst: float = 0.0
+		for p: Vector2 in preview.reach_ring().points:
+			worst = maxf(worst, absf(p.length() - preview.reach))
+		err = _T.assert_float_eq(worst, 0.0, 0.01,
+			"every point sits exactly reach px from the origin -- worst off by %.4f px" % worst)
+	if err == "":
+		err = _T.assert_eq(preview.reach_ring().points, PlacementPreview.ring_points(preview.reach),
+			"and the node's points match the pure geometry function point for point")
+	if err == "":
+		preview.placeable = false
+		preview.refresh_cue_nodes()
+		err = _T.assert_false(preview.reach_ring().visible,
+			"a blocked cell hides the ring -- a coverage circle centred somewhere the "
+				+ "plant cannot go is an answer to a question the player is not asking")
+	preview.free()
+	return err
+
+
+## The dead-ground lock, held against real Line2D state (plant-tower-defense-vlpg).
+## Same board and reach test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two
+## uses, so this is the hover half of the same claim: the two marks are the same
+## glyph and here they are checked as the node the hover cue actually paints.
+func test_the_dead_lock_mark_carries_dead_lock_points() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var preview: PlacementPreview = _preview(game)
+	var err: String = _T.assert_true(preview != null, "the game built a placement preview")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var reach: float = PlantCatalog.reach(PlantCatalog.CORN)
+	var dead_cells: Array[Vector2i] = PlacementPreview.dead_ground_cells(game.board, reach)
+	err = _T.assert_gt(dead_cells.size(), 0, "there is dead ground to hover for a Corn Cobbler")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	preview.plant_id = PlantCatalog.CORN
+	preview.reach = reach
+	preview.placeable = true
+	preview.at_risk = false
+	preview.position = game.board.cell_to_world(dead_cells[0])
+	err = _T.assert_true(preview.shows_dead_zone(), "the hovered cell really is dead ground")
+	if err == "":
+		preview.refresh_cue_nodes()
+		err = _T.assert_true(preview.dead_lock_mark().visible,
+			"dead ground makes the lock visible with no frame ever drawn")
+	if err == "":
+		err = _T.assert_eq(preview.dead_lock_mark().points, PlacementPreview.dead_lock_points(),
+			"and it carries the same points the board's own ambient mark uses")
+	if err == "":
+		preview.placeable = false
+		preview.refresh_cue_nodes()
+		err = _T.assert_false(preview.dead_lock_mark().visible,
+			"an illegal cell hides the lock too -- rule 1 outranks rule 3")
+	_T.free_ui(game)
+	return err
+
+
+## The redundant-coverage bars, held against real Line2D state
+## (plant-tower-defense-vlpg). Same board, same patch, same cells
+## test_the_preview_warns_about_ground_an_existing_patch_already_covers uses to
+## establish the redundant cell -- this is that test's claim, checked as the two
+## nodes the hover cue actually paints rather than as the predicate alone.
+func test_the_redundant_bars_carry_redundant_bar_points() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var reach: float = PlantCatalog.reach(PlantCatalog.SUNDEW)
+	var here := Vector2i(2, 0)
+	var doubled := Vector2i(2, 2)
+	var preview: PlacementPreview = _preview(game)
+	var err: String = _T.assert_true(preview != null, "the game built a placement preview")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var patch: StickySundew = _sundew_at(game, here)
+	err = _T.assert_true(patch != null, "a real Sundew is standing on (2, 0)")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	preview.plant_id = PlantCatalog.SUNDEW
+	preview.reach = reach
+	preview.placeable = true
+	preview.at_risk = false
+	preview.position = game.board.cell_to_world(doubled)
+	err = _T.assert_true(preview.shows_redundant_patch_coverage(),
+		"(2, 2) is redundant ground while a patch stands on (2, 0), same board the sibling test above uses")
+	var bars: Array[Line2D] = []
+	var expect: Array[PackedVector2Array] = []
+	if err == "":
+		preview.refresh_cue_nodes()
+		bars = preview.redundant_bars()
+		expect = PlacementPreview.redundant_bar_points()
+		err = _T.assert_eq(bars.size(), 2, "two disjoint strokes, always both nodes")
+	if err == "":
+		err = _T.assert_true(bars[0].visible and bars[1].visible,
+			"redundant ground makes both bars visible with no frame ever drawn")
+	if err == "":
+		err = _T.assert_eq(bars[0].points, expect[0], "bar A matches the pure geometry function")
+	if err == "":
+		err = _T.assert_eq(bars[1].points, expect[1], "bar B matches the pure geometry function")
+	if err == "":
+		preview.placeable = false
+		preview.refresh_cue_nodes()
+		err = _T.assert_true(not bars[0].visible and not bars[1].visible,
+			"an illegal cell hides both bars too -- rule 1 outranks rule 4")
+	_T.free_ui(game)
+	return err
 
 
 ## The spread arc is DRAWN with its rim, not merely supplied with one

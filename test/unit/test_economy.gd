@@ -4425,6 +4425,14 @@ func test_the_run_summary_is_handed_the_coverage_it_needs_to_name_the_mechanic()
 ## "N is enough for reach" needs — but a cover carrying a cell that reaches nothing new
 ## would inflate the number the card prints, and that is checkable.
 func test_the_reach_par_is_a_real_cover_of_this_road() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- the cover claims below (every
+	# cell buildable, full coverage, irredundant, deterministic) are stated with no
+	# literal cell or count and would hold on any road, so in spirit this is a
+	# property. It is not swept here because _road_corpus() lives in
+	# test/unit/test_board.gd and this file has no established way to reach a
+	# helper private to another test script without adding cross-file loading,
+	# which is out of scope for this sort -- flagged as a follow-up rather than
+	# guessing at an unverified cross-file load.
 	var probe := Board.new()
 	var road: Array[Vector2i] = probe.road_cells()
 	var reach: float = RunSummary.par_reach_px()
@@ -4506,6 +4514,9 @@ func test_the_reach_par_is_a_real_cover_of_this_road() -> String:
 ## Every branch of the row's text off a plain Dictionary, and the one thing it must never
 ## say. No Control built — the shape `beds_text` and `reach_note_text` are asserted in.
 func test_the_reach_row_states_reach_alone_and_never_a_plant_count() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- the probe only seeds
+	# realistic road/par numbers into a text-formatting test; the wording rules
+	# checked below do not depend on which road produced the numbers.
 	var probe := Board.new()
 	var road: int = probe.road_cells().size()
 	var par: int = RunSummary.reach_cover(probe, RunSummary.par_reach_px()).size()
@@ -4592,6 +4603,8 @@ func test_the_reach_row_states_reach_alone_and_never_a_plant_count() -> String:
 ## card in the suite is built from a stats Dictionary with no road keys in it, so they
 ## all draw the "not measured" branch and none of them measures the wide one.
 func test_the_reach_row_replaced_the_duration_row_and_fits_the_card() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- the probe only
+	# seeds a realistic road count into a UI-width-fit gate for the rendered row.
 	var probe := Board.new()
 	var road: int = probe.road_cells().size()
 	probe.free()

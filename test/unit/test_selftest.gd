@@ -2521,6 +2521,9 @@ func test_selecting_a_plant_never_leaves_the_marker_mid_grow_headlessly() -> Str
 
 
 func test_recording_lane_pressure_lights_up_the_cell_at_full_strength() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- the alpha mechanism
+	# does not read road shape at all; Board.PATH_CORNERS[0] is used only as a
+	# convenient, known road cell to record against.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var cell: Vector2i = Board.PATH_CORNERS[0]
@@ -2536,6 +2539,8 @@ func test_recording_lane_pressure_lights_up_the_cell_at_full_strength() -> Strin
 ## must not paint — record_lane_pressure is meant to answer "where on the
 ## road", not "wherever a pest happened to be standing".
 func test_recording_lane_pressure_off_the_road_is_ignored() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- relies on
+	# Vector2i(0,0) being grass under the default layout as its off-road probe.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	board.record_lane_pressure(Vector2i(0, 0))  # (0,0) is grass, not path
@@ -2548,6 +2553,8 @@ func test_recording_lane_pressure_off_the_road_is_ignored() -> String:
 ## a permanent stain from wave 1 — recording a new cell must fade the old one
 ## rather than leaving it at full strength forever.
 func test_a_new_lane_pressure_cell_fades_the_previous_one() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- the decay math does
+	# not read road shape; Board.PATH_CORNERS[0]/[1] are just two known road cells.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var first: Vector2i = Board.PATH_CORNERS[0]
@@ -2943,6 +2950,9 @@ func test_a_pest_spawned_deep_in_endless_is_tougher_than_a_wave_one_pest() -> St
 ## ended with two of them dimmed and only the last at full strength. One batch,
 ## one fade.
 func test_every_cell_a_wave_lost_a_pest_at_lights_up_together() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- batch-fade behaviour
+	# does not depend on road shape; Board.PATH_CORNERS[0]/[1] are just two known
+	# road cells.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var a: Vector2i = Board.PATH_CORNERS[0]
@@ -2958,6 +2968,9 @@ func test_every_cell_a_wave_lost_a_pest_at_lights_up_together() -> String:
 ## The readout is a distribution, so a cell that ate half the wave must outrank
 ## one that ate a single pest.
 func test_a_busier_cell_paints_stronger_than_a_quieter_one() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- the proportional
+	# alpha readout does not depend on road shape; Board.PATH_CORNERS[0]/[1] are
+	# just two known road cells.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var busy: Vector2i = Board.PATH_CORNERS[0]
@@ -2975,6 +2988,9 @@ func test_a_busier_cell_paints_stronger_than_a_quieter_one() -> String:
 ## everything: the same shape of losses reads the same whether the wave was
 ## five pests or eighty.
 func test_the_picture_is_the_same_shape_regardless_of_wave_size() -> String:
+	# BOARD.NEW() VERDICT (both `small`/`big`): PINS the shipped board (non-road) --
+	# this is about wave-size normalisation, not road shape; Board.PATH_CORNERS[0]/
+	# [1] are just two known road cells shared by both boards.
 	var small := Board.new()
 	await _T.instantiate_scene(small)
 	var big := Board.new()
@@ -2996,6 +3012,9 @@ func test_the_picture_is_the_same_shape_regardless_of_wave_size() -> String:
 ## "One got through here" is the single most worth-seeing reading on the board,
 ## and a pure proportion would erase it in a big wave.
 func test_a_single_loss_in_a_huge_wave_is_still_visible() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- MIN_ALPHA floor
+	# behaviour does not depend on road shape; Board.PATH_CORNERS[0]/[1] are just
+	# two known road cells.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var busy: Vector2i = Board.PATH_CORNERS[0]
@@ -3010,6 +3029,9 @@ func test_a_single_loss_in_a_huge_wave_is_still_visible() -> String:
 ## Off-road cells are dropped from a batch without dropping the batch — a
 ## caller mixing one bad cell in must not lose the good ones with it.
 func test_an_off_road_cell_in_a_batch_does_not_discard_the_rest() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- relies on
+	# Board.PATH_CORNERS[0] as a known road cell and Vector2i(0,0) as grass under
+	# the default layout.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var good: Vector2i = Board.PATH_CORNERS[0]
@@ -3580,6 +3602,9 @@ func test_the_threat_readout_hides_itself_at_wave_one() -> String:
 ## The whole reason for a second map: the per-wave one fades by design, so by
 ## the end of a run the early damage is gone. The run total must not fade.
 func test_the_run_total_survives_fades_that_clear_the_wave_map() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- run-total retention
+	# does not depend on road shape; Board.PATH_CORNERS[0]/[1] are just two known
+	# road cells.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var early: Vector2i = Board.PATH_CORNERS[0]
@@ -3600,6 +3625,9 @@ func test_the_run_total_survives_fades_that_clear_the_wave_map() -> String:
 ## The post-mortem's headline: which single cell cost the most all run. Not the
 ## most recent, and not the one the live overlay happens to be showing.
 func test_the_worst_run_cell_is_the_one_that_cost_the_most_overall() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- "worst cell"
+	# selection does not depend on road shape; Board.PATH_CORNERS[0]/[1] are just
+	# two known road cells.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var bad: Vector2i = Board.PATH_CORNERS[0]
@@ -3618,6 +3646,8 @@ func test_the_worst_run_cell_is_the_one_that_cost_the_most_overall() -> String:
 ## A run where nothing was ever lost must not point at a cell — (-1,-1) is the
 ## caller's signal to say nothing rather than to praise column 0.
 func test_a_flawless_run_names_no_worst_cell() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- an unrecorded board
+	# answering (-1,-1) does not depend on road shape.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var err: String = _T.assert_eq(board.worst_run_cell(), Vector2i(-1, -1),
@@ -3632,6 +3662,9 @@ func test_a_flawless_run_names_no_worst_cell() -> String:
 ## show_run_pressure repaints the overlay from the run total, so the board
 ## itself becomes the post-mortem rather than needing a separate screen.
 func test_ending_a_run_repaints_the_board_with_the_whole_runs_damage() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- show_run_pressure()'s
+	# repaint math does not depend on road shape; Board.PATH_CORNERS[0]/[1] are just
+	# two known road cells.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var early: Vector2i = Board.PATH_CORNERS[0]
@@ -3713,6 +3746,12 @@ func test_no_readout_clips_its_own_worst_case() -> String:
 ## one: a hungry pest reaches Pest.EAT_RADIUS = CELL * 1.15, so it can lunge one
 ## cell but not the 1.41 cells to a diagonal.
 func test_road_adjacency_is_orthogonal_and_matches_a_hungry_pests_reach() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- the orthogonal-adjacency
+	# definition and the EAT_RADIUS comparison would hold for any road cell on any
+	# road (this is a property in spirit), but it is not swept here: _road_corpus()
+	# lives in test/unit/test_board.gd and this file has no established way to
+	# reach a helper private to another test script without adding cross-file
+	# loading, which is out of scope for this sort -- flagged as a follow-up.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var road: Vector2i = Board.PATH_CORNERS[0]
@@ -3734,6 +3773,10 @@ func test_road_adjacency_is_orthogonal_and_matches_a_hungry_pests_reach() -> Str
 
 
 func test_a_cell_far_from_the_road_is_not_road_adjacent() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- the scan for a non-adjacent
+	# buildable cell is written with no hardcoded coordinates and would hold on any
+	# road with an interior cell (a property in spirit), but it is not swept here
+	# for the same cross-file reason as the test above.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 	var far: Vector2i = Vector2i(-1, -1)
@@ -7612,6 +7655,10 @@ func test_the_notebook_subheading_stays_narrower_than_the_paper() -> String:
 ## the Sundew's coverage — and converting them is the rest of s1o8.1, deliberately not
 ## done in the cycle that made the road settable.
 func test_the_road_still_has_the_length_and_cell_count_the_constants_were_measured_against() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- explicitly, per the docstring
+	# above: kept for the literal 32 cells / 2112.0 px as "a second, independent
+	# statement about the default board", alongside the corpus-swept property test
+	# in test/unit/test_board.gd.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 
@@ -7726,6 +7773,12 @@ func test_the_road_dependent_constants_are_the_ones_that_read_the_road() -> Stri
 ## That is a distinction the source-reading test above deliberately cannot
 ## make, which is why this one measures instead.
 func test_the_husk_margin_reads_the_road_but_does_not_depend_on_it() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- the docstring above proves
+	# CELL/2 analytically for "any route that has an adjacent buildable cell
+	# anywhere", so this is a property in spirit and a corpus sweep would
+	# strengthen it empirically, but it is not swept here for the same cross-file
+	# reason as the road-adjacency tests above (_road_corpus() lives in
+	# test/unit/test_board.gd) -- flagged as a follow-up.
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 
