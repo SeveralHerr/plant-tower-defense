@@ -2197,6 +2197,16 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# finale's own 40-of-40, the 436.7 seam bound (headroom now 12.7, not 18.7)
 	# and endless's first wave still outpricing the new finale.
 	#
+	# Waves 6 (19 -> 24) and 7 (19 -> 25) grew when the Leafhopper and the Locust
+	# entered the table (plant-tower-defense-4zyb): five hoppers appended to wave 6
+	# and six locusts appended to wave 7, both LAST in their wave and both ADDED
+	# rather than traded, since neither debut had a beetle or an aphid to displace
+	# without re-deriving a row the shieldbug/nurse precedent did not need to touch.
+	# wave_director.gd's own note on each row has the base-health arithmetic
+	# (96 -> 121 and 122 -> 146) that keeps threat_for rising strictly through both;
+	# neither wave sits inside the second act's pinned range (10-22), so nothing else
+	# in this file needed re-deriving.
+	#
 	# THIS LIST STAYS RECORDED AND MUST NOT BE DERIVED. Its only possible source of
 	# truth is WAVES itself, so `expected[i] = pests_in_wave(i)` would assert a
 	# tautology and pass unconditionally -- the exact "recorded list that is RIGHT"
@@ -2206,7 +2216,7 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# assertions below (unscaled health, speed and mutation rate; the finale's group
 	# shape) are the other half the skill asks for.
 	var expected: Array[int] = [
-		5, 9, 9, 14, 13, 19, 19, 21, 26, 32, 30, 23, 35, 29, 37,
+		5, 9, 9, 14, 13, 24, 25, 21, 26, 32, 30, 23, 35, 29, 37,
 		37, 33, 32, 31, 36, 38, 36, 39, 34, 33, 34,
 	]
 	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
@@ -7758,6 +7768,210 @@ func test_wave_carries_boss_sees_every_boss_species_and_not_just_the_queen() -> 
 		err = _T.assert_false(WaveDirector.wave_carries_boss(WaveDirector.WAVES.size() + 1),
 			"and no endless wave carries one, which is what the campaign-only rule means")
 	return err
+
+
+# -- The Leafhopper and the Locust: two more questions (plant-tower-defense-4zyb) --
+#
+# The five species before these are answered by damage: the beetle by how much, the
+# Shield Bug by what kind, the queen by where a kill lands, the Nurse by what the
+# garden's damage is aimed at. Neither of these two is answered by damage at all.
+
+
+## Every other species walks at a constant speed for its whole crossing.
+## `hop_speed_multiplier` is the one exception, and the shape it has to hold is the
+## crouch/leap split itself: near-motionless for most of the cycle, then a burst.
+func test_a_leafhopper_crouches_then_leaps_and_never_drifts_off_its_own_average() -> String:
+	var period: float = Pest.hop_period(Pest.HOPPER)
+	var err: String = _T.assert_gt(period, 0.0,
+		"the Leafhopper actually carries a hop_period -- every other species answers 0.0")
+	if err == "":
+		err = _T.assert_float_eq(Pest.hop_speed_multiplier(Pest.HOPPER, 0.0),
+			Pest.HOP_CROUCH_MULT, 0.0001, "the cycle opens crouched")
+	if err == "":
+		var crouch_span: float = period * Pest.hop_crouch_fraction(Pest.HOPPER)
+		err = _T.assert_float_eq(Pest.hop_speed_multiplier(Pest.HOPPER, crouch_span - 0.01),
+			Pest.HOP_CROUCH_MULT, 0.0001, "and stays crouched right up to the leap")
+	if err == "":
+		var leap: float = Pest.hop_leap_multiplier(Pest.HOPPER)
+		err = _T.assert_gt(leap, 1.0,
+			"the leap half is a real burst, faster than the species' own average speed")
+	if err == "":
+		# The invariant `hop_leap_multiplier` is DERIVED from, stated as an assertion
+		# rather than trusted: the cycle's time-weighted average multiplier is 1.0, so
+		# a hopping species' `speed` still means "average px/s over the crossing" --
+		# which is what lets WaveDirector.crossing_seconds price it with no special case.
+		var fraction: float = Pest.hop_crouch_fraction(Pest.HOPPER)
+		var leap: float = Pest.hop_leap_multiplier(Pest.HOPPER)
+		var average: float = fraction * Pest.HOP_CROUCH_MULT + (1.0 - fraction) * leap
+		err = _T.assert_float_eq(average, 1.0, 0.0001,
+			("the cycle's time-weighted average multiplier is 1.0 (got %.4f) -- if this"
+				+ " drifts, WaveDirector's crossing-time arithmetic is quietly pricing a"
+				+ " species that no longer crosses at its own stated speed") % average)
+	if err == "":
+		# Every OTHER species must answer the identity multiplier at every clock value,
+		# the same "the branch must not leak" shape the plate and the aura are held to.
+		for which: StringName in Pest.SPECIES:
+			if which == Pest.HOPPER:
+				continue
+			err = _T.assert_float_eq(Pest.hop_speed_multiplier(which, 1.23), 1.0, 0.0001,
+				"%s answers a flat 1.0 -- it does not hop" % which)
+			if err != "":
+				break
+	return err
+
+
+## The live half: a Leafhopper actually walks slower during the crouch than during
+## the leap, through `_effective_speed()` rather than through the pure function
+## alone -- the pure function could be right and the wiring in `_physics_process`
+## could still call `speed` instead of it.
+func test_a_leafhoppers_effective_speed_actually_changes_with_its_own_clock() -> String:
+	var pest: Pest = _pest(Pest.HOPPER, Vector2.ZERO)
+	var host: Node2D = _host([pest])
+	await _T.instantiate_scene(host)
+	pest.set_physics_process(false)
+	var crouch: float = pest._effective_speed()
+	pest._hop_clock = Pest.hop_period(Pest.HOPPER) * Pest.hop_crouch_fraction(Pest.HOPPER) + 0.01
+	var leap: float = pest._effective_speed()
+	var err: String = _T.assert_gt(leap, crouch * 2.0,
+		("the leap (%.1f px/s) is more than twice the crouch (%.1f) -- a wobble, not"
+			+ " the rhythm the species is built on") % [leap, crouch])
+	if err == "":
+		err = _T.assert_gt(pest.speed, crouch,
+			"crouched, it is slower than its own SPECIES row says")
+	_T.free_ui(host)
+	return err
+
+
+## Alone, a Locust is exactly its SPECIES row's speed. `_swarm_neighbor_count` and
+## `swarm_speed_multiplier` are pure and split out precisely so this is checkable
+## without a physics frame -- the same shape `pulse_aura`'s reach and rate are.
+func test_a_lone_locust_is_the_slowest_ordinary_bug_and_gets_no_crowd_bonus() -> String:
+	var reach: float = Pest.swarm_radius(Pest.LOCUST)
+	var err: String = _T.assert_gt(reach, 0.0,
+		"the Locust actually carries a swarm_radius -- every other species answers 0.0")
+	if err == "":
+		err = _T.assert_float_eq(Pest.swarm_speed_multiplier(0, Pest.swarm_cap(Pest.LOCUST),
+			Pest.swarm_step(Pest.LOCUST)), 1.0, 0.0001,
+			"zero neighbours is the identity multiplier")
+	if err == "":
+		var locust_speed: float = float(Pest.SPECIES[Pest.LOCUST]["speed"])
+		for which: StringName in Pest.SPECIES:
+			if which == Pest.LOCUST:
+				continue
+			var other_speed: float = float(Pest.SPECIES[which]["speed"])
+			err = _T.assert_gte(other_speed, locust_speed,
+				("%s (%.0f px/s) is not slower than the Locust (%.0f) -- alone, this species"
+					+ " is supposed to be the least threatening thing on the board")
+					% [which, other_speed, locust_speed])
+			if err != "":
+				break
+	if err == "":
+		# The cap is derived, not guessed: a fully massed column tops out at exactly
+		# the aphid's own speed, the fastest anything else in this game moves.
+		var capped: float = float(Pest.SPECIES[Pest.LOCUST]["speed"]) * Pest.swarm_speed_multiplier(
+			Pest.swarm_cap(Pest.LOCUST), Pest.swarm_cap(Pest.LOCUST), Pest.swarm_step(Pest.LOCUST))
+		err = _T.assert_float_eq(capped, float(Pest.SPECIES[Pest.APHID]["speed"]), 0.01,
+			("a fully massed Locust column tops out at %.2f px/s, the aphid's own %.0f --"
+				+ " however dense the swarm gets it never outpaces the fastest thing this"
+				+ " game already fields") % [capped, float(Pest.SPECIES[Pest.APHID]["speed"])])
+	if err == "":
+		for which: StringName in Pest.SPECIES:
+			if which == Pest.LOCUST:
+				continue
+			err = _T.assert_eq(Pest.swarm_cap(which), 0,
+				"%s carries no swarm cap -- it does not read another pest's crowd at all" % which)
+			if err != "":
+				break
+	return err
+
+
+## The live half of the crowd mechanic, and the property that makes it a rule about
+## LOCUSTS rather than a second, quieter aura reading every pest on the board:
+## another species standing on top of it changes nothing, and its own kind does.
+func test_a_locusts_effective_speed_climbs_with_its_own_kind_and_ignores_everyone_else() -> String:
+	var lone: Pest = _pest(Pest.LOCUST, Vector2.ZERO)
+	var stranger: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var host: Node2D = _host([lone, stranger])
+	await _T.instantiate_scene(host)
+	for pest: Pest in [lone, stranger]:
+		pest.set_physics_process(false)
+	lone.position = Vector2.ZERO
+	stranger.position = Vector2(0.0, Pest.swarm_radius(Pest.LOCUST) * 0.5)
+	var alone_speed: float = lone._effective_speed()
+	var err: String = _T.assert_float_eq(alone_speed, lone.speed, 0.0001,
+		"a beetle standing well inside the reach changes nothing -- it is not a Locust")
+	if err == "":
+		var packed: Array[Pest] = []
+		for i: int in range(Pest.swarm_cap(Pest.LOCUST)):
+			var kin: Pest = _pest(Pest.LOCUST, Vector2.ZERO)
+			kin.position = Vector2(0.0, Pest.swarm_radius(Pest.LOCUST) * 0.5)
+			kin.set_physics_process(false)
+			host.add_child(kin)
+			packed.append(kin)
+		var crowded_speed: float = lone._effective_speed()
+		err = _T.assert_gt(crowded_speed, alone_speed,
+			("%d of its own kind inside the reach and it is still walking at %.1f, the"
+				+ " same as alone (%.1f)") % [Pest.swarm_cap(Pest.LOCUST), crowded_speed, alone_speed])
+		if err == "":
+			var far: Pest = _pest(Pest.LOCUST, Vector2.ZERO)
+			far.position = Vector2(0.0, Pest.swarm_radius(Pest.LOCUST) * 3.0)
+			far.set_physics_process(false)
+			host.add_child(far)
+			var still_capped: float = lone._effective_speed()
+			err = _T.assert_float_eq(still_capped, crowded_speed, 0.0001,
+				"one more Locust well outside the reach changes nothing")
+			far.free()
+		for kin: Pest in packed:
+			kin.free()
+	_T.free_ui(host)
+	return err
+
+
+## The bead's acceptance criterion for these two, the same shape as the Nurse's own
+## `test_the_nurse_beetle_is_actually_in_a_wave_a_player_will_meet`: a species that
+## exists in `Pest.SPECIES` and is fully tested is still not in the game until a
+## wave actually sends one.
+func test_the_leafhopper_and_the_locust_are_both_actually_in_a_wave_a_player_will_meet() -> String:
+	var hopper_total: int = 0
+	var locust_total: int = 0
+	for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+		for group: Dictionary in WaveDirector.groups_for(wave):
+			var species: StringName = StringName(group["species"])
+			if species == Pest.HOPPER:
+				hopper_total += int(group["count"])
+			elif species == Pest.LOCUST:
+				locust_total += int(group["count"])
+	var err: String = _T.assert_gt(hopper_total, 0,
+		"no campaign wave sends a Leafhopper -- Pest.SPECIES holding the entry is not"
+			+ " the same as the game containing the species")
+	if err == "":
+		err = _T.assert_gt(locust_total, 0, "and none sends a Locust either")
+	return err
+
+
+## The Locust's debut row is built to let several of them bunch up together -- a
+## tight spawn gap is the whole point, since the swarm mechanic has nothing to say
+## about a column trickling out one at a time. Pinned here so a future pacing edit
+## that widens the gap fails loudly instead of quietly turning the debut back into
+## an aphid with worse stats.
+func test_the_locusts_debut_paces_them_close_enough_to_actually_swarm() -> String:
+	var found: bool = false
+	var err: String = ""
+	for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+		for group: Dictionary in WaveDirector.groups_for(wave):
+			if StringName(group["species"]) != Pest.LOCUST:
+				continue
+			found = true
+			var gap: float = float(group["gap"])
+			var travelled: float = gap * float(Pest.SPECIES[Pest.LOCUST]["speed"])
+			err = _T.assert_gt(Pest.swarm_radius(Pest.LOCUST), travelled,
+				("wave %d's Locusts spawn %.2fs apart, %.0f px of walking at their own"
+					+ " (unboosted) speed -- past swarm_radius (%.0f), so consecutive"
+					+ " spawns never link up and the debut teaches nothing")
+					% [wave, gap, travelled, Pest.swarm_radius(Pest.LOCUST)])
+			if err != "":
+				return err
+	return _T.assert_true(found, "there is a Locust group to check (a vacuous pass otherwise)")
 
 
 # -- BEGIN the sting's thrust is aimed (plant-tower-defense-n2wd) ---------------

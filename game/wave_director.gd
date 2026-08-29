@@ -600,13 +600,45 @@ const WAVES: Array[Array] = [
 		{"species": &"beetle", "count": 3, "gap": 1.60, "lead": 0.5},
 		{"species": &"aphid", "count": 10, "gap": 0.45, "lead": 1.0},
 	],
+	# The Leafhopper's debut (plant-tower-defense-4zyb), LAST in its wave for the same
+	# reason the Shield Bug's and the Nurse's debuts are: the aphids and beetles ahead of
+	# it have already taught their own lesson, so the new silhouette arrives with nothing
+	# else new to compete with. Five of them at a wide 1.5s gap, deliberately slower than
+	# the aphid swarm's own pace — the mechanic is a rhythm, not a rush, and a player needs
+	# room to watch ONE hopper's crouch-then-leap before the next one arrives on top of it.
+	#
+	# PRICED, NOT GUESSED. 5 hoppers at 5.0 health each is 25 points of base health, taking
+	# wave 6 from 96 to 121 — strictly between wave 5's 78 and wave 7's own new total (see
+	# its own note below), so threat_for still rises wave over wave exactly where
+	# test_the_second_act_never_lets_the_threat_curve_fall already sweeps it. Neither this
+	# row nor wave 7 sits inside the second act's pinned range (SECOND_ACT_START_WAVE is 9,
+	# and the campaign-cost and back-half-plateau tests only walk waves 10 and up), so
+	# nothing else in this file's arithmetic needed re-deriving.
 	[
 		{"species": &"aphid", "count": 16, "gap": 0.38, "lead": 0.5},
 		{"species": &"beetle", "count": 3, "gap": 1.40, "lead": 2.0},
+		{"species": &"hopper", "count": 5, "gap": 1.50, "lead": 2.0},
 	],
+	# The Locust's debut (plant-tower-defense-4zyb), also last in its wave. Six of them at
+	# a TIGHT 0.35s gap on purpose — the swarm mechanic only has something to say once
+	# several are on the road together, so this row is built to let them bunch up inside
+	# `Pest.swarm_radius(LOCUST)` of each other rather than trickling out one at a time.
+	# Wave 7 is also the last wave before MUTATION_START_WAVE, which makes it the last
+	# wave built entirely around teaching one new thing at a time — a fitting last lesson
+	# before the table stops introducing species and starts introducing traits.
+	#
+	# PRICED, NOT GUESSED. 6 locusts at 4.0 health each is 24 points of base health, taking
+	# wave 7 from 122 to 146 — strictly between wave 6's new 121 and wave 8's own
+	# 141 * (1 + MUTATION_CHANCE * MUTATION_THREAT_WEIGHT) = 174.84 (wave 8 is the first
+	# wave the mutation multiplier applies to at all, which is most of that headroom).
+	# `Pest.SPECIES[LOCUST].speed` is the pest's ISOLATED, slowest speed — the crowd bonus
+	# only ever makes a real board cross FASTER than `crossing_seconds` assumes, so this
+	# row's read on peak_simultaneous_pests is the pessimistic one the road budget already
+	# insists on everywhere else (see peak_simultaneous_pests's own header).
 	[
 		{"species": &"beetle", "count": 5, "gap": 1.20, "lead": 0.5},
 		{"species": &"aphid", "count": 14, "gap": 0.40, "lead": 1.0},
+		{"species": &"locust", "count": 6, "gap": 0.35, "lead": 2.0},
 	],
 	# Wave 8 is MUTATION_START_WAVE, and it used to be a double step: 22 aphids at
 	# 0.30 plus 7 beetles priced +45.9% on count alone, and the mutation multiplier
