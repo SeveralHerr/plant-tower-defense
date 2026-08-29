@@ -10163,3 +10163,49 @@ is likely to be at least as productive.
   G-153 may already be closed upstream. Not reconciled here — that is
   plant-tower-defense-owl6/abxv, and checking twelve gaps inside a three-lane merge is two changes
   in one commit.
+
+## 2026-08-29 — Lane C merged, and the bridge decided which side of a parity failure was wrong
+
+- Value: **warranted** — the bridge answered a question the suite had just raised and could not settle:
+  when the new mirror-parity gate fails on gentle, is the gate wrong or is the game? Three live
+  reads decided it in under a minute, and the answer changed what got filed.
+  - Expected: `Game.seed_yield` is assigned from the difficulty profile somewhere on the path a
+    real run takes — or it is not, in which case `docs/playtest-runs.jsonl`'s gentle and harsh rows
+    describe RunSim rather than the game and lane C's whole finding is unsafe.
+  - Got: `get-state /root/RunConfig --property difficulty` → `standard`, `find-nodes --class Game
+    --property seed_yield` → `1.0`; then `set-state ... gentle`, `run-method /root/Game --method
+    _ready`, and `seed_yield=1.5`. Set back to standard, `_ready` re-run, `1.0` again. `quit`
+    confirmed `user://: no file changed during this run`.
+  - Found: three things, and the first two are the run's whole justification.
+    (1) `test_mirror_parity.gd` is green on standard **because standard's `seed_yield` is exactly
+    1.0 and `seeds_after_yield` is the identity there** — the gate asserts 0 == 0 on the only
+    profile it runs. Pointed at gentle it fails: `seeds_earned DRIFTED: tools/run_sim.gd made it 61
+    and game/game.gd made it 37`. Filed P1 as plant-tower-defense-6pjd. A gate built so a mirror
+    could not drift unwatched, vacuous on its first day, in the one dimension it was widened into.
+    (2) The reads above then established it is the gate's SETUP — it instantiates `game.tscn` while
+    RunConfig still says standard and pins the profile afterwards — so the shipped game is correct
+    and the record is not invalidated. That distinction is the difference between a test fix and a
+    re-sweep, and nothing static could have made it.
+    (3) A leading-`+` continuation line is a GDScript parse error, and the suite reported
+    `Total: 1061 | Passed: 1061 | ALL TESTS PASSED` with `test_mirror_parity.gd` failing to load
+    entirely. `run_tests.py` exited 2 and named it; `run_tests.gd` alone reported the green summary.
+    Exactly the case CLAUDE.md documents, met in the wild rather than read about.
+  - Cheaper: nothing for (1) or (2). (1) needed a hosted `game.tscn` stepped against RunSim, and
+    (2) needed a live autoload plus a re-entered `_ready` — reading `game.gd` shows the assignment
+    but not that it survives the gate's profile pin. `findings --no-scenes` was the cheap part and
+    returned `0 finding(s) across 4 of 5 checks`, i.e. confirmed what was already known.
+
+- Gap: **`scripts-seen` prints a human list by default and `verify_ledger record` needs JSON, with
+  nothing on either side saying so.** `python tools/devtools.py scripts-seen > seen.json` then
+  `verify_ledger reach --scripts-seen seen.json` gives
+  `verify_ledger: unreadable scripts-seen capture ... (Expecting value: line 1 column 1 (char 0))`
+  — and `reach` then carries on and prints a full, confident reach report derived from the
+  scene-tree half alone. The workaround is `scripts-seen --json`, which is correct and undocumented
+  at the point of use. `--scene-tree` has no such trap because `scene-tree` emits JSON already, so
+  the asymmetry is invisible until it bites.
+  - [G-154] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: two lines. Have `verify_ledger` name the fix in that error (`pass --json to
+    scripts-seen`) rather than only the parse failure, and have it treat an unreadable capture as
+    exit 2 for the reach it could not compute instead of printing a reach report beside the error.
+    A report that reads clean next to "unreadable" is the shape this repo's own denominator rule
+    exists to prevent.
