@@ -31,8 +31,26 @@ must survive its colour being thrown away.
 | **Doubled line width** | ARMED — a destructive action is one click away | `SelectionMarker.WARNING_LINE_WIDTH` |
 | **A row of small pips** inside a drawn shape | HOW MANY TIMES OVER — a magnitude the shape's own size and brightness have already saturated on | `husk_layer.gd:117-124` (a husk worth more than `CompostMeter.FULL_VALUE`) |
 | **Hatched stripes filling a road cell**, at one of two mirrored angles | TWO readings of the same cell at once — the ALPHA is how much pressure it took, the ANGLE is whether anything currently aims at it | `lane_pressure_overlay.gd:92-96` |
+| **A translucent sprite of the thing itself**, cell-sized, centred on a cell | the SUBJECT AS IT WOULD BE — "this is the plant, and this is exactly where it lands" | `placement_preview.gd` (`GHOST_ALPHA`, the ghost drawn behind the brackets) |
 
-### The last row is the board-drawn one, and that is the axis it turns on
+### The ghost is the one cue that is not a mark, and it carries no verdict
+
+Every other row above is drawn — an arc, a bar, a dot, a bracket — and is therefore free
+to mean something. The ghost is a *photograph* of what is being discussed, and the
+distinction matters for the two-channel rule: it has exactly one channel, alpha, so the
+moment it were tinted to say "legal" or "refused" that tint would be the only signal
+carrying the verdict, and a greyscale reader would lose it entirely.
+
+So it does not say. `PlacementPreview` draws the same sprite at the same opacity on a cell
+it would accept and on one it would refuse; the brackets around it carry the whole of that
+answer, in colour and in whether a range ring is drawn at all. A future cue tempted to
+modulate the ghost has to add a second channel first.
+
+Its alpha is also load-bearing against a *different* reader: a half-visible plant and a
+planted plant must not be confusable in a screenshot, where nothing moves to tell them
+apart. `GHOST_ALPHA` is 0.45 for that reason and not as a matter of taste.
+
+### The hatch is the board-drawn one, and that is the axis it turns on
 
 Every other row above is a mark **on a node** — centred on a plant, on a cell, on a
 mouth — and it means something about that node. The hatch is painted **on the board**,
