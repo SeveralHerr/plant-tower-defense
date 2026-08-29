@@ -23174,6 +23174,27 @@ func test_the_sport_path_resolver_is_stable_and_asks_the_plant_not_the_kind() ->
 		err = _T.assert_eq(PlantMutation.sport_texture_path(""), "",
 			"and an empty path stays empty rather than becoming '_sport.'")
 	if err == "":
+		# Through the PLANT's own seam, not just the static under it. `frame_texture_path`
+		# is the method every texture load in the game actually calls, and it reads
+		# `is_sport` off the instance -- a static that is correct while the instance method
+		# passes the wrong flag is a bug no assertion on PlantMutation can see.
+		var plain := Bramble.new()
+		var sport := Bramble.new()
+		sport.is_sport = true
+		err = _T.assert_eq(plain.frame_texture_path(base), base,
+			"a plain Bramble asks for its own frame")
+		if err == "":
+			err = _T.assert_eq(sport.frame_texture_path(base),
+				PlantMutation.sport_texture_path(base),
+				"and a sport Bramble asks for the mutant one")
+		if err == "":
+			err = _T.assert_eq(sport.frame_texture_path(Bramble.DAMAGE_TEXTURES[2]),
+				PlantMutation.sport_texture_path(Bramble.DAMAGE_TEXTURES[2]),
+				("including its ragged frame -- the swap a wall makes while the player is "
+					+ "watching it hold"))
+		plain.free()
+		sport.free()
+	if err == "":
 		err = _T.assert_true(PlantMutation.sport_texture_path(base).ends_with(".png"),
 			"the extension survives the rename, or nothing can import the result")
 	return err
@@ -23244,16 +23265,12 @@ func test_the_sport_message_names_the_plant_and_what_it_does() -> String:
 ## on a plant that was simultaneously damaged and selected -- which is the state a
 ## player is in exactly when they need to read both.
 func test_the_sport_badge_stays_clear_of_the_health_bar_and_never_pulses_away() -> String:
-	var ring: PackedVector2Array = PlantMutation.badge_ring()
-	var err: String = _T.assert_gt(ring.size(), 8,
-		"the badge is drawn as a real ring, not a stub")
-	if err == "":
-		for at: Vector2 in ring:
-			err = _T.assert_float_eq(at.distance_to(PlantMutation.BADGE_CENTRE),
-				PlantMutation.BADGE_RADIUS, 0.001,
-				"every point of the ring is one radius from the badge's centre")
-			if err != "":
-				return err
+	# The disc and its rim are a draw_circle and a draw_arc at BADGE_RADIUS -- primitives
+	# with nothing to get wrong -- so there is no pure function here to check and none is
+	# kept for the sake of having one. `badge_ring()` used to be exactly that: a polygon
+	# the game never drew with, and a test asserting that every point of a circle is one
+	# radius from its centre. Lint's orphan pass is what named it.
+	var err: String = ""
 	if err == "":
 		var blades: Array[PackedVector2Array] = PlantMutation.badge_trefoil()
 		err = _T.assert_eq(blades.size(), PlantMutation.TREFOIL_BLADES,

@@ -292,20 +292,6 @@ static func note(kind: StringName) -> String:
 	return String(entry(kind).get("note", ""))
 
 
-## The badge's outline, as a polygon rather than an arc call.
-##
-## Pure, so what `_draw` paints is checkable in a headless run — the same reason
-## `Sunflower.gauge_fill_rect` is a static rather than a body inside `_draw`. Headless
-## executes no `_draw` at all, so a shape assembled inside one is a shape no test can
-## reach; see `.claude/skills/assert-an-animation`.
-static func badge_ring(segments: int = 20) -> PackedVector2Array:
-	var out := PackedVector2Array()
-	for i: int in range(segments):
-		var angle: float = TAU * float(i) / float(segments)
-		out.append(BADGE_CENTRE + Vector2.RIGHT.rotated(angle) * BADGE_RADIUS)
-	return out
-
-
 ## The trefoil inside the badge: `TREFOIL_BLADES` blades, each an annular sector from
 ## `TREFOIL_INNER` to `TREFOIL_OUTER` spanning `TREFOIL_SPAN`, with the first blade
 ## pointing up-screen. One polygon per blade, so a caller draws them and nothing else.
