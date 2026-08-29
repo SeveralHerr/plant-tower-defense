@@ -6749,3 +6749,33 @@ Three findings kept out here rather than buried in a log:
   because the seeded one feels like it covers the shape. **A fixture case whose expected
   value is the EMPTY answer cannot kill a mutation that makes everything empty** — every
   such case needs a sibling whose expected value is non-empty for the same input shape.
+
+- **An animation can move a game object without moving it, and that split is worth reaching
+  for by default.** The Chomp now hauls the bug it catches up onto itself and eats it
+  there (plant-tower-defense-p4f6). The obvious implementation writes `Pest.position`, and
+  it is wrong in a way no test in this repo would have failed: `position` is what
+  `Kernel._hit_pests` (game/kernel.gd:69), `_adjacent_plant`, `_blocking_plant` and the
+  escape route all read, so a bug dragged one cell off the road quietly leaves every cob's
+  line of fire — a real nerf to the Chomp/Corn pairing, delivered in an animation commit,
+  invisible to the balance tables. The fix is a second channel: `Pest._carry_offset` moves
+  the SPRITE, the health bars and the `_draw()` canvas, and the node stays on the road.
+  **When an animation wants to move something the game has opinions about, ask which of the
+  two — the picture or the position — the rest of the code is actually reading.**
+
+- **`instantiate_scene`'s settle frames are long enough to eat a whole aphid, and a test
+  that lets them decide anything is a coin toss.** Two of the new Chomp tests staged a pest
+  in reach at spawn; one passed on its first run and failed on the next with no code change
+  between them, because an aphid's entire 0.45 s meal fits inside the settle. The pattern
+  that works is already in the file (`test_a_chomps_bite_records_a_lunge_toward_the_meal`):
+  spawn at x=-2000, let the tree settle, then walk the pest in and drive `_act` by hand.
+  Worth generalising — **any test whose subject acts every physics frame must not be handed
+  its input before the settle**, and the tell is a test that is green on one run and red on
+  the next without an edit.
+
+- **A geometry test can be exactly right while the picture shows nothing.** The vine
+  animation's endpoints, phases and curve are all pure statics with pinned absolutes, all
+  green — and at the first constants the vines, once the bug had landed, lived entirely
+  inside the 24 px the beetle sprite covers, so the whole chew (most of a meal) showed a bug
+  on a flower with nothing visibly holding it. Only `screenshot --region` could say so.
+  **A drawn overlay's assertions are about the geometry; whether anything is on screen is
+  about what is composited on top of it, and no property read answers that.**

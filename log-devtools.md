@@ -10716,3 +10716,52 @@ is likely to be at least as productive.
   `fan-out.md` (already carries three lessons from this session; this one is "commit
   `.beads/*.jsonl` in the same commit as any `bd create`," not really fan-out-specific)
   so a future session reads it without another skill-file edit.
+
+
+## 2026-08-29 — Chomp Flower: vines lash out, haul the bug onto the plant, and eat it there
+
+- Value: **warranted** — the whole animation is composited pixels from three sources (the
+  flower sprite, the pest sprite the flower is moving, and a drawn vine layer between
+  them), and the one thing that was wrong was invisible to every headless assertion in
+  the change.
+  - Expected: the geometry statics would carry the whole thing, and the live run would be
+    a confirmation pass — the endpoints, the phase boundaries and the curve are all pure
+    functions, all asserted headless with pinned absolutes.
+  - Got: the geometry was right and the picture was still wrong. At `VINE_ROOT_SPREAD 5`
+    / `GRIP_RADIUS 7` every vine, once the bug had landed, lived inside the 24 px the
+    beetle sprite covers — `screenshot --region 175,150,100,100` shows a bug sitting on a
+    flower with nothing visibly holding it, for the whole 2.5 s of a beetle's chew, which
+    is most of what a player actually watches. `carry_offset()` read `{"x":24,"y":44}`
+    against a `position` still at `{"x":200,"y":96}` on the same node, which is the
+    design's core claim (the body moves, the node does not) stated in one line.
+  - Found: (1) the vine-invisibility above, fixed mid-run by widening the roots to 13 and
+    the grips to 11 and raising `VINE_TAUT_SLACK` 0.35 -> 0.45; (2) two of the new tests
+    were settle-frame dependent — `instantiate_scene` pumps enough frames to eat a whole
+    0.45 s aphid — so one passed on its first run and failed on the next with no code
+    change in between. Both restaged to spawn out of reach and walk the pest in, the
+    pattern `test_a_chomps_bite_records_a_lunge_toward_the_meal` already documents.
+  - Cheaper: nothing for (1). It is a question about two sprites and an overlay composited
+    together, and neither a property read nor `node-bounds` can answer it. Everything else
+    in the change was cheaper headless by construction, which is why the catch is derived
+    from `_capture_elapsed` frame by frame rather than tweened — `pause` + `step-time
+    --then-pause` then reads a state that is correct rather than one a tween was mid-way
+    to reaching.
+
+- Gap: **`verify_ledger.py stats` crashes on a row this repo already contains** — run
+  before touching anything this session, so it is not something this change wrote.
+
+      $ python tools/verify_ledger.py stats
+      File "tools/verify_ledger.py", line 1664, in cmd_stats
+        if failed_checks or runtime.get("orphan_growth_exceeded"):
+      AttributeError: 'str' object has no attribute 'get'
+
+  A row whose `runtime` field is a String rather than an object takes the whole aggregate
+  down, so the ledger's own read-back — the denominator the gaps log is supposed to lack —
+  is unavailable to every session until someone finds and edits the offending row by hand.
+  `record` still works, so the ledger keeps growing while nothing can read it.
+  - [G-158] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `cmd_stats` should coerce a non-dict `runtime` to `{}` and count the row
+    in a `malformed: N` line rather than raising — the same shape as `findings`' "1
+    check(s) did NOT run", where a thing that could not be read is named instead of
+    vanishing. `record`'s required-key guard (which refused this session's first row for
+    a missing `verdict`, correctly) should grow the matching type check on `runtime`.
