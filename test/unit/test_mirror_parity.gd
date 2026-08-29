@@ -115,16 +115,25 @@ var _T
 const SUITE_SAVE_PATH := "user://test_mirror_parity_suite.save"
 var _suite_stashed_save_path: String = ""
 
+## `_game_side` writes this directly, ahead of hosting `game.tscn`, so `Game._ready`
+## reads the profile under test rather than whatever the last suite or the player left
+## behind (plant-tower-defense-6pjd). Stashed and restored the same way `save_path` is,
+## on the same autoload, for the same reason: this field outlives the test method.
+var _suite_stashed_difficulty: StringName = &""
+
 
 func setup() -> void:
 	_suite_stashed_save_path = RunConfig.save_path
 	RunConfig.save_path = SUITE_SAVE_PATH
+	_suite_stashed_difficulty = RunConfig.difficulty
 
 
 func teardown() -> void:
 	if _suite_stashed_save_path != "":
 		RunConfig.save_path = _suite_stashed_save_path
 	DirAccess.remove_absolute(SUITE_SAVE_PATH)
+	if _suite_stashed_difficulty != &"":
+		RunConfig.difficulty = _suite_stashed_difficulty
 
 
 # -- the gardens, derived from a real Board -----------------------------------
@@ -228,7 +237,7 @@ func _scenarios() -> Dictionary:
 ## because `bank` does not exist until `play()` builds it and the policy is the one hook
 ## that runs after that and before the prep window. It fires once and then returns
 ## nothing, which is how `_run_policy` knows to stop asking.
-func _sim_side(scenario: Dictionary) -> Dictionary:
+func _sim_side(scenario: Dictionary, difficulty: StringName) -> Dictionary:
 	var host := Node2D.new()
 	host.name = "MirrorParityHost"
 	await _T.instantiate_scene(host)
@@ -236,7 +245,7 @@ func _sim_side(scenario: Dictionary) -> Dictionary:
 	var sim := RunSim.new()
 	sim.wave_ceiling = 1
 	sim.frame_ceiling_per_wave = WAVE_FRAME_CEILING
-	sim.difficulty = Game.DIFFICULTY_STANDARD
+	sim.difficulty = difficulty
 	sim.endless = false
 	sim.roll_seed = ROLL_SEED
 	sim.sweep_husks = true
@@ -291,7 +300,14 @@ func _sim_side(scenario: Dictionary) -> Dictionary:
 
 
 ## One wave through a hosted `game.tscn`, hand-stepped at `DT` on the same garden.
-func _game_side(scenario: Dictionary) -> Dictionary:
+##
+## `RunConfig.difficulty` is set BEFORE `game.tscn` is instantiated, not after
+## (plant-tower-defense-6pjd). `Game._ready` reads `RunConfig.difficulty` once, at the
+## moment the scene enters the tree, and assigns `seed_yield` from it -- a pin applied
+## to the already-built `Game` node lands too late for that field, which is exactly the
+## gap that let this gate pass on standard (seed_yield 1.0, the identity) while it was
+## silently comparing gentle's `RunSim` against standard's `Game` on every other profile.
+func _game_side(scenario: Dictionary, difficulty: StringName) -> Dictionary:
 	var out: Dictionary = {
 		"axes": {},
 		"foreign": -1,
@@ -301,6 +317,7 @@ func _game_side(scenario: Dictionary) -> Dictionary:
 		"spawned": -1,
 		"placed": -1,
 	}
+	RunConfig.difficulty = difficulty
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	if game == null:
 		out["failure"] = "%s did not host" % GAME_SCENE
@@ -317,7 +334,10 @@ func _game_side(scenario: Dictionary) -> Dictionary:
 	# ran on both of them with a REAL delta. Two things it moved that this run reads are
 	# put back: the cross-breeding clock (which decides when a sport lands) and the three
 	# random streams. `set_run_seed` is the one call that knows how many streams a run has.
-	var profile: Dictionary = Game.difficulty_profile(Game.DIFFICULTY_STANDARD)
+	# Read off the SAME `difficulty` the scene was instantiated under, so this re-pin of
+	# lives and prep is a restatement rather than a second, disagreeing source of truth --
+	# `game.seed_yield` itself is left exactly as `Game._ready` set it, on purpose.
+	var profile: Dictionary = Game.difficulty_profile(difficulty)
 	game.starting_lives = int(profile["lives"])
 	game.lives = game.starting_lives
 	game.prep_seconds = float(profile["prep_seconds"])
@@ -446,11 +466,10 @@ func _adopt(game: Game, seen: Dictionary, tally: Dictionary, pests: Array[Pest])
 			pests.append(pest)
 			# `seeds_after_yield` FIRST, then the weather scale, in that order -- it is the
 			# order `Game._on_pest_died` pays in, and the two do not commute once the
-			# integer floor is involved. This tally reads 1.0 today because the scenarios
-			# pin DIFFICULTY_STANDARD, whose yield is exactly the identity; without the
-			# call it would silently under-report the moment anyone points this gate at
-			# gentle or harsh, which is the failure the gate exists to catch happening
-			# inside the gate itself.
+			# integer floor is involved. `game.seed_yield` is exactly 1.0 only on the
+			# standard pass; on gentle and harsh the call is the whole reason this tally
+			# does not silently under- or over-report -- which was this gate's own bug
+			# until it ran every profile instead of standard alone (plant-tower-defense-6pjd).
 			pest.died.connect(func(dead: Pest) -> void:
 				var paid: int = game.weather_seed_value(
 					Game.seeds_after_yield(dead.seed_value, game.seed_yield))
@@ -619,101 +638,116 @@ func test_the_mirror_and_the_game_agree_on_one_wave() -> String:
 	var exercised: Dictionary = {}
 
 	for scenario: Dictionary in scenarios:
-		var label: String = String(scenario["name"])
+		var scenario_name: String = String(scenario["name"])
 		var expected_placed: int = (scenario["garden"] as Array).size()
 
-		# SEQUENTIALLY, never overlapped. `plants` and `pests` are TREE-GLOBAL groups that
-		# `Plant._live_pests` and `Pest._blocking_plant` both read, so two hosted gardens
-		# in one tree shoot at each other's bugs. See .claude/skills/godot-test-isolation.
-		var mirror: Dictionary = await _sim_side(scenario)
-		err = _sound("%s/RunSim" % label, mirror, expected_placed)
-		if err != "":
-			return err
-		var real: Dictionary = await _game_side(scenario)
-		err = _sound("%s/Game" % label, real, expected_placed)
-		if err != "":
-			return err
+		# EVERY PROFILE, not standard alone (plant-tower-defense-6pjd). Standard's
+		# `seed_yield` is exactly 1.0 -- `seeds_after_yield`'s identity -- so a gate that
+		# only ever ran standard could not tell a `game.seed_yield` read from a mirror that
+		# forgot the call apart from one that never forgot it. `Game.DIFFICULTY_ORDER` is
+		# the same list the title screen's own selector iterates, not a second hand-typed
+		# copy of it (`.claude/skills/derive-the-list`).
+		for difficulty: StringName in Game.DIFFICULTY_ORDER:
+			var label: String = "%s@%s" % [scenario_name, difficulty]
 
-		print("  [%s] %s" % [label, String(mirror["summary"])])
-		print("  [%s] %s" % [label, String(real["summary"])])
-
-		# THE TABLE IS CHECKED BEFORE IT IS READ, in both directions and on both sides: an
-		# axis a tally forgot to fill would otherwise be compared as a missing key against
-		# a missing key, which is the quietest way for this gate to stop asking.
-		var mirror_axes: Dictionary = mirror["axes"]
-		var real_axes: Dictionary = real["axes"]
-		for axis: StringName in AXES:
-			err = _T.assert_true(mirror_axes.has(axis),
-				"[%s] RunSim's tally is missing the `%s` axis" % [label, axis])
+			# SEQUENTIALLY, never overlapped. `plants` and `pests` are TREE-GLOBAL groups
+			# that `Plant._live_pests` and `Pest._blocking_plant` both read, so two hosted
+			# gardens in one tree shoot at each other's bugs. See
+			# .claude/skills/godot-test-isolation.
+			var mirror: Dictionary = await _sim_side(scenario, difficulty)
+			err = _sound("%s/RunSim" % label, mirror, expected_placed)
 			if err != "":
 				return err
-			err = _T.assert_true(real_axes.has(axis),
-				"[%s] the Game's tally is missing the `%s` axis" % [label, axis])
-			if err != "":
-				return err
-		err = _T.assert_eq(mirror_axes.size(), AXES.size(),
-			"[%s] RunSim's tally carries an axis AXES does not name: %s vs %s"
-				% [label, mirror_axes.keys(), AXES])
-		if err != "":
-			return err
-		err = _T.assert_eq(real_axes.size(), AXES.size(),
-			"[%s] the Game's tally carries an axis AXES does not name: %s vs %s"
-				% [label, real_axes.keys(), AXES])
-		if err != "":
-			return err
-
-		# The premise, ahead of the claim: two wave schedules that sent different numbers
-		# of pests would make every axis below a comparison of two different waves.
-		err = _T.assert_eq(int(real["spawned"]), int(mirror["spawned"]),
-			("[%s] the two sides did not even send the same wave -- RunSim spawned %d and "
-				+ "the game spawned %d, so nothing below is a claim about the mirror")
-				% [label, int(mirror["spawned"]), int(real["spawned"])])
-		if err != "":
-			return err
-
-		# THE CLAIM.
-		for axis: StringName in AXES:
-			var mine: int = int(mirror_axes[axis])
-			var theirs: int = int(real_axes[axis])
-			if mine != 0 or theirs != 0:
-				exercised[axis] = true
-			err = _T.assert_eq(mine, theirs,
-				("[%s] `%s` DRIFTED: tools/run_sim.gd made it %d and game/game.gd made it "
-					+ "%d on the same wave, the same seed and the same garden. The `## "
-					+ "Mirrors` comment naming this branch is now a citation of something "
-					+ "that no longer agrees, and every number in docs/playtest-runs.jsonl "
-					+ "that depends on it describes RunSim rather than the game.")
-					% [label, axis, mine, theirs])
+			var real: Dictionary = await _game_side(scenario, difficulty)
+			err = _sound("%s/Game" % label, real, expected_placed)
 			if err != "":
 				return err
 
-		# What this scenario was built to reach. Agreement on a wave where nothing
-		# happened is the pass this harness warns about loudest.
-		for axis: StringName in scenario["floors"] as Array:
-			err = _T.assert_gt(int(real_axes[axis]),  0,
-				("[%s] the scenario exists to exercise `%s` and the wave never moved it, "
-					+ "so the two sides agreed about nothing on that axis") % [label, axis])
+			print("  [%s] %s" % [label, String(mirror["summary"])])
+			print("  [%s] %s" % [label, String(real["summary"])])
+
+			# THE TABLE IS CHECKED BEFORE IT IS READ, in both directions and on both
+			# sides: an axis a tally forgot to fill would otherwise be compared as a
+			# missing key against a missing key, which is the quietest way for this gate
+			# to stop asking.
+			var mirror_axes: Dictionary = mirror["axes"]
+			var real_axes: Dictionary = real["axes"]
+			for axis: StringName in AXES:
+				err = _T.assert_true(mirror_axes.has(axis),
+					"[%s] RunSim's tally is missing the `%s` axis" % [label, axis])
+				if err != "":
+					return err
+				err = _T.assert_true(real_axes.has(axis),
+					"[%s] the Game's tally is missing the `%s` axis" % [label, axis])
+				if err != "":
+					return err
+			err = _T.assert_eq(mirror_axes.size(), AXES.size(),
+				"[%s] RunSim's tally carries an axis AXES does not name: %s vs %s"
+					% [label, mirror_axes.keys(), AXES])
+			if err != "":
+				return err
+			err = _T.assert_eq(real_axes.size(), AXES.size(),
+				"[%s] the Game's tally carries an axis AXES does not name: %s vs %s"
+					% [label, real_axes.keys(), AXES])
 			if err != "":
 				return err
 
-		# The split must ACCOUNT for the total on the GAME side too. `test_playtest`
-		# already pins this for RunSim; without it here, a game that stopped banking a
-		# kill it still quoted through `weather_seed_value` would read clean above.
-		err = _T.assert_eq(
-			int(real_axes[&"seeds_from_kills"]) + int(real_axes[&"seeds_from_growth"])
-				+ int(real_axes[&"seeds_from_husks"]),
-			int(real_axes[&"seeds_earned"]),
-			("[%s] the game's three income columns do not add up to what its bank says it "
-				+ "earned -- a fourth source moved seeds without being counted") % label)
-		if err != "":
-			return err
+			# The premise, ahead of the claim: two wave schedules that sent different
+			# numbers of pests would make every axis below a comparison of two different
+			# waves.
+			err = _T.assert_eq(int(real["spawned"]), int(mirror["spawned"]),
+				("[%s] the two sides did not even send the same wave -- RunSim spawned "
+					+ "%d and the game spawned %d, so nothing below is a claim about the "
+					+ "mirror") % [label, int(mirror["spawned"]), int(real["spawned"])])
+			if err != "":
+				return err
+
+			# THE CLAIM.
+			for axis: StringName in AXES:
+				var mine: int = int(mirror_axes[axis])
+				var theirs: int = int(real_axes[axis])
+				if mine != 0 or theirs != 0:
+					exercised[axis] = true
+				err = _T.assert_eq(mine, theirs,
+					("[%s] `%s` DRIFTED: tools/run_sim.gd made it %d and game/game.gd made "
+						+ "it %d on the same wave, the same seed and the same garden. The "
+						+ "`## Mirrors` comment naming this branch is now a citation of "
+						+ "something that no longer agrees, and every number in "
+						+ "docs/playtest-runs.jsonl that depends on it describes RunSim "
+						+ "rather than the game.")
+						% [label, axis, mine, theirs])
+				if err != "":
+					return err
+
+			# What this scenario was built to reach. Agreement on a wave where nothing
+			# happened is the pass this harness warns about loudest.
+			for axis: StringName in scenario["floors"] as Array:
+				err = _T.assert_gt(int(real_axes[axis]),  0,
+					("[%s] the scenario exists to exercise `%s` and the wave never moved "
+						+ "it, so the two sides agreed about nothing on that axis")
+						% [label, axis])
+				if err != "":
+					return err
+
+			# The split must ACCOUNT for the total on the GAME side too. `test_playtest`
+			# already pins this for RunSim; without it here, a game that stopped banking
+			# a kill it still quoted through `weather_seed_value` would read clean above.
+			err = _T.assert_eq(
+				int(real_axes[&"seeds_from_kills"]) + int(real_axes[&"seeds_from_growth"])
+					+ int(real_axes[&"seeds_from_husks"]),
+				int(real_axes[&"seeds_earned"]),
+				("[%s] the game's three income columns do not add up to what its bank "
+					+ "says it earned -- a fourth source moved seeds without being "
+					+ "counted") % label)
+			if err != "":
+				return err
 
 	var idle: PackedStringArray = PackedStringArray()
 	for axis: StringName in AXES:
 		if not exercised.has(axis):
 			idle.append(String(axis))
-	print("  Mirror parity: %d of %d axes moved across %d scenario(s)%s" % [
-		exercised.size(), AXES.size(), scenarios.size(),
+	print("  Mirror parity: %d of %d axes moved across %d scenario(s) x %d profile(s)%s" % [
+		exercised.size(), AXES.size(), scenarios.size(), Game.DIFFICULTY_ORDER.size(),
 		("" if idle.is_empty() else " | NEVER MOVED: " + ", ".join(idle))])
 	return _T.assert_eq(idle.size(), 0,
 		("every axis must be moved by at least one scenario or the pair is agreeing about "
