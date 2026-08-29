@@ -42,7 +42,7 @@ const PLANTS: Dictionary = {
 		"tier": 1,
 		"unlocked_at_start": false,
 		"free_starter": false,
-		"blurb": "Eats small pests instantly. Big ones take a while — and it is busy the whole time.",
+		"blurb": "Chews small pests down over several bites. Big ones survive it — and it is busy the whole time.",
 		# Holds rather than hurts, but a held pest has been reached: a Chomp
 		# eaten mid-chew releases a live one, and that pest was fought.
 		"engages": true,
@@ -440,12 +440,15 @@ static func damages(id: StringName) -> bool:
 					return true
 			return false
 		CHOMP:
-			# TRUE, and the one arm with no constant to read, so it is written out
-			# rather than derived — the same way reach()'s Bramble arm is. A Chomp
-			# deals no damage at all: it holds a pest for `chew_seconds_for` and then
-			# calls `Pest.kill(DEATH_BITTEN)`. "Can it hurt one" is the question, and
-			# a pest that has been eaten has been hurt by every reading a readout has.
-			return true
+			# DERIVED now, and it used to be the one arm with no constant to read. That
+			# comment recorded the reason: a Chomp dealt no damage at all, it held a
+			# pest for `chew_seconds_for` and then called `Pest.kill(DEATH_BITTEN)`
+			# outright, so "true" was a statement about the outcome rather than about
+			# any number. Since the bite became real damage there IS a constant, and it
+			# is the same one that decides who the mouth can finish — so a Chomp
+			# retuned to a bite of 0.0 is seen here instead of being asserted around,
+			# exactly as the Corn arm above walks its own damage column.
+			return ChompFlower.BITE_DAMAGE > 0.0
 		DANDELION:
 			return Dandelion.SEED_DAMAGE > 0.0
 		NETTLE:

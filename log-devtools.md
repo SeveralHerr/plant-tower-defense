@@ -11090,3 +11090,39 @@ letting both stand as open.
 - Gap: **no devtools-harness gap this turn.** The one thing that cost time was a stage I
   built wrong, and the bridge diagnosed it in one read; `find-nodes --call` on a zero-arg
   getter is exactly the verb for "what does this node think is true", and it worked.
+
+
+## 2026-08-29 — the Chomp bites instead of deleting (plant-tower-defense-*, owner request)
+
+- Value: **warranted** — but the two defects it caught were both headless, and the live
+  pass earned its place on one narrow thing.
+  - Expected: the sizing is arithmetic over `Pest.SPECIES` and needed no game at all; the
+    live run was to see the health actually step down on a real bug.
+  - Got: exactly that, and it is the difference between "the numbers are right" and "a
+    player sees a bug being chewed". `step-time` in 0.06s slices, reading `health` each
+    time: an aphid grabbed at `x=241` on 3.0 went 2.0, 1.0, 0.0 — dead on the third bite —
+    and the corpse lingered and freed the mouth. A beetle grabbed at `x=240.33` on 16.0
+    went 15, 14, 13, 12 and was released on exactly 10.0, one meal of six, then walked
+    291 -> 390 with `is_busy()=false` the whole way and its health unchanged.
+  - Found: (1) **the first draft paid one bite of damage per FRAME, not per bite owed** —
+    `bites_taken_for` answers how many the meal is owed by now, so a single long frame
+    advanced the counter to six and dealt 1.0. An existing test caught it; the fix is a
+    `while`, which also matters downstream because `take_damage` spends a Shield Bug plate
+    per hit and six bites owed must cost six plates. (2) **the new tests grabbed off the
+    settle frames**, which feed `_act` the tree-global `pests` group — the tell was the
+    failure moving from the queen test to the aphid test when the only change was a
+    message string. All five now `set_physics_process(false)` and drive `_act` by hand,
+    the guard `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` already had.
+    (3) an aphid now dies at bite 3 of 6 — progress 0.5 — so it never reaches
+    `LATE_BITE_THRESHOLD` and the late-bite sprite is never shown for one. Pinned as an
+    exclusion rather than papered over.
+  - Cheaper: both defects were caught by `run_tests.py` in seconds, and the whole "who
+    dies" question is a pure function of the species table. Nothing cheaper than the
+    bridge could show the health stepping down on the real road, which is the only claim
+    the live run was making.
+
+- Gap: **no devtools-harness gap this turn.** `find-nodes --property health` over a
+  `step-time` loop is the right shape for "watch a number change on a real entity", and
+  it worked; the one thing I wanted — a verb that reads a value at every physics frame
+  rather than at every bridge round-trip — is already served well enough by making the
+  slices smaller, and the 0.06s slices resolved bites 0.075s apart without trouble.

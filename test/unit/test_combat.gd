@@ -6733,8 +6733,25 @@ func test_a_gaping_chomp_gives_the_lane_back_before_a_bud_would() -> String:
 		err = _T.assert_true(bud.is_busy(),
 			"while the bud is still chewing the same beetle %.2fs in" % step)
 	if err == "":
-		err = _T.assert_true(one.is_alive() and not two.is_alive(),
-			"and the difference is a pest that is dead rather than a number that is smaller")
+		# Both beetles are ALIVE, which is the rule since the bite became damage: 16
+		# health against a meal worth `meal_damage()` means a Chomp cannot finish one.
+		# The difference the rungs buy is visible in the health instead, and it is a
+		# sharper claim than the old "one of them is dead" ever was — it shows the RATE.
+		err = _T.assert_true(one.is_alive() and two.is_alive(),
+			"a beetle outlives either mouth: %.0f health against a meal worth %.0f"
+				% [two.max_health, ChompFlower.meal_damage()])
+	if err == "":
+		err = _T.assert_float_eq(two.health, two.max_health - ChompFlower.meal_damage(),
+			0.0001, "the gaping maw got all %d bites in before it let go, so the beetle "
+				% ChompFlower.BITES_PER_MEAL
+				+ "is down a whole meal (%.1f of %.0f)" % [two.health, two.max_health])
+	if err == "":
+		err = _T.assert_gt(one.health, two.health,
+			("and the bud, still mid-chew at the same instant, has taken less out of its "
+				+ "own beetle — %.1f against %.1f") % [one.health, two.health])
+	if err == "":
+		err = _T.assert_true(two.held_by == null and one.held_by == bud,
+			"one lane is open again and the other is not, which is the whole comparison")
 	_T.free_ui(host)
 	return err
 
@@ -12280,5 +12297,323 @@ func test_a_chomp_takes_the_bug_that_has_gone_by_and_leaves_the_one_arriving() -
 		chomp._act(0.016, pests)
 		err = _T.assert_true(chomp.held_pest() == arriving,
 			"the bug it let through is caught on the way out")
+	_T.free_ui(host)
+	return err
+
+
+# -- The bite is damage, not a delete ----------------------------------------
+#
+# The Chomp used to hold a pest for `chew_seconds` and then call `Pest.kill()` outright,
+# so health, plates and healing were all irrelevant to it. Now every bite is a real
+# `take_damage()`, the meal is worth `meal_damage()`, and anything bigger than that is
+# spat out alive.
+
+
+## Both ends of the sizing, derived from `Pest.SPECIES` rather than from the numbers I
+## happened to pick. This is the test `BITE_DAMAGE`'s header points at.
+func test_the_bite_is_sized_off_the_species_table_at_both_ends() -> String:
+	var healths: Dictionary = {}
+	for species: StringName in Pest.SPECIES:
+		healths[species] = float((Pest.SPECIES[species] as Dictionary)["health"])
+	var err: String = _T.assert_gt(healths.size(), 3,
+		"there are several species to draw a line between")
+	if err != "":
+		return err
+
+	var smallest: StringName = &""
+	for species: StringName in healths:
+		if smallest == &"" or healths[species] < healths[smallest]:
+			smallest = species
+	if err == "":
+		err = _T.assert_eq(smallest, Pest.APHID,
+			"the least healthy pest is the aphid, got %s" % smallest)
+	if err == "":
+		# END ONE: the smallest bug takes a FEW bites, not one. This is the constraint
+		# that caps BITE_DAMAGE, and the whole reason BITES_PER_MEAL is 6 rather than 3.
+		err = _T.assert_gte(ChompFlower.bites_to_kill(healths[smallest]), 3,
+			("the smallest pest (%.0f health) dies on bite %d of %d — under three that "
+				+ "is an instant kill with extra steps, which is what a bite of %.2f "
+				+ "buys you") % [healths[smallest],
+					ChompFlower.bites_to_kill(healths[smallest]),
+					ChompFlower.BITES_PER_MEAL, ChompFlower.BITE_DAMAGE])
+	if err == "":
+		err = _T.assert_true(ChompFlower.dies_in_the_mouth(healths[smallest]),
+			"and it does still die in there — a Chomp that cannot finish an aphid is "
+				+ "not the plant the catalogue is selling")
+
+	# END TWO: the line between eaten and spat out falls in a GAP in the table, not on a
+	# species. Every casualty must be strictly smaller than every survivor, and there has
+	# to be daylight either side of `meal_damage()` — a meal worth exactly some species'
+	# health decides that species by float rounding.
+	var eaten: Array[float] = []
+	var spared: Array[float] = []
+	for species: StringName in healths:
+		if ChompFlower.dies_in_the_mouth(healths[species]):
+			eaten.append(healths[species])
+		else:
+			spared.append(healths[species])
+	if err == "":
+		err = _T.assert_gt(eaten.size(), 0, "some pests are small enough to be eaten")
+	if err == "":
+		err = _T.assert_gt(spared.size(), 0,
+			"and some are not — 'Big ones survive it' has to be true of something")
+	if err == "":
+		var biggest_eaten: float = 0.0
+		for h: float in eaten:
+			biggest_eaten = maxf(biggest_eaten, h)
+		var smallest_spared: float = 9999.0
+		for h: float in spared:
+			smallest_spared = minf(smallest_spared, h)
+		err = _T.assert_gt(smallest_spared, biggest_eaten,
+			"the survivors are all bigger than the casualties (%.0f against %.0f)"
+				% [smallest_spared, biggest_eaten])
+		if err == "":
+			err = _T.assert_gte(ChompFlower.meal_damage() - biggest_eaten, 1.0,
+				("the meal clears the biggest thing it eats by at least a point (%.0f "
+					+ "against %.0f) rather than landing on it")
+					% [ChompFlower.meal_damage(), biggest_eaten])
+		if err == "":
+			err = _T.assert_gte(smallest_spared - ChompFlower.meal_damage(), 1.0,
+				("and falls short of the smallest thing it spares by at least a point "
+					+ "(%.0f against %.0f)") % [ChompFlower.meal_damage(), smallest_spared])
+	return err
+
+
+## The rule, driven rather than computed: an aphid is bitten down over several bites and
+## dies to the LAST one, not to the clock.
+func test_a_chomp_bites_a_small_pest_down_over_several_bites() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	var aphid: Pest = _prey(Pest.APHID, Vector2.ZERO)
+	var host: Node2D = _host([chomp, aphid])
+	# `Plant._physics_process` feeds `_act` the tree-global "pests" GROUP, so during the
+	# settle this flower can close on another test's pest — or another test's flower can
+	# close on this one first, leaving `held_by` set and this grab refused. Both were seen
+	# while writing these: the failure moved from one test to another when only a message
+	# changed. Same guard, and same reason, as
+	# `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` above
+	# (`.claude/skills/godot-test-isolation`).
+	chomp.set_physics_process(false)
+	await _T.instantiate_scene(host)
+
+	var pests: Array[Pest] = [aphid]
+	chomp._act(0.016, pests)
+	var full: float = aphid.max_health
+	var err: String = _T.assert_true(chomp.is_busy(), "the mouth closed on the aphid")
+	if err == "":
+		err = _T.assert_float_eq(aphid.health, full, 0.0001,
+			"and closing on it costs no health by itself — the BITES do the damage")
+	# One bite at a time, in slices too small to span two of them.
+	var seen: Array[float] = []
+	var spent: float = 0.0
+	var slice: float = aphid.chew_seconds / float(ChompFlower.BITES_PER_MEAL) * 0.5
+	while spent < aphid.chew_seconds * 1.2 and err == "" and aphid.is_alive():
+		chomp._act(slice, pests)
+		spent += slice
+		if aphid.is_alive() and (seen.is_empty() or seen[seen.size() - 1] != aphid.health):
+			seen.append(aphid.health)
+	if err == "":
+		err = _T.assert_false(aphid.is_alive(), "the aphid was eaten in the end")
+	if err == "":
+		# The point of the whole change: it came down in steps rather than vanishing.
+		err = _T.assert_gte(seen.size(), 2,
+			("its health was seen at %d distinct values on the way down (%s) — one "
+				+ "would mean it died to a single bite") % [seen.size(), str(seen)])
+	if err == "":
+		var falling: bool = true
+		for i: int in range(1, seen.size()):
+			if seen[i] >= seen[i - 1]:
+				falling = false
+		err = _T.assert_true(falling, "and every step was downwards: %s" % str(seen))
+	if err == "":
+		err = _T.assert_false(chomp.is_busy(), "the mouth is free once the meal is dead")
+	_T.free_ui(host)
+	return err
+
+
+## The other half of the same rule, and the one the old behaviour could not express at
+## all: a pest too big to finish leaves the mouth alive.
+func test_a_chomp_spits_out_a_pest_it_cannot_finish() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
+	var host: Node2D = _host([chomp, beetle])
+	# `Plant._physics_process` feeds `_act` the tree-global "pests" GROUP, so during the
+	# settle this flower can close on another test's pest — or another test's flower can
+	# close on this one first, leaving `held_by` set and this grab refused. Both were seen
+	# while writing these: the failure moved from one test to another when only a message
+	# changed. Same guard, and same reason, as
+	# `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` above
+	# (`.claude/skills/godot-test-isolation`).
+	chomp.set_physics_process(false)
+	await _T.instantiate_scene(host)
+
+	var pests: Array[Pest] = [beetle]
+	chomp._act(0.016, pests)
+	var err: String = _T.assert_false(ChompFlower.dies_in_the_mouth(beetle.max_health),
+		"a beetle is too big for one meal, which is what this test is about")
+	if err == "":
+		err = _T.assert_true(chomp.is_busy(), "the mouth closed on it anyway")
+	if err == "":
+		chomp._act(beetle.chew_seconds + 0.01, pests)
+		err = _T.assert_true(beetle.is_alive(), "and it survived the whole chew")
+	if err == "":
+		err = _T.assert_float_eq(beetle.health,
+			beetle.max_health - ChompFlower.meal_damage(), 0.0001,
+			"down by exactly one meal (%.1f of %.0f)" % [beetle.health, beetle.max_health])
+	if err == "":
+		err = _T.assert_false(chomp.is_busy(), "the mouth let it go and is free again")
+	if err == "":
+		err = _T.assert_true(beetle.held_by == null, "and the beetle knows it is loose")
+	if err == "":
+		err = _T.assert_eq(beetle.carry_offset(), Vector2.ZERO,
+			"back down on the road, not left drawn up on the flower")
+	if err == "":
+		err = _T.assert_true(beetle.shows_fought_mark(),
+			"wearing the mark, because a chewed pest has certainly been fought")
+	_T.free_ui(host)
+	return err
+
+
+## THE TRAP THE SPIT-OUT CREATES, and the reason `_spat_out` exists. `release()` leaves
+## the bug exactly where it was caught — inside the reach and already past `GRAB_LEAD` —
+## so without a guard the very next frame picks it straight back up, and a beetle is
+## ground down six health at a time until it dies on the spot. That is the instant kill
+## again wearing a loop.
+func test_a_chomp_does_not_immediately_re_eat_what_it_spat_out() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
+	var host: Node2D = _host([chomp, beetle])
+	# `Plant._physics_process` feeds `_act` the tree-global "pests" GROUP, so during the
+	# settle this flower can close on another test's pest — or another test's flower can
+	# close on this one first, leaving `held_by` set and this grab refused. Both were seen
+	# while writing these: the failure moved from one test to another when only a message
+	# changed. Same guard, and same reason, as
+	# `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` above
+	# (`.claude/skills/godot-test-isolation`).
+	chomp.set_physics_process(false)
+	await _T.instantiate_scene(host)
+
+	var pests: Array[Pest] = [beetle]
+	chomp._act(0.016, pests)
+	var err: String = _T.assert_true(chomp.is_busy(), "the first meal started")
+	if err == "":
+		chomp._act(beetle.chew_seconds + 0.01, pests)
+		err = _T.assert_false(chomp.is_busy(), "and ended with the beetle spat out")
+	var after_one: float = beetle.health
+	if err == "":
+		# Twenty frames standing exactly where it was dropped. The old shape would have
+		# re-grabbed on the first of them.
+		for i: int in range(20):
+			chomp._act(0.016, pests)
+		err = _T.assert_false(chomp.is_busy(),
+			"the flower leaves it alone while it is still standing in the reach")
+	if err == "":
+		err = _T.assert_float_eq(beetle.health, after_one, 0.0001,
+			"and takes nothing more off it: %.1f, unchanged" % beetle.health)
+	if err == "":
+		# It is not banished for good. Walk it out of the reach and back in, which is
+		# what a second Chomp downstream is, and the mouth closes again.
+		beetle.position = Vector2(chomp.grab_radius() * 3.0, 0.0)
+		chomp._act(0.016, pests)
+		beetle.position = Vector2(ChompFlower.GRAB_LEAD + 4.0, 0.0)
+		chomp._act(0.016, pests)
+		err = _T.assert_true(chomp.is_busy(),
+			"a bug that has left the reach and come back is prey again")
+	if err == "":
+		err = _T.assert_true(chomp.held_pest() == beetle, "and it is the same beetle")
+	_T.free_ui(host)
+	return err
+
+
+## The Shield Bug, which is the interaction worth having. `Pest.take_damage` spends a
+## plate on any damaging hit whether or not it got through, and a plate absorbs more than
+## a bite is worth — so the mouth lands nothing on it and costs it every plate. A Chomp
+## cannot eat a Shield Bug and can strip it bare for the cobs behind.
+func test_a_chomp_strips_a_shield_bugs_plates_without_landing_a_hit() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	var bug: Pest = _prey(Pest.SHIELDBUG, Vector2.ZERO)
+	var host: Node2D = _host([chomp, bug])
+	# `Plant._physics_process` feeds `_act` the tree-global "pests" GROUP, so during the
+	# settle this flower can close on another test's pest — or another test's flower can
+	# close on this one first, leaving `held_by` set and this grab refused. Both were seen
+	# while writing these: the failure moved from one test to another when only a message
+	# changed. Same guard, and same reason, as
+	# `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` above
+	# (`.claude/skills/godot-test-isolation`).
+	chomp.set_physics_process(false)
+	await _T.instantiate_scene(host)
+
+	var pests: Array[Pest] = [bug]
+	chomp._act(0.016, pests)
+	var plates: int = bug.shell_blocks
+	var err: String = _T.assert_gt(plates, 0, "a Shield Bug arrives with plates")
+	if err == "":
+		err = _T.assert_gt(bug.shell_strength, ChompFlower.BITE_DAMAGE,
+			("a plate absorbs %.1f against a bite worth %.1f, so the mouth cannot get "
+				+ "through one") % [bug.shell_strength, ChompFlower.BITE_DAMAGE])
+	if err == "":
+		err = _T.assert_gte(plates, ChompFlower.BITES_PER_MEAL,
+			("and it has at least as many plates (%d) as the meal has bites (%d), which "
+				+ "is why it leaves with its health intact")
+				% [plates, ChompFlower.BITES_PER_MEAL])
+	if err == "":
+		chomp._act(bug.chew_seconds + 0.01, pests)
+		err = _T.assert_true(bug.is_alive(), "it survives the mouth")
+	if err == "":
+		err = _T.assert_float_eq(bug.health, bug.max_health, 0.0001,
+			"at full health, because every bite was eaten by a plate")
+	if err == "":
+		err = _T.assert_eq(bug.shell_blocks, plates - ChompFlower.BITES_PER_MEAL,
+			("but down %d plates, one per bite — %d left of %d")
+				% [ChompFlower.BITES_PER_MEAL, bug.shell_blocks, plates])
+	_T.free_ui(host)
+	return err
+
+
+## The long-frame case, which is how the bite loop was found wrong once already. A single
+## `_act` spanning the whole meal owes it every bite, and the first draft advanced the
+## counter to six and dealt one bite of damage.
+func test_a_frame_that_spans_several_bites_owes_the_pest_all_of_them() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	var queen: Pest = _prey(Pest.QUEEN, Vector2.ZERO)
+	var host: Node2D = _host([chomp, queen])
+	# `Plant._physics_process` feeds `_act` the tree-global "pests" GROUP, so during the
+	# settle this flower can close on another test's pest — or another test's flower can
+	# close on this one first, leaving `held_by` set and this grab refused. Both were seen
+	# while writing these: the failure moved from one test to another when only a message
+	# changed. Same guard, and same reason, as
+	# `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` above
+	# (`.claude/skills/godot-test-isolation`).
+	chomp.set_physics_process(false)
+	await _T.instantiate_scene(host)
+
+	var pests: Array[Pest] = [queen]
+	chomp._act(0.016, pests)
+	var err: String = _T.assert_true(chomp.is_busy(),
+		("the mouth closed on the queen -- queen at %s, chomp at %s, distance %.1f of "
+			+ "reach %.1f, heading %s, past %.1f of lead %.1f, winged=%s, held_by=%s, "
+			+ "in group=%s")
+			% [queen.global_position, chomp.global_position,
+				queen.global_position.distance_to(chomp.global_position),
+				chomp.grab_radius(), queen.travel_direction(),
+				ChompFlower.pass_distance(chomp.global_position, queen.global_position,
+					queen.travel_direction()),
+				ChompFlower.GRAB_LEAD, queen.is_winged, queen.held_by,
+				queen.is_in_group("pests")])
+	if err == "":
+		err = _T.assert_false(ChompFlower.dies_in_the_mouth(queen.max_health),
+			"a queen is far too big to finish, so the whole meal lands as damage")
+	if err == "":
+		# ONE call for the entire chew. Six bites are owed and six must be paid.
+		chomp._act(queen.chew_seconds + 0.01, pests)
+		err = _T.assert_float_eq(queen.health,
+			queen.max_health - ChompFlower.meal_damage(), 0.0001,
+			("one long frame owes every bite it skipped: %.1f of %.0f, expected a full "
+				+ "meal of %.0f off") % [queen.health, queen.max_health,
+					ChompFlower.meal_damage()])
 	_T.free_ui(host)
 	return err

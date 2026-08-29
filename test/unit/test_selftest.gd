@@ -630,14 +630,37 @@ func test_the_late_bite_frame_is_showing_by_the_time_any_chew_finishes() -> Stri
 	var mid_texture: Texture2D = chomp._sprite.texture
 	var err: String = _T.assert_true(chomp.is_busy(), "grabbed the aphid")
 	if err == "":
-		# Just short of finishing (chew_progress() > LATE_BITE_THRESHOLD by
-		# construction, since LATE_BITE_THRESHOLD < 1.0), without triggering
-		# the kill that a full chew_seconds would.
-		chomp._chew(aphid.chew_seconds * 0.9)
-		err = _T.assert_true(chomp.is_busy(), "sanity: still chewing")
+		# WHICH CHEWS FINISH CHANGED, and this is where it shows. The clock no longer
+		# decides who dies -- the bites do -- so an aphid is finished on bite
+		# `bites_to_kill()` of `BITES_PER_MEAL`, at a progress of well under 1.0, and
+		# never reaches `LATE_BITE_THRESHOLD` at all. Pinned rather than worked around:
+		# the alternative is somebody "fixing" the late frame later for a case that is
+		# meant not to happen.
+		var dies_at: float = float(ChompFlower.bites_to_kill(aphid.max_health)) 			/ float(ChompFlower.BITES_PER_MEAL)
+		err = _T.assert_gt(ChompFlower.LATE_BITE_THRESHOLD, dies_at,
+			("an aphid is finished at %.2f of its meal, before the late frame's %.2f -- "
+				+ "so the short chew is outside this claim, not a counter-example to it")
+				% [dies_at, ChompFlower.LATE_BITE_THRESHOLD])
 	if err == "":
-		err = _T.assert_true(chomp._sprite.texture != mid_texture,
-			"even the aphid's short chew shows the late frame before it ends")
+		chomp._chew(aphid.chew_seconds * 0.9)
+		err = _T.assert_false(chomp.is_busy(),
+			"and the mouth is free, because the BITES finished it, not the timer")
+	# The claim itself, on a meal that does run its clock out: a beetle survives every
+	# bite, so its chew reaches the end and the late frame has to be up before it does.
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2(0.0, 200.0))
+	if err == "":
+		host.add_child(beetle)
+		chomp.position = Vector2(0.0, 200.0)
+		chomp._act(0.016, [beetle])
+		err = _T.assert_true(chomp.is_busy(), "the mouth closed on a beetle")
+	if err == "":
+		var before: Texture2D = chomp._sprite.texture
+		chomp._chew(beetle.chew_seconds * 0.9)
+		err = _T.assert_true(chomp.is_busy(),
+			"still chewing at 90%, because a beetle outlives a whole meal's damage")
+		if err == "":
+			err = _T.assert_true(chomp._sprite.texture != before,
+				"and the late frame is up before the chew ends")
 	_T.free_ui(host)
 	return err
 
@@ -19768,12 +19791,21 @@ func bad_contains_not_saved(base: String) -> bool:
 	return KeyBindingScreen.persisted_note(base, false).contains("NOT saved")
 
 
-## The Chomp's shop line is true of the chew table (plant-tower-defense-l86t).
+## The Chomp's shop line is true of the tables (plant-tower-defense-l86t).
 ##
-## "Eats small pests instantly. Big ones take a while — and it is busy the whole time."
-## Three claims, all checkable against `Pest.SPECIES` rather than against anyone's memory of
-## it, and this is the test that decided the bead: a 0.45s chew reading as a flash is not a
-## broken cue, it is the cue agreeing with the sentence the player was sold before buying.
+## "Chews small pests down over several bites. Big ones survive it — and it is busy the
+## whole time." Every clause checkable against `Pest.SPECIES` rather than against anyone's
+## memory of it.
+##
+## THE SENTENCE CHANGED and this test changed with it. It used to read "Eats small pests
+## instantly. Big ones take a while", which was an accurate description of a plant that
+## held a pest for `chew_seconds` and then called `Pest.kill()` outright — health, plates
+## and healing all irrelevant. Since the bite became real damage the mouth finishes only
+## what it can out-damage, so BOTH halves of the old sentence are now false: small pests
+## take several bites rather than none, and big ones are not eaten at all. The duration
+## claims below are kept as supporting invariants rather than deleted, because
+## `chew_seconds` still decides how long the lane is blocked, which is the trade the third
+## clause is selling.
 ##
 ## Derived, never listed. A new species with a chew time lands in this test the moment it is
 ## added to SPECIES, which is the whole reason the bead's "record both durations as numbers"
@@ -19798,10 +19830,9 @@ func test_the_chomps_shop_line_is_true_of_the_chew_table() -> String:
 		err = _T.assert_eq(shortest, Pest.APHID,
 			"the quickest thing to eat is the smallest pest, got %s" % shortest)
 	if err == "":
-		# CLAIM 2: "instantly ... big ones take a while". A RELATIVE gap, deliberately,
-		# because "instant" is a fact about perception and this file cannot measure one.
-		# What it can measure is that the short case is in a different league from every
-		# other, which is what makes the two halves of the sentence describe two things.
+		# CLAIM 2: "small pests ... big ones". A RELATIVE gap in DURATION, which the
+		# sentence no longer claims outright but the plant still has, and which is what
+		# gives the chew ring a case worth drawing.
 		for species: StringName in chews:
 			if species == shortest:
 				continue
@@ -19813,7 +19844,32 @@ func test_the_chomps_shop_line_is_true_of_the_chew_table() -> String:
 			if err != "":
 				break
 	if err == "":
-		# CLAIM 3: "it is busy the whole time" -- for EVERY duration, including the short
+		# CLAIM 3: "Chews small pests DOWN OVER SEVERAL BITES" -- the clause that replaced
+		# "instantly", and the one the owner asked for. The smallest pest in the table has
+		# to need at least three of them.
+		var smallest_health: float = 9999.0
+		for species: StringName in Pest.SPECIES:
+			smallest_health = minf(smallest_health,
+				float((Pest.SPECIES[species] as Dictionary)["health"]))
+		err = _T.assert_gte(ChompFlower.bites_to_kill(smallest_health), 3,
+			("the smallest pest (%.0f health) goes down in %d bite(s) -- 'over several "
+				+ "bites' needs at least three, and one is the instant kill the sentence "
+				+ "used to describe") % [smallest_health,
+					ChompFlower.bites_to_kill(smallest_health)])
+	if err == "":
+		# CLAIM 4: "Big ones SURVIVE it". Not merely "take longer" -- the mouth cannot
+		# finish them at all, which is a different promise and a checkable one.
+		var survivors: int = 0
+		for species: StringName in Pest.SPECIES:
+			if not ChompFlower.dies_in_the_mouth(
+					float((Pest.SPECIES[species] as Dictionary)["health"])):
+				survivors += 1
+		err = _T.assert_gt(survivors, 0,
+			("'Big ones survive it' has to be true of something: %d of %d species outlive "
+				+ "a meal worth %.0f") % [survivors, Pest.SPECIES.size(),
+					ChompFlower.meal_damage()])
+	if err == "":
+		# CLAIM 5: "it is busy the whole time" -- for EVERY duration, including the short
 		# one. This is why the ring is not suppressed below a threshold: a Chomp mid-chew
 		# cannot grab, and a cue that vanished would report a busy mouth as a free one.
 		var chomp := ChompFlower.new()
