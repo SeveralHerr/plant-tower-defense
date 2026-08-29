@@ -10051,6 +10051,18 @@ func test_the_campaign_builds_to_its_boss_rather_than_opening_with_one() -> Stri
 	## numbers: nothing before the halfway mark, and the last wave is a boss wave.
 	## A queen dropped into wave 3 would pass every arithmetic check in this file
 	## and ruin the campaign.
+	##
+	## "The halfway mark" is measured against SECOND_ACT_ORIGINAL_END_WAVE (22),
+	## not WaveDirector.WAVES.size() (26), and that is deliberate rather than a
+	## rounding accident. Wave 12 was placed relative to the table that existed
+	## when it was chosen; the coda appended four waves after the finale
+	## (plant-tower-defense-vyov) without moving it, so wave 12 sits at 46% of
+	## the table's new length -- technically before ITS halfway mark -- while
+	## still sitting past the original one by the same margin it always did.
+	## Re-deriving the threshold off the grown table would silently demand a
+	## queen placement nobody chose; this keeps the test asking the question it
+	## was written to ask. See MUTATION_START_WAVE for the same call made the
+	## same way when the table grew before.
 	var table: int = WaveDirector.WAVES.size()
 	var boss_waves: Array[int] = []
 	for wave: int in range(1, table + 1):
@@ -10061,9 +10073,9 @@ func test_the_campaign_builds_to_its_boss_rather_than_opening_with_one() -> Stri
 	var err: String = _T.assert_gt(boss_waves.size(), 1,
 		"the campaign has more than one boss wave (got %s)" % [boss_waves])
 	if err == "":
-		err = _T.assert_gt(boss_waves[0], table / 2,
-			"the first queen arrives in the second half of the campaign, at wave %d of %d"
-				% [boss_waves[0], table])
+		err = _T.assert_gt(boss_waves[0], WaveDirector.SECOND_ACT_ORIGINAL_END_WAVE / 2,
+			("the first queen arrives in the second half of the ORIGINAL campaign, at"
+				+ " wave %d of the (now grown) %d") % [boss_waves[0], table])
 	if err == "":
 		err = _T.assert_eq(boss_waves[boss_waves.size() - 1], table,
 			"and the finale is a boss wave")

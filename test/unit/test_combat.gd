@@ -2175,6 +2175,20 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# 436.7 seam bound and endless's 29 first. The finale is unmoved for the fourth
 	# species running: it is the only row with no road slack.
 	#
+	# Waves 23-26 are the coda (plant-tower-defense-vyov), APPENDED after wave 22
+	# rather than inserted in front of it -- WAVES' own header has the "why", and
+	# the four-way departure from every growth before it is the reason wave 22 is
+	# still 36 in this list even though it is no longer the last entry. All four
+	# coda rows send 34 pests: 23 trades 3 beetles for a Nurse (net zero, like 17
+	# and 19), 24 trades 4 aphids and 2 beetles for 4 Shield Bugs, 25 carries both
+	# specialists at once, and 26 -- the new finale -- is the old finale's shape
+	# with a third queen and traded beetles for aphids. Re-derived against the
+	# same offline replica as the three growths above, itself re-validated by
+	# reproducing this array, the OLD finale's 40-of-40 peak now sitting at an
+	# interior wave for the first time, the NEW finale's own 40-of-40, the 436.7
+	# seam bound (headroom now 12.7, not 18.7) and endless's first wave still
+	# outpricing the new finale.
+	#
 	# THIS LIST STAYS RECORDED AND MUST NOT BE DERIVED. Its only possible source of
 	# truth is WAVES itself, so `expected[i] = pests_in_wave(i)` would assert a
 	# tautology and pass unconditionally -- the exact "recorded list that is RIGHT"
@@ -2185,10 +2199,10 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# shape) are the other half the skill asks for.
 	var expected: Array[int] = [
 		5, 9, 9, 14, 13, 19, 19, 21, 26, 32, 30, 23, 35, 29, 37,
-		37, 33, 32, 31, 36, 38, 36,
+		37, 33, 32, 31, 36, 38, 36, 34, 34, 34, 34,
 	]
 	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
-		"the campaign is still twenty-two waves long")
+		"the campaign is still twenty-six waves long")
 	if err != "":
 		return err
 	for wave: int in range(1, expected.size() + 1):
@@ -8053,6 +8067,13 @@ func test_the_second_act_never_lets_the_threat_curve_fall() -> String:
 ## be untested. So the table's own contribution is recovered by dividing the ramp
 ## back out, and the test asserts that six of the thirteen steps fall BELOW the
 ## floor without it -- which is the plateau the bead was filed about, measured.
+##
+## Swept to SECOND_ACT_ORIGINAL_END_WAVE, not WaveDirector.WAVES.size() --
+## see that constant's own comment. The coda appended past it
+## (plant-tower-defense-vyov) cannot also clear a 5%-per-wave floor on the
+## seam bound's remaining ~18.7 points of headroom; it is checked for its own,
+## much weaker invariant (threat_for still strictly rising) by
+## test_the_second_act_never_lets_the_threat_curve_fall instead.
 func test_the_back_half_no_longer_plateaus() -> String:
 	var floor_step: float = 0.05
 	var first: int = WaveDirector.SECOND_ACT_START_WAVE + 1
@@ -8060,7 +8081,7 @@ func test_the_back_half_no_longer_plateaus() -> String:
 	var flat_without_the_ramp: int = 0
 	var counted: int = 0
 	var err: String = ""
-	for wave: int in range(first, WaveDirector.WAVES.size() + 1):
+	for wave: int in range(first, WaveDirector.SECOND_ACT_ORIGINAL_END_WAVE + 1):
 		var ratio: float = WaveDirector.threat_for(wave) / WaveDirector.threat_for(wave - 1)
 		var ramp: float = WaveDirector.health_scale_for(wave) \
 			/ WaveDirector.health_scale_for(wave - 1)
