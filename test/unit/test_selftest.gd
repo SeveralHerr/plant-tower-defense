@@ -9615,6 +9615,54 @@ func test_a_hungry_pest_lunges_rather_than_scuttling_harder() -> String:
 	return err
 
 
+## `gait_compute` is `_gait`'s composition moved above the `animations_enabled()` gate
+## (plant-tower-defense-3k81), so this calls no live pest at all -- it is the seam that
+## makes `_gait` reaching `gait_swing`/`gait_stretch`/`gait_yaw`/`flinch_amount` an
+## assertable fact instead of an early return. Guarded against a coincidental zero
+## crossing on `sin()`: without the guard, a mutated call site and the real one could
+## agree by accident and the assertion below would pass for the wrong reason.
+func test_gait_compute_composes_swing_rate_yaw_and_stretch_from_its_own_pure_pieces() -> String:
+	var seeds: Array[Array] = [
+		[2.03, 0.08, 39.3, 0.05, 1.0],
+		[0.9, 2.21, 67.4, 0.0, 1.0],
+		[2.71, 0.26, 49.5, 0.2, 1.4],
+	]
+	for seed: Array in seeds:
+		var gait_time: float = seed[0]
+		var phase: float = seed[1]
+		var for_speed: float = seed[2]
+		var flinch_left: float = seed[3]
+		var flinch_force: float = seed[4]
+		for armoured: bool in [false, true]:
+			for winged: bool in [false, true]:
+				for hungry: bool in [false, true]:
+					var clock: float = gait_time * Pest.gait_rate(for_speed, armoured, winged) + phase
+					var err: String = _T.assert_gt(absf(sin(clock)), 0.05,
+						"sanity: this seed's swing term is off a zero crossing")
+					if err == "":
+						err = _T.assert_gt(absf(sin(clock * Pest.GAIT_STRETCH_RATE)), 0.05,
+							"sanity: this seed's stretch term is off a zero crossing")
+					if err != "":
+						return err
+					var composed: Dictionary = Pest.gait_compute(gait_time, phase, for_speed,
+						armoured, winged, hungry, flinch_left, flinch_force)
+					var expected_yaw: float = Pest.gait_yaw(sin(clock),
+						Pest.gait_swing(armoured, winged),
+						sin(gait_time * Pest.FLINCH_RATE),
+						Pest.flinch_amount(flinch_left) * flinch_force)
+					var expected_stretch: float = Pest.gait_stretch(
+						sin(clock * Pest.GAIT_STRETCH_RATE), hungry)
+					err = _T.assert_float_eq(composed["yaw"], expected_yaw, 0.0001,
+						"yaw composes gait_swing(armoured=%s, winged=%s) into gait_yaw"
+							% [armoured, winged])
+					if err == "":
+						err = _T.assert_float_eq(composed["stretch"], expected_stretch, 0.0001,
+							"stretch composes gait_stretch(hungry=%s)" % hungry)
+					if err != "":
+						return err
+	return ""
+
+
 ## Endless mode scales `speed`, and the gait rides it so a hurried pest visibly
 ## hurries -- but a wave-30 beetle must not blur.
 func test_the_gait_rate_follows_speed_but_is_clamped_at_both_ends() -> String:
