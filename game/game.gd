@@ -316,6 +316,31 @@ var _cross_clock: float = 0.0
 var _cross_rng := RandomNumberGenerator.new()
 var _prep_left: float = 0.0
 var _wave_live: bool = false
+## Off by default: a prep countdown that hits zero waits at zero for the "Next
+## wave" button rather than starting the wave itself. On, it behaves as the
+## countdown always used to -- start_next_wave() fires the instant prep runs out.
+##
+## No HUD button and no key for it yet, and both are measured absences rather
+## than oversights:
+##
+## - The top stats row's own headroom is 38px at the narrowest supported
+##   viewport (see Hud.min_viewport_width()), and even a bare CheckButton
+##   reading "Auto" needs ~106px there -- confirmed against the live control,
+##   not guessed. Fitting one means shrinking an existing readout to pay for
+##   it, which is a redesign this bead did not ask for.
+## - KeyBindingScreen is at its own hard ceiling already: `panel_height()`'s
+##   own doc comment states nine is the last verb count that fits the
+##   648-tall viewport floor, and KeyBindings.ACTIONS already has nine. A
+##   tenth pushes the panel's foot off the bottom of the screen with nothing
+##   clamping it -- the same class of redesign as the HUD row.
+##
+## So today this is a session-only field a test, the devtools bridge
+## (`run-method --node Game --method toggle_autostart_waves`), or a future UI
+## pass can flip. RunConfig is not the right home for it either if that UI
+## pass arrives: every switch OptionsScreen.OPTIONS lists is readable and
+## settable from the TITLE screen, before any Game exists, and this flag
+## describes a Game that may not exist yet.
+var autostart_waves: bool = false
 ## The weather the current wave arrived under, or CLEAR between waves.
 ##
 ## Held by Game rather than read from the director on demand, because the wave
@@ -666,8 +691,12 @@ func _process(delta: float) -> void:
 		# `prep_left`/`prep_total` straight out of state() — cannot disagree with it.
 		# That is the constraint the speed control had to satisfy and it is satisfied
 		# by the strip never having had a clock of its own.
-		_prep_left -= delta
-		if _prep_left <= 0.0:
+		#
+		# Clamped at 0 rather than left to go negative: with autostart off, nothing
+		# else ever moves it off 0 again, and pause_note()'s "N seconds away" reads
+		# straight off this value.
+		_prep_left = maxf(0.0, _prep_left - delta)
+		if _prep_left <= 0.0 and autostart_waves:
 			start_next_wave()
 
 
@@ -1567,6 +1596,14 @@ func bank_score() -> bool:
 func _on_speed_requested() -> void:
 	Sfx.play(Sfx.BUTTON_PRESSED)
 	cycle_speed()
+
+
+## Flips the flag. The bridge's target today (`run-method --method
+## toggle_autostart_waves`) -- see `autostart_waves`'s own doc comment for why
+## there is no key or HUD button wired to it yet.
+func toggle_autostart_waves() -> bool:
+	autostart_waves = not autostart_waves
+	return autostart_waves
 
 
 ## Advances the garden's playback speed one step and redraws the button that says
@@ -3781,6 +3818,7 @@ func state() -> Dictionary:
 		"game_speed": GameSpeed.scale(),
 		"game_speed_label": GameSpeed.label(),
 		"game_speed_tooltip": GameSpeed.button_tooltip(),
+		"autostart_waves": autostart_waves,
 	}
 
 
