@@ -6476,6 +6476,10 @@ func test_the_resting_cue_never_calls_sunflower_ground_scenery() -> String:
 ## that had been drawn at the hover and a bar left on the board would fail here
 ## rather than in a screenshot nobody takes.
 func test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- checks that the
+	# board's dead-ground mark glyph matches the hover mark glyph point-for-point;
+	# the default board only supplies a non-empty set of dead-ground cells to draw
+	# on, and the claim under test does not depend on which road produced them.
 	var board := Board.new()
 	var glyph: PackedVector2Array = PlacementPreview.dead_lock_points()
 	var cells: Array[Vector2i] = PlacementPreview.dead_ground_cells(board,
@@ -6684,6 +6688,10 @@ func test_the_dead_lock_fits_inside_the_bracket_box() -> String:
 ## read as node churn on `performance --by-type`, which is the only signal an
 ## in-tree accumulation gives.
 func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- "36 cells... for a Chomp Flower"
+	# and "3... for a Bomb Dandelion" below are the default board's literal dead-
+	# ground counts, reused here as a pool-size probe for the reuse/pooling
+	# behaviour under test.
 	var board := Board.new()
 	var glyph: PackedVector2Array = PlacementPreview.dead_lock_points()
 	var colour: Color = PlacementPreview.board_dead_color()

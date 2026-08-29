@@ -179,6 +179,12 @@ func _first_cell_for(board: Board, id: StringName, taken: Array[Vector2i]) -> Ve
 ## handed to both sides unchanged. A `Board` builds its path on demand and does not need a
 ## tree for it (`board.gd:92`), which is why this can run before anything is hosted.
 func _scenarios() -> Dictionary:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- this gates RunSim against
+	# game.gd's own economy (does the mirror agree with the original), not road
+	# shape; the cell derivation is road-general, but sweeping the corpus would
+	# mean hosting a real game.tscn and hand-stepping a whole wave (up to
+	# WAVE_FRAME_CEILING frames) per road, per scenario, which this parity gate's
+	# purpose does not call for.
 	var board := Board.new()
 	var corn: Vector2i = _best_cover_cell(board, PlantCatalog.CORN)
 	var taken: Array[Vector2i] = [corn]
