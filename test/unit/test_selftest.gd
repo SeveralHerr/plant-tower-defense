@@ -2092,10 +2092,10 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 	# earlier test in the suite left behind.
 	var stashed_selected_skins: Dictionary = RunConfig.selected_skins.duplicate()
 	var stashed_purchased_skins: Dictionary = RunConfig.purchased_skins.duplicate(true)
-	var stashed_petals: int = RunConfig.petals
+	var stashed_wallet: Dictionary = RunConfig.wallet.duplicate(true)
 	RunConfig.selected_skins = {}
 	RunConfig.purchased_skins = {}
-	RunConfig.petals = 0
+	RunConfig.wallet = Currency.empty_wallet()
 	var stashed_mute_sfx: bool = RunConfig.mute_sfx
 	var stashed_mute_music: bool = RunConfig.mute_music
 	RunConfig.colorblind_safe = false
@@ -2124,7 +2124,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 		err = _T.assert_eq(String(Game.key_help()[0]["keys"]), "F1", "the pause card's legend moved")
 	if err == "":
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\np0\nu0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\nw3 compost=0 heartwood=0 petals=0\nu0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
 			"and it was written down beside the scores")
 	if err == "":
 		# A key another verb already answers to is refused, and said so.
@@ -2161,7 +2161,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 				"Put them all back restores the shipped keys once confirmed")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\np0\nu0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\nw3 compost=0 heartwood=0 petals=0\nu0\n0\n" % RunConfig.SAVE_VERSION,
 				"and clears the overrides out of the save rather than pinning the defaults into it")
 
 	_T.free_ui(screen)
@@ -2175,7 +2175,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 	RunConfig.earned_milestones = stashed_milestones
 	RunConfig.selected_skins = stashed_selected_skins
 	RunConfig.purchased_skins = stashed_purchased_skins
-	RunConfig.petals = stashed_petals
+	RunConfig.wallet = stashed_wallet
 	RunConfig.mute_sfx = stashed_mute_sfx
 	RunConfig.mute_music = stashed_mute_music
 	for suffix: String in ["", ".tmp", ".bak"]:
@@ -2385,10 +2385,10 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 	# earlier test in the suite left behind.
 	var stashed_selected_skins: Dictionary = RunConfig.selected_skins.duplicate()
 	var stashed_purchased_skins: Dictionary = RunConfig.purchased_skins.duplicate(true)
-	var stashed_petals: int = RunConfig.petals
+	var stashed_wallet: Dictionary = RunConfig.wallet.duplicate(true)
 	RunConfig.selected_skins = {}
 	RunConfig.purchased_skins = {}
-	RunConfig.petals = 0
+	RunConfig.wallet = Currency.empty_wallet()
 	var stashed_sfx: bool = Sfx.is_muted()
 	var stashed_music: bool = Music.is_muted()
 	# Both halves of each mute, because v6 gave them two: the static flag the player
@@ -2511,7 +2511,7 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 		err = _T.assert_true(RunConfig.colorblind_safe, "the colourblind row sets the flag")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\np0\nu0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\nw3 compost=0 heartwood=0 petals=0\nu0\n0\n" % RunConfig.SAVE_VERSION,
 				"and it is written down beside the scores, not held for the session")
 	if err == "":
 		# Nothing on the paper may run off it or sit on top of anything else, and the
@@ -2530,7 +2530,7 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 	RunConfig.earned_milestones = stashed_milestones
 	RunConfig.selected_skins = stashed_selected_skins
 	RunConfig.purchased_skins = stashed_purchased_skins
-	RunConfig.petals = stashed_petals
+	RunConfig.wallet = stashed_wallet
 	RunConfig.mute_sfx = stashed_mute_sfx
 	RunConfig.mute_music = stashed_mute_music
 	Sfx.set_muted(stashed_sfx)
@@ -6053,12 +6053,12 @@ func test_the_binding_table_answers_about_itself() -> String:
 		# through this, so a field appended in the wrong place fails here.
 		err = _T.assert_eq(
 			RunConfig.compose_save(3, 4, "m0", "cb0 sfx0 mus0 spd0", {"garden_pause": [KEY_F1, KEY_F2]}),
-			"v%d\n3\n4\nm0\ncb0 sfx0 mus0 spd0\nd0\ns0\np0\nu0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
+			"v%d\n3\n4\nm0\ncb0 sfx0 mus0 spd0\nd0\ns0\nw3 compost=0 heartwood=0 petals=0\nu0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
 			"compose_save writes the header, both scores, the milestones, the options, "
 				+ "the count, then the rows")
 	if err == "":
 		err = _T.assert_eq(RunConfig.compose_save(0, 0, "m0", "cb0 sfx0 mus0 spd0", {}),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\nd0\ns0\np0\nu0\n0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\nd0\ns0\nw3 compost=0 heartwood=0 petals=0\nu0\n0\n" % RunConfig.SAVE_VERSION,
 			"and an untouched keyboard is a count of zero, not an absent line")
 	KeyBindings.reset_all()
 	return err
@@ -6097,10 +6097,10 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	# earlier test in the suite left behind.
 	var stashed_selected_skins: Dictionary = RunConfig.selected_skins.duplicate()
 	var stashed_purchased_skins: Dictionary = RunConfig.purchased_skins.duplicate(true)
-	var stashed_petals: int = RunConfig.petals
+	var stashed_wallet: Dictionary = RunConfig.wallet.duplicate(true)
 	RunConfig.selected_skins = {}
 	RunConfig.purchased_skins = {}
-	RunConfig.petals = 0
+	RunConfig.wallet = Currency.empty_wallet()
 	var stashed_mute_sfx: bool = RunConfig.mute_sfx
 	var stashed_mute_music: bool = RunConfig.mute_music
 	RunConfig.colorblind_safe = false
@@ -6118,7 +6118,7 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	if err == "":
 		RunConfig.store_key_bindings(KeyBindings.overrides())
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\np0\nu0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
+			"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\nw3 compost=0 heartwood=0 petals=0\nu0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
 			"the save carries the count and one action row")
 	if err == "":
 		# Wipe every trace from memory, then read it all back off disk.
@@ -6164,7 +6164,7 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	RunConfig.earned_milestones = stashed_milestones
 	RunConfig.selected_skins = stashed_selected_skins
 	RunConfig.purchased_skins = stashed_purchased_skins
-	RunConfig.petals = stashed_petals
+	RunConfig.wallet = stashed_wallet
 	RunConfig.mute_sfx = stashed_mute_sfx
 	RunConfig.mute_music = stashed_mute_music
 	for suffix: String in ["", ".tmp", ".bak"]:
@@ -9510,10 +9510,11 @@ func test_no_test_persists_through_the_players_own_save() -> String:
 		"RunConfig.record_score", "RunConfig._save()", "RunConfig.record_milestones",
 		"RunConfig.set_colorblind_safe", "RunConfig.set_mute_sfx", "RunConfig.set_mute_music",
 		"RunConfig.store_key_bindings",
-		# The v10 and v11 writers. `set_skin` persists a chosen skin; `buy_skin` and
-		# `add_petals` persist the wardrobe and the balance, and `add_petals` is reached
-		# from Game.bank_score() on every run that clears a wave.
-		"RunConfig.set_skin", "RunConfig.buy_skin", "RunConfig.add_petals",
+		# The v10, v11 and v13 writers. `set_skin` persists a chosen skin; `buy_skin`,
+		# `grant` and `grant_all` persist the wardrobe and the wallet, and `grant_all`
+		# is reached from Game.bank_score() on every run that clears a wave.
+		"RunConfig.set_skin", "RunConfig.buy_skin", "RunConfig.grant",
+		"RunConfig.grant_all",
 	]
 	var checked: int = 0
 	var offenders: PackedStringArray = []
@@ -24448,14 +24449,14 @@ func _touch_event(pressed: bool, at: Vector2) -> InputEventScreenTouch:
 ## bought skin into whatever script runs next.
 func _stash_wardrobe() -> Dictionary:
 	return {
-		"petals": RunConfig.petals,
+		"wallet": RunConfig.wallet.duplicate(true),
 		"purchased": RunConfig.purchased_skins.duplicate(true),
 		"selected": RunConfig.selected_skins.duplicate(true),
 	}
 
 
 func _restore_wardrobe(stashed: Dictionary) -> void:
-	RunConfig.petals = int(stashed["petals"])
+	RunConfig.wallet = (stashed["wallet"] as Dictionary).duplicate(true)
 	RunConfig.purchased_skins = (stashed["purchased"] as Dictionary).duplicate(true)
 	RunConfig.selected_skins = (stashed["selected"] as Dictionary).duplicate(true)
 
@@ -24468,7 +24469,7 @@ func _restore_wardrobe(stashed: Dictionary) -> void:
 ## in this game will construct for you. See the contract note about `selected_skin()`
 ## falling back to DEFAULT_SKIN being the migration path.
 func _set_wardrobe(kind: StringName, id: StringName, family_id: StringName,
-		owned: bool, worn: bool, petals: int) -> void:
+		owned: bool, worn: bool, purse: Dictionary) -> void:
 	var key: String = Skins.selection_key(kind, id)
 	RunConfig.purchased_skins = {}
 	RunConfig.selected_skins = {}
@@ -24476,7 +24477,21 @@ func _set_wardrobe(kind: StringName, id: StringName, family_id: StringName,
 		RunConfig.purchased_skins[key] = [String(family_id)]
 	if worn:
 		RunConfig.selected_skins[key] = String(family_id)
-	RunConfig.petals = petals
+	RunConfig.wallet = purse
+
+
+## A wallet holding exactly `price`, and the same wallet one unit short in `short`.
+##
+## DERIVED FROM THE PRICE, never typed: a staged `{"petals": 120, ...}` would be a
+## second copy of `Skins.PRICES` and would pass or fail for reasons unrelated to the
+## code under test the day the prices are retuned.
+static func _shop_purse(price: Dictionary, short: StringName = &"") -> Dictionary:
+	var out: Dictionary = Currency.empty_wallet()
+	for key: Variant in price.keys():
+		out[String(key)] = int(price[key])
+	if short != &"":
+		out[String(short)] = maxi(0, int(out.get(String(short), 0)) - 1)
+	return out
 
 
 ## The spec table from the shop's own header, written once here as a rule over the
@@ -24601,9 +24616,10 @@ func test_the_shop_measures_every_face_it_draws_and_fits_them_all() -> String:
 	## still clip every title. A non-zero measurement is the evidence that the widths on
 	## screen came from the font rather than from the fallbacks.
 	var stashed: Dictionary = _stash_wardrobe()
-	# Enough petals that some buttons carry a price and some do not, so the sweep sees
-	# the long faces rather than only the short ones.
-	RunConfig.petals = 99
+	# Nothing owned and nothing affordable, so every face the sweep meets is the short
+	# one; `family_button_texts()` prices every state regardless of the wallet, which is
+	# the point of it being static.
+	RunConfig.wallet = Currency.empty_wallet()
 	RunConfig.purchased_skins = {}
 	RunConfig.selected_skins = {}
 	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
@@ -24784,7 +24800,14 @@ func test_every_shop_button_state_is_produced_by_the_state_it_names() -> String:
 			if err != "":
 				break
 			var family_id := StringName(family["id"])
-			var cost: int = Skins.cost_for(kind, family_id)
+			var price: Dictionary = Skins.price_for(kind, family_id)
+			# WHICH currency the unaffordable rows are short of. The scarcest term, and
+			# only one of them: `Currency.covers` is all-or-nothing, so one short
+			# currency with the other two in hand is the hardest `unaffordable` to
+			# produce and the one a partial check would get wrong. The per-currency
+			# boundary sweep -- every currency short in turn, at exactly one unit --
+			# lives in test_skins.gd against `buy_skin` itself.
+			var short: StringName = Currency.ids()[Currency.ids().size() - 1]
 			for owned: bool in [false, true]:
 				if err != "":
 					break
@@ -24792,15 +24815,16 @@ func test_every_shop_button_state_is_produced_by_the_state_it_names() -> String:
 					if err != "":
 						break
 					for affordable: bool in [false, true]:
-						var petals: int = cost if affordable else maxi(cost - 1, 0)
-						_set_wardrobe(kind, id, family_id, owned, worn, petals)
+						var purse: Dictionary = _shop_purse(price,
+							&"" if affordable else short)
+						_set_wardrobe(kind, id, family_id, owned, worn, purse)
 						screen.show_page_for(kind, id)
 						var want: StringName = _expected_shop_state(owned, worn, affordable)
 						if not produced.has(want):
 							produced.append(want)
-						var who: String = ("%s/%s owned=%s worn=%s affordable=%s (%d petals,"
-							+ " costs %d)") % [Skins.selection_key(kind, id), family_id,
-							owned, worn, affordable, petals, cost]
+						var who: String = ("%s/%s owned=%s worn=%s affordable=%s (holds %s,"
+							+ " costs %s)") % [Skins.selection_key(kind, id), family_id,
+							owned, worn, affordable, purse, price]
 						err = _T.assert_eq(String(screen.button_state(kind, id, family_id)),
 							String(want), "%s reads %s" % [who, want])
 						if err != "":
@@ -24813,7 +24837,7 @@ func test_every_shop_button_state_is_produced_by_the_state_it_names() -> String:
 							# state moved and whose face did not is the defect this half
 							# exists for.
 							err = _T.assert_eq(String(face["text"]),
-								ShopScreen.button_text(kind, family_id, want),
+								ShopScreen.button_text(family_id, want),
 								"%s draws the words its state names" % who)
 						if err == "":
 							err = _T.assert_eq(bool(face["disabled"]),
@@ -24843,48 +24867,150 @@ func test_every_shop_button_state_is_produced_by_the_state_it_names() -> String:
 	return err
 
 
-func test_the_shop_balance_line_reads_the_persisted_petals() -> String:
-	## One Label, in GOLD, saying what there is to spend. It is the only number on this
-	## screen a price means anything against, so it has to be the live field and not a
-	## copy taken when the screen opened.
+func test_the_shop_currency_table_reads_the_persisted_wallet() -> String:
+	## One row per currency, saying what there is to spend and what it buys. The held
+	## column is the only number on this screen a price means anything against, so it has
+	## to be the live field and not a copy taken when the screen opened.
+	##
+	## SWEPT OVER EVERY CURRENCY, not asserted on petals and assumed of the rest: the
+	## rows are built in a loop, and a loop is the shape that draws row 0 correctly and
+	## binds rows 1 and 2 to the same Label.
 	var stashed: Dictionary = _stash_wardrobe()
 	RunConfig.purchased_skins = {}
 	RunConfig.selected_skins = {}
-	RunConfig.petals = 41
+	# A different amount per currency, so a row bound to the wrong Label reads as the
+	# wrong number rather than coincidentally as the right one.
+	var opening: Dictionary = Currency.empty_wallet()
+	var amount: int = 41
+	for id: StringName in Currency.ids():
+		opening[String(id)] = amount
+		amount += 7
+	RunConfig.wallet = opening.duplicate(true)
 	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
-	var err: String = _T.assert_eq(screen.balance_text(), "Petals  41",
-		"the balance names the currency and the number")
+	var err: String = _T.assert_gt(Currency.ids().size(), 1,
+		"there is more than one currency, or every claim below is about one number")
+	for id: StringName in Currency.ids():
+		if err != "":
+			break
+		err = _T.assert_eq(screen.held_text(id),
+			"%d" % int(opening[String(id)]),
+			"the %s row shows what the wallet holds of it" % id)
 	if err == "":
-		err = _T.assert_eq(screen.balance_text(), ShopScreen.balance_line(RunConfig.petals),
-			"and the drawn line is the composed one, not a second copy of the format")
+		# The row NAMES its currency, so the bare integers in the columns beside it are
+		# readable at all. Whether the mark drew is the font's business (`currency_mark`
+		# asks); whether the WORD is there is this screen's.
+		for id: StringName in Currency.ids():
+			var row_label := screen.get_node_or_null("ShopCurrency%d"
+				% Currency.ids().find(id)) as Label
+			err = _T.assert_true(row_label != null,
+				"%s has a named Label the bridge can read" % id)
+			if err == "":
+				err = _T.assert_true(row_label.text.contains(Currency.title_of(id)),
+					("and it carries the currency's WORD (%s), not just a mark a font "
+						+ "may not have: %s") % [Currency.title_of(id), row_label.text])
+			if err != "":
+				break
 	if err == "":
-		var label := screen.get_node_or_null("Balance") as Label
-		err = _T.assert_true(label != null, "it is a Label the bridge can read by name")
-		if err == "":
-			err = _T.assert_eq(label.get_theme_color("font_color"), GardenTheme.GOLD,
-				("in GOLD -- this game's colour for a number the player earned, the same "
-					+ "one the focus ring and the record line already use"))
+		# THE PRICES ARE ON THE SCREEN, which is where they went when they left the
+		# buttons. Read off the drawn cells, against `Skins.PRICES`.
+		var columns: Array[String] = ShopScreen.table_amount_headings()
+		err = _T.assert_eq(columns.size(), 1 + ShopScreen.target_kinds().size(),
+			"the table heads one held column and one per target kind, got %s" % [columns])
+		for kind: StringName in ShopScreen.target_kinds():
+			if err != "":
+				break
+			var column: int = 1 + ShopScreen.target_kinds().find(kind)
+			for id: StringName in Currency.ids():
+				var cell := screen.get_node_or_null("ShopAmount%d_%d"
+					% [Currency.ids().find(id), column]) as Label
+				err = _T.assert_true(cell != null,
+					"%s has a %s price cell" % [kind, id])
+				if err == "":
+					err = _T.assert_eq(cell.text,
+						"%d" % int((Skins.PRICES[kind] as Dictionary)[String(id)]),
+						"and it says what Skins.PRICES says a %s skin costs in %s"
+							% [kind, id])
+				if err != "":
+					break
 	if err == "":
-		# Live, not captured. A balance read once at build time is right until the first
+		# Live, not captured. A wallet read once at build time is right until the first
 		# purchase and wrong for the whole rest of the visit.
-		RunConfig.petals = 6
+		RunConfig.wallet = Currency.add(Currency.empty_wallet(), Currency.PETALS, 6)
 		var target: Dictionary = Skins.targets()[0]
 		screen.show_page_for(StringName(target["kind"]), StringName(target["id"]))
-		err = _T.assert_eq(screen.balance_text(), "Petals  6",
+		err = _T.assert_eq(screen.held_text(Currency.PETALS), "6",
 			"and it follows the field rather than the value it opened with")
+		if err == "":
+			err = _T.assert_eq(screen.held_text(Currency.ids()[1]), "0",
+				"in every row, not only the one the assertion above happened to name")
 	_T.free_ui(screen)
 	_restore_wardrobe(stashed)
 	return err
 
 
-func test_buying_a_skin_in_the_shop_spends_the_petals_and_wears_it() -> String:
+## The held column DIMS when that currency is what is stopping the player, and the
+## dimming is a step in VALUE rather than a hue -- see `ShopScreen.held_color`.
+##
+## Two claims a `held_color()` unit test cannot make: that the classifier reaches the
+## drawn Label at all, and that it is re-evaluated when the wallet changes rather than
+## only at build time.
+func test_the_shop_dims_the_currency_the_player_is_short_of() -> String:
+	var stashed: Dictionary = _stash_wardrobe()
+	RunConfig.purchased_skins = {}
+	RunConfig.selected_skins = {}
+	RunConfig.wallet = Currency.empty_wallet()
+	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
+	var err: String = ""
+	for id: StringName in Currency.ids():
+		if err != "":
+			break
+		err = _T.assert_eq(screen.held_text_color(id), GardenTheme.INK_SOFT,
+			"an empty wallet dims every currency, and %s is not dimmed" % id)
+	if err == "":
+		# Exactly the cheapest skin, in every currency: nothing is short any more.
+		var cheapest: Dictionary = Currency.empty_wallet()
+		for id: StringName in Currency.ids():
+			var least: int = -1
+			for kind: StringName in ShopScreen.target_kinds():
+				var amount: int = int((Skins.PRICES[kind] as Dictionary)[String(id)])
+				if least < 0 or amount < least:
+					least = amount
+			cheapest[String(id)] = least
+		RunConfig.wallet = cheapest.duplicate(true)
+		var target: Dictionary = Skins.targets()[0]
+		screen.show_page_for(StringName(target["kind"]), StringName(target["id"]))
+		for id: StringName in Currency.ids():
+			if err != "":
+				break
+			err = _T.assert_eq(screen.held_text_color(id), GardenTheme.GOLD,
+				("a wallet holding exactly the cheapest skin's price lights every "
+					+ "currency, and %s stayed dim") % id)
+	if err == "":
+		# ONE currency taken back below the line. The other two stay lit, which is the
+		# whole point: the table's job is to name WHICH of the three is the problem.
+		var short: StringName = Currency.ids()[Currency.ids().size() - 1]
+		RunConfig.wallet[String(short)] = 0
+		var target: Dictionary = Skins.targets()[0]
+		screen.show_page_for(StringName(target["kind"]), StringName(target["id"]))
+		err = _T.assert_eq(screen.held_text_color(short), GardenTheme.INK_SOFT,
+			"the one currency that went short is dimmed")
+		if err == "":
+			err = _T.assert_eq(screen.held_text_color(Currency.ids()[0]), GardenTheme.GOLD,
+				("while the ones still in hand stay lit -- a table that dimmed all "
+					+ "three would say 'you cannot afford this' and not which part"))
+	_T.free_ui(screen)
+	_restore_wardrobe(stashed)
+	return err
+
+
+func test_buying_a_skin_in_the_shop_spends_the_wallet_and_wears_it() -> String:
 	## The writer, end to end, plus the thing a per-row redraw would get wrong.
 	##
-	## A purchase is not local to its row: it drops the balance, and a balance that
-	## drops past a price turns every OTHER row's `buy` into `unaffordable`. So the
-	## second half of this test presses one row and then reads a different one --
-	## `SkinsScreen` refreshes only the slot it was pressed on, which is correct for
-	## equipping and would be wrong here.
+	## A purchase is not local to its row: it drains the wallet, and a wallet that drops
+	## past a price turns every OTHER row's `buy` into `unaffordable`. So the second half
+	## of this test presses one row and then reads a different one -- `SkinsScreen`
+	## refreshes only the slot it was pressed on, which is correct for equipping and
+	## would be wrong here.
 	var stashed: Dictionary = _stash_wardrobe()
 	RunConfig.purchased_skins = {}
 	RunConfig.selected_skins = {}
@@ -24897,19 +25023,20 @@ func test_buying_a_skin_in_the_shop_spends_the_petals_and_wears_it() -> String:
 	var id: StringName = &""
 	var other_kind: StringName = &""
 	var other_id: StringName = &""
-	var cost: int = 0
+	var price: Dictionary = {}
 	if err == "":
 		family_id = StringName(Skins.buyable_families()[0]["id"])
 		kind = StringName(shown[0]["kind"])
 		id = StringName(shown[0]["id"])
 		other_kind = StringName(shown[1]["kind"])
 		other_id = StringName(shown[1]["id"])
-		cost = Skins.cost_for(kind, family_id)
-		err = _T.assert_gt(cost, 0, "a buyable family costs something")
+		price = Skins.price_for(kind, family_id)
+		err = _T.assert_eq(price.size(), Currency.ids().size(),
+			"a buyable family costs something in every currency, got %s" % price)
 	if err == "":
 		# EXACTLY one purchase's worth, which is what makes the cross-row assertion
 		# below a real one: after this buy there is nothing left for the second row.
-		RunConfig.petals = cost
+		RunConfig.wallet = _shop_purse(price)
 		screen.show_page_for(kind, id)
 		err = _T.assert_eq(String(screen.button_state(kind, id, family_id)),
 			String(ShopScreen.STATE_BUY), "the row opens offering the skin for sale")
@@ -24920,8 +25047,9 @@ func test_buying_a_skin_in_the_shop_spends_the_petals_and_wears_it() -> String:
 		err = _T.assert_true(screen.press_family_button(kind, id, family_id),
 			"the press seam presses it")
 	if err == "":
-		err = _T.assert_eq(RunConfig.petals, 0,
-			"the price came out of the balance, %d left" % RunConfig.petals)
+		err = _T.assert_eq(RunConfig.wallet, Currency.empty_wallet(),
+			"the price came out of the wallet in every currency, %s left"
+				% RunConfig.wallet)
 	if err == "":
 		err = _T.assert_true(RunConfig.owns_skin(kind, id, family_id),
 			"the skin is owned afterwards")
@@ -24933,8 +25061,8 @@ func test_buying_a_skin_in_the_shop_spends_the_petals_and_wears_it() -> String:
 		err = _T.assert_eq(String(screen.button_state(kind, id, family_id)),
 			String(ShopScreen.STATE_WORN), "so the button it was bought with says worn")
 	if err == "":
-		err = _T.assert_eq(screen.balance_text(), "Petals  0",
-			"and the balance line moved with it")
+		err = _T.assert_eq(screen.held_text(Currency.PETALS), "0",
+			"and the currency table moved with it")
 	if err == "":
 		# THE CROSS-ROW HALF. Nothing was pressed on this row and its button changed.
 		err = _T.assert_eq(String(screen.button_state(other_kind, other_id, family_id)),
@@ -24949,7 +25077,8 @@ func test_buying_a_skin_in_the_shop_spends_the_petals_and_wears_it() -> String:
 		err = _T.assert_false(screen.press_family_button(other_kind, other_id, family_id),
 			"pressing it does nothing")
 	if err == "":
-		err = _T.assert_eq(RunConfig.petals, 0, "and spends nothing, %d left" % RunConfig.petals)
+		err = _T.assert_eq(RunConfig.wallet, Currency.empty_wallet(),
+			"and spends nothing, %s left" % RunConfig.wallet)
 	if err == "":
 		err = _T.assert_false(screen.press_family_button(kind, id, family_id),
 			"pressing the worn one does nothing either -- it is already true")
@@ -24976,15 +25105,15 @@ func test_buying_a_skin_in_the_shop_spends_the_petals_and_wears_it() -> String:
 			err = _T.assert_eq(String(RunConfig.selected_skin(kind, id)), String(second),
 				"it is worn now")
 		if err == "":
-			err = _T.assert_eq(RunConfig.petals, 0,
-				"and cost nothing, %d left" % RunConfig.petals)
+			err = _T.assert_eq(RunConfig.wallet, Currency.empty_wallet(),
+				"and cost nothing, %s left" % RunConfig.wallet)
 	_T.free_ui(screen)
 	_restore_wardrobe(stashed)
 	return err
 
 
 func test_the_shop_only_draws_marks_its_own_font_can_render() -> String:
-	## `✿` and `✓` are Dingbats, and Godot's built-in theme font is not guaranteed to
+	## The currency marks and `✓` are Dingbats, and Godot's built-in theme font is not guaranteed to
 	## carry that block — this project's shipped non-ASCII is arrows and mathematical
 	## operators, which it does. A glyph the font is missing does NOT fail loudly: it
 	## draws as a hex box with an advance like any other glyph, so `GardenTheme.measure`
@@ -24998,12 +25127,19 @@ func test_the_shop_only_draws_marks_its_own_font_can_render() -> String:
 	var font: Font = probe.get_theme_font("font")
 	var err: String = _T.assert_true(font != null,
 		"a theme font resolved -- without one every assertion below is about nothing")
-	var marks: Array[Dictionary] = [
-		{"what": "petal", "mark": ShopScreen.petal_mark(),
-			"glyph": ShopScreen.PETAL_GLYPH, "fallback": ShopScreen.PETAL_FALLBACK},
-		{"what": "worn", "mark": ShopScreen.worn_mark(),
-			"glyph": ShopScreen.WORN_GLYPH, "fallback": ShopScreen.WORN_FALLBACK},
-	]
+	# DERIVED FROM `Currency.TABLE`, not three rows typed here: a fourth currency's mark
+	# has to be asked of the font the same way, and a hand-written list is exactly the
+	# place that would be forgotten (`.claude/skills/derive-the-list`).
+	var marks: Array[Dictionary] = []
+	for currency_id: StringName in Currency.ids():
+		marks.append({"what": String(currency_id), "mark": ShopScreen.currency_mark(currency_id),
+			"glyph": Currency.glyph_of(currency_id), "fallback": ""})
+	marks.append({"what": "worn", "mark": ShopScreen.worn_mark(),
+		"glyph": ShopScreen.WORN_GLYPH, "fallback": ShopScreen.WORN_FALLBACK})
+	if err == "":
+		err = _T.assert_gt(marks.size(), 3,
+			"%d marks to check, which should be one per currency plus the worn tick"
+				% marks.size())
 	for row: Dictionary in marks:
 		if err != "":
 			break
@@ -25012,10 +25148,10 @@ func test_the_shop_only_draws_marks_its_own_font_can_render() -> String:
 			("the %s mark is either its glyph or its declared fallback and never a third "
 				+ "thing, got \"%s\"") % [row["what"], mark])
 		if err == "":
-			# The petal fallback is deliberately EMPTY (the unit is carried by the
-			# balance line and the note instead, because "petals" spelled out on three
-			# price buttons does not fit the canvas), so this loop can legitimately run
-			# zero times. That is why the assertion above is separate from it.
+			# A currency's fallback is deliberately EMPTY -- the currency's WORD is in
+			# the column beside the mark, so a font that cannot draw the mark costs a
+			# decoration rather than the unit -- so this loop can legitimately run zero
+			# times. That is why the assertion above is separate from it.
 			for i: int in mark.length():
 				err = _T.assert_true(font.has_char(mark.unicode_at(i)),
 					("the %s mark draws: the font carries every character of \"%s\". A "
@@ -25030,12 +25166,140 @@ func test_the_shop_only_draws_marks_its_own_font_can_render() -> String:
 		# spends. The worn face is the one asserted because the worn mark is non-empty
 		# in both branches — `contains("")` is true of every string and would be a
 		# check that cannot fail.
-		var kind: StringName = ShopScreen.target_kinds()[0]
 		var family_id := StringName(Skins.buyable_families()[0]["id"])
 		err = _T.assert_true(
-			ShopScreen.button_text(kind, family_id, ShopScreen.STATE_WORN).contains(
+			ShopScreen.button_text(family_id, ShopScreen.STATE_WORN).contains(
 				ShopScreen.worn_mark()),
 			"and the worn face carries the mark rather than the raw glyph constant")
+		if err == "":
+			# And each currency's mark reaches its table row the same way. The row label
+			# is the one place a currency mark is drawn at all.
+			for currency_id: StringName in Currency.ids():
+				var mark: String = ShopScreen.currency_mark(currency_id)
+				if mark.is_empty():
+					continue
+				err = _T.assert_true(
+					ShopScreen.currency_label(currency_id).contains(mark),
+					"and the %s row carries its mark" % currency_id)
+				if err != "":
+					break
+	return err
+
+
+## The currency table's own geometry closes, the same way the row grammar's does.
+##
+## Everything here is derived -- `panel_width()` takes the MAX of the row width and the
+## table width, and the table's own width is a sum of four measured columns. A sum is
+## the shape that goes quietly wrong: drop one TABLE_COLUMN_GAP and every column still
+## lands somewhere plausible, the paper still contains them because the paper grew with
+## them, and the only symptom is a source column that runs past the right margin on a
+## build whose font measured differently.
+##
+## So this closes the sum at the far edge and then reads the DRAWN cells back to check
+## the layout functions describe the Controls they placed.
+func test_the_shop_currency_table_closes_at_the_paper_it_is_drawn_on() -> String:
+	var stashed: Dictionary = _stash_wardrobe()
+	RunConfig.purchased_skins = {}
+	RunConfig.selected_skins = {}
+	RunConfig.wallet = Currency.empty_wallet()
+	var screen := await _T.instantiate_ui(ShopScreen.build(), Vector2i(1152, 648)) as ShopScreen
+	var panel: Rect2 = screen.panel_rect()
+
+	# The first assertion is the one that makes the rest mean anything: every width here
+	# comes from `GardenTheme.measure`, which answers 0.0 when no font resolves, and a
+	# table whose every column collapsed to its floor would still lay out and still pass
+	# every arithmetic check below it.
+	var err: String = _T.assert_gt(GardenTheme.measure(
+			Currency.title_of(Currency.ids()[0]), ShopScreen.TABLE_FONT_SIZE), 0.0,
+		"a font resolved, so the columns below were measured rather than floored")
+	if err == "":
+		err = _T.assert_gt(ShopScreen.currency_column_width(), 0.0,
+			"the currency column has a width")
+	if err == "":
+		err = _T.assert_gt(ShopScreen.amount_column_width(), 0.0,
+			"and so do the amount columns")
+	if err == "":
+		err = _T.assert_gt(ShopScreen.source_column_width(), 0.0,
+			"and the source column")
+	if err == "":
+		# THE SUM, closed at the far edge: the source column's right edge sits exactly
+		# NAME_X short of the table's width, the same margin the first column starts at.
+		err = _T.assert_eq(ShopScreen.source_column_x() + ShopScreen.source_column_width()
+				+ ShopScreen.NAME_X, ShopScreen.table_width(),
+			"table_width() is its own columns plus both margins and nothing else")
+	if err == "":
+		# assert_gte with the operands the other way up: the helper set has no assert_lte.
+		err = _T.assert_gte(panel.size.x, ShopScreen.table_width(),
+			("and the paper is at least as wide as the table -- panel_width() takes the "
+				+ "MAX of the rows and the table, so a source sentence longer than the "
+				+ "rows widens the paper rather than running off it"))
+	if err == "":
+		err = _T.assert_gte(float(OverlayScreen.design_width()), panel.size.x,
+			"while the paper still fits the canvas it is drawn on")
+	if err == "":
+		# `amount_column_x` is what the builder positions every cell with, so the drawn
+		# heading has to be where it says. Read off the Control, not recomputed.
+		err = _T.assert_gt(ShopScreen.table_amount_columns(), 1,
+			"there is a held column and at least one priced one")
+	if err == "":
+		for column: int in ShopScreen.table_amount_columns():
+			var heading := screen.get_node_or_null("ShopTableHeading%d" % column) as Label
+			err = _T.assert_true(heading != null, "column %d has a drawn heading" % column)
+			if err == "":
+				err = _T.assert_eq(heading.position.x,
+					panel.position.x + ShopScreen.amount_column_x(column),
+					"and it sits where amount_column_x(%d) says" % column)
+			if err != "":
+				break
+	if err == "":
+		# The rows are pitched by `table_row_y`, and the last one has to clear the first
+		# target row -- which is what `rows_top()` is derived from.
+		err = _T.assert_gt(ShopScreen.rows_top(),
+			ShopScreen.table_row_y(Currency.ids().size() - 1) + ShopScreen.TABLE_LABEL_HEIGHT,
+			"the target rows start below the last currency row rather than over it")
+	if err == "":
+		# A priced column is headed by the kind it prices, and the heading is derived
+		# from the kind id rather than looked up -- a third kind heads itself.
+		var kinds: Array[StringName] = ShopScreen.target_kinds()
+		var headings: Array[String] = ShopScreen.table_amount_headings()
+		err = _T.assert_eq(headings.size(), 1 + kinds.size(),
+			"one held heading and one per kind, got %s" % [headings])
+		for i: int in kinds.size():
+			if err != "":
+				break
+			err = _T.assert_eq(headings[i + 1], ShopScreen.kind_title(kinds[i]),
+				"column %d is headed by its kind" % [i + 1])
+			if err == "":
+				err = _T.assert_true(ShopScreen.kind_title(kinds[i]).contains("skin"),
+					("and the heading says what is being priced, not just which kind: "
+						+ "%s") % ShopScreen.kind_title(kinds[i]))
+	if err == "":
+		# `table_amount_cells` is what the builder writes into those columns, so its
+		# shape has to match the headings it is drawn under.
+		for id: StringName in Currency.ids():
+			var cells: Array[String] = ShopScreen.table_amount_cells(id, RunConfig.wallet)
+			err = _T.assert_eq(cells.size(), ShopScreen.table_amount_columns(),
+				"the %s row has one cell per heading" % id)
+			if err == "":
+				err = _T.assert_eq(cells[0], "0",
+					"and its held cell reads the wallet it was handed, not RunConfig")
+			if err != "":
+				break
+	if err == "":
+		# The classifier the dimming is drawn from, asserted directly as well as through
+		# the Label: an empty wallet covers nothing, and the cheapest price covers.
+		err = _T.assert_false(
+			ShopScreen.held_covers_cheapest(Currency.ids()[0], Currency.empty_wallet()),
+			"an empty wallet does not cover the cheapest skin")
+		if err == "":
+			err = _T.assert_eq(ShopScreen.held_color(false), GardenTheme.INK_SOFT,
+				"and a currency that does not cover it is drawn dim")
+		if err == "":
+			err = _T.assert_eq(ShopScreen.held_color(true), GardenTheme.GOLD,
+				("while one that does is GOLD -- a step in VALUE rather than a hue, so "
+					+ "the signal survives any colour vision"))
+	_T.free_ui(screen)
+	_restore_wardrobe(stashed)
 	return err
 
 
@@ -25069,8 +25333,10 @@ func test_the_shop_columns_add_up_to_the_paper_it_draws_them_on() -> String:
 			"target_kinds() is the distinct kinds of Skins.targets(), in first-seen order")
 	if err == "":
 		for kind: StringName in kinds:
-			err = _T.assert_gt(Skins.cost_for(kind, StringName(families[0]["id"])), 0,
-				"every kind prices a buyable family, %s does not" % kind)
+			err = _T.assert_eq(
+				Skins.price_for(kind, StringName(families[0]["id"])).size(),
+				Currency.ids().size(),
+				"every kind prices a buyable family in every currency, %s does not" % kind)
 			if err != "":
 				break
 
@@ -25081,8 +25347,8 @@ func test_the_shop_columns_add_up_to_the_paper_it_draws_them_on() -> String:
 		var control := child as Control
 		if control == null or not control.visible:
 			continue
-		if absf(control.position.y - ShopScreen.ROWS_TOP) > 0.5:
-			var label_y: float = ShopScreen.ROWS_TOP + ShopScreen.ROW_LABEL_INSET
+		if absf(control.position.y - ShopScreen.rows_top()) > 0.5:
+			var label_y: float = ShopScreen.rows_top() + ShopScreen.ROW_LABEL_INSET
 			if absf(control.position.y - label_y) > 0.5:
 				continue
 			var label := control as Label
