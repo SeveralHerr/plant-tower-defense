@@ -1237,8 +1237,18 @@ const ROAD_ANSWER_WIDTH: float = 2.0
 ## Matches the removed cue's own segment count, which was legible at this
 ## radius and never the thing the report complained about.
 const ROAD_ANSWER_SEGMENTS: int = 20
-## GardenTheme.LEAF: see the COLOUR bullet above for why this and not yellow.
-const ROAD_ANSWER_COLOR := GardenTheme.LEAF
+## GardenTheme.LEAF, LIGHTENED (plant-tower-defense-75os): the COLOUR bullet above
+## argues for this hue and not yellow, and it was right about the hue and short on the
+## number. The ring is drawn only on the road, at this colour's own alpha (1.0, a
+## Line2D default_color with no re-alpha), and raw LEAF sits at luminance 0.642 against
+## GROUND_DIRT's 0.534 -- a separation of 0.108, under
+## `GardenTheme.GROUND_SEPARATION_MIN`. Lightened rather than darkened: at 0.642 it is
+## already closer to clearing on the bright side (0.654 clears) than the dark one, so
+## this is `LEAF.lightened(0.10)`, rounded, as a literal (a GDScript const cannot call
+## a method) -- luminance 0.678, separation 0.144, clearing by 0.024. Still
+## unmistakably the same green. See
+## test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at.
+const ROAD_ANSWER_COLOR := Color(0.26, 0.82, 0.50)
 
 ## Every cell the road-answer ring currently marks. Kept on the Board beside
 ## _dead_ground and for the same reason its neighbour's header gives: a Board

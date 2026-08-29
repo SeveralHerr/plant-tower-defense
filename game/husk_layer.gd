@@ -31,6 +31,18 @@ const BRIGHT_RING := Color(1.0, 0.97, 0.62, 1.0)
 const RING_WIDTH_MIN: float = 2.0
 const RING_WIDTH_MAX: float = 3.5
 
+## The husk's own body fill, at BODY_ALPHA_MIN..BODY_ALPHA_MAX as it decays -- see
+## `_draw`'s `0.35 + 0.35 * frac`. DARKENED (plant-tower-defense-w86n): a husk sits on
+## the road it was killed on at least as often as on grass, and the alpha fades
+## continuously across the husk's whole collectible life, so the worst case -- alpha
+## 0.35, moments before it disappears -- is the one that has to clear, not just the
+## fresh one at 0.70. The original `Color(0.64, 0.45, 0.25)` (luminance 0.476) missed
+## both at that low end: 0.058 against grass's 0.642, 0.020 against dirt's 0.534, a
+## floor of 0.12. `.darkened(0.62)`: luminance 0.181, clearing grass by 0.042 and dirt
+## by 0.004 at alpha 0.35, and by much more once the husk is fresh at 0.70. See
+## test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at.
+const BODY_COLOR := Color(0.24, 0.17, 0.10)
+
 ## Pips: what a husk wears once radius and glow have both run out of range.
 ##
 ## Three at most, and that ceiling is a promise about what the cue means rather
@@ -107,7 +119,7 @@ func _draw() -> void:
 		var frac: float = clampf(float(h["life"]) / span, 0.0, 1.0)
 		var radius: float = radius_for(value)
 		var glow: float = glow_for(value)
-		draw_circle(pos, radius, Color(0.64, 0.45, 0.25, 0.35 + 0.35 * frac))
+		draw_circle(pos, radius, Color(BODY_COLOR, 0.35 + 0.35 * frac))
 		# The rot timer sweeps this ring away; a richer husk wears a brighter,
 		# heavier one, so "worth hurrying for" is legible at a glance.
 		draw_arc(

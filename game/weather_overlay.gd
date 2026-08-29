@@ -40,8 +40,16 @@ const MARK_COUNT: int = 90
 const SCATTER_PRIME_X: int = 73856093
 const SCATTER_PRIME_Y: int = 19349663
 
+## DROUGHT_TINT is a uniform full-board wash, not a mark -- it changes the tint of the
+## ground itself rather than sitting as a shape a player reads against it, so it owes
+## no separation from a ground it is part of.
 const DROUGHT_TINT := Color(0.86, 0.72, 0.36, 0.20)
-const DROUGHT_MARK := Color(0.74, 0.60, 0.30, 0.55)
+## DARKENED (plant-tower-defense-w86n): the crack dashes ARE marks -- scattered across
+## both grounds -- and the original `Color(0.74, 0.60, 0.30)` (luminance 0.608) failed
+## both: 0.019 against grass, 0.041 against dirt, at its own 0.55 alpha, against a 0.12
+## floor. `.darkened(0.55)`: luminance 0.274, clearing grass by 0.083 and dirt by 0.023.
+## See test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at.
+const DROUGHT_MARK := Color(0.33, 0.27, 0.14, 0.55)
 const DROUGHT_MARK_LENGTH: float = 7.0
 const DROUGHT_MARK_WIDTH: float = 1.5
 
