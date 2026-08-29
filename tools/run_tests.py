@@ -213,12 +213,17 @@ def _user_state_after(devtools_mod, project_path: Path) -> str:
             "save to change (advisory)" % (total, user_dir, "; ".join(parts)))
 
 
-def run_suite(godot_path: Path, project_path: Path, log_path: Path, passthrough, timeout: int):
+def run_suite(godot_path: Path, project_path: Path, log_path: Path, passthrough, timeout: int,
+              env=None):
     """Run the suite with stdout+stderr going to log_path. Returns Godot's exit code.
 
     Output goes to a file, never subprocess.PIPE -- see import_check.py's run_import
     for why (an unread pipe stalls Godot on Windows; a non-console build often prints
     nothing to a live terminal at all, so the file is the only honest read either way).
+
+    `env=None` inherits this process's environment unchanged (subprocess.run's own
+    default) -- callers that want to add or override a variable pass a full copy of
+    `os.environ` with their change applied, per SAVE_PATH_ENV below.
     """
     cmd = [str(godot_path), "--headless", "--path", str(project_path),
            "--script", "res://tools/run_tests.gd"]
@@ -226,8 +231,67 @@ def run_suite(godot_path: Path, project_path: Path, log_path: Path, passthrough,
         cmd += ["--"] + list(passthrough)
     with log_path.open("w", encoding="utf-8") as log_f:
         proc = subprocess.run(cmd, stdout=log_f, stderr=subprocess.STDOUT,
-                              cwd=str(project_path), timeout=timeout)
+                              cwd=str(project_path), timeout=timeout, env=env)
     return proc.returncode
+
+
+# plant-tower-defense-l6zo: the env var RunConfig.resolved_save_path (game/run_config.gd)
+# already honours, and already beats its own headless default -- see that function's
+# docstring. Naming it here rather than importing run_config.gd keeps this wrapper
+# Godot-version-agnostic; it is a plain OS environment variable name, not GDScript.
+SAVE_PATH_ENV = "PLANT_TD_SAVE_PATH"
+
+
+def scratch_save_env(project_path: Path, devtools_mod) -> tuple:
+    """Decide this run's save path and return (env_or_None, message).
+
+    THE DECISION (plant-tower-defense-l6zo): `run_tests.py` DOES set `PLANT_TD_SAVE_PATH`
+    automatically, to a pid-derived path, one per invocation -- FOR concurrent fan-out
+    lanes (the cycle skill's parallel form, `references/fan-out.md`) no longer sharing
+    `RunConfig.HEADLESS_SAVE_PATH` (`user://headless_scratch.save`); two `run_tests.py`
+    processes at once currently stage state through that one shared file, and `user://`
+    cannot be isolated at all (harness gh#28 -- `launch --isolated` isolates the bus
+    only). AGAINST: a per-run temp path loses "it's one known file you can cat" for a
+    failing run's save state after the fact.
+
+    The middle answer the bead itself proposes, taken rather than skipped: the path is
+    KEPT (nothing here deletes it, before or after the run) and PRINTED, so a failing
+    run still names exactly the file its state is in -- inspectable, just not at a fixed
+    name. Trade accepted: the file this prints is `user://headless_scratch.pid<PID>.save`
+    and OS pids recycle, so a kept-forever file from a much earlier run COULD be adopted
+    by a later run that draws the same pid. Judged acceptable because `run_tests.gd`
+    itself runs one process per invocation for at most a handful of minutes, making a
+    same-pid collision within that window exceedingly unlikely, and because the file is
+    still a real save this build wrote and can read -- not corruption, at worst a stale
+    prior run's numbers, and the printed path makes it a checkable one.
+
+    THE DEFAULT DOES NOT MOVE. `RunConfig.HEADLESS_SAVE_PATH` stays what a bare
+    `godot --headless --script res://tools/lint_project.gd` -- no wrapper, no env var --
+    resolves to; only a caller that goes through THIS wrapper gets a private path,
+    exactly the way `PLANT_TD_SAVE_PATH` was designed to be beaten only by an explicit
+    choice.
+
+    A caller that has already set `PLANT_TD_SAVE_PATH` itself (its own env, before
+    invoking this wrapper) is left alone -- that caller named what it wants, which is
+    precisely `resolved_save_path`'s own top-priority rule, and this wrapper overriding
+    it would be the same mistake the bead is about in miniature.
+    """
+    existing = os.environ.get(SAVE_PATH_ENV, "")
+    if existing:
+        return None, ("%s already set by the caller: %s (left unchanged)"
+                       % (SAVE_PATH_ENV, existing))
+    rel_path = "user://headless_scratch.pid%d.save" % os.getpid()
+    env = os.environ.copy()
+    env[SAVE_PATH_ENV] = rel_path
+    abs_hint = ""
+    if devtools_mod is not None:
+        try:
+            user_dir = devtools_mod.get_user_data_path(project_path)
+            abs_hint = " (%s)" % (Path(user_dir) / rel_path.replace("user://", "", 1))
+        except Exception:  # noqa: BLE001 - the hint is advisory; the env var is what matters
+            abs_hint = ""
+    return env, ("Save state for this run: %s%s -- kept after the run, not deleted"
+                 % (rel_path, abs_hint))
 
 
 _ASSERT_RE = re.compile(r"\b_T\s*\.\s*assert\w*\s*\(")
@@ -330,8 +394,13 @@ def main():
     devtools_mod, user_before = _user_state_before(project_path)
     # Taken BEFORE the suite and printed after it, beside the writes line it completes.
     user_entry = _user_state_entry(devtools_mod, project_path)
+    # plant-tower-defense-l6zo: a pid-derived PLANT_TD_SAVE_PATH per invocation, kept and
+    # printed -- see scratch_save_env's docstring for the full decision and reasoning.
+    save_env, save_message = scratch_save_env(project_path, devtools_mod)
+    print(save_message)
     try:
-        godot_rc = run_suite(godot_path, project_path, log_path, passthrough, args.timeout)
+        godot_rc = run_suite(godot_path, project_path, log_path, passthrough, args.timeout,
+                              env=save_env)
     except subprocess.TimeoutExpired:
         print(f"Error: the suite did not finish within {args.timeout}s; partial output "
               f"in {log_path}. Nothing was verified.", file=sys.stderr)
@@ -383,6 +452,7 @@ def main():
             "engine_errors": engine_errors,
             "user_on_entry": user_entry,
             "user_writes": user_writes,
+            "save_state": save_message,
             "exit": exit_code,
         }, indent=2))
         sys.exit(exit_code)
