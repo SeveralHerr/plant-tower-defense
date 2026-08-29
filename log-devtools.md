@@ -10265,3 +10265,67 @@ is likely to be at least as productive.
   every one of the 5 test failures here was a fact about a file the failing lane was correctly
   forbidden to open (test_combat.gd's golden headcount array, test_selftest.gd's ramp-multiplier
   pin), not a mistake by the lane that wrote its own piece.
+
+## 2026-08-29 — Added an autostart-waves toggle (off by default), gated in `Game._process`
+
+- Value: **warranted** — running the real suite is what turned "the top stats row and the
+  Keys screen look tight" into a hard no, before anything shipped.
+  - Expected: reading `Hud.STATS_ROW_*`/`OptionsScreen`/`KeyBindingScreen`'s own doc comments
+    (which state exact headroom numbers) would be enough to size a new control by hand.
+  - Got: the doc comments were right about the FORMULA but the actual live numbers only came
+    from running it — `stats_row_budget()` against `stats.size.x` and `min_viewport_width()`
+    against the narrowest producible canvas (1152px) both had to be read off a real
+    `instantiate_scene(GAME_SCENE)`. A quick `--script` probe of the same scene failed outright
+    (`Identifier not found: RunConfig` — autoloads exist in `--script` mode but are not bound as
+    compile-time globals, exactly as `tools/eval.gd`'s own header says, which I hadn't read yet).
+    `run_tests.py -- --filter stats_row` against a deliberately oversized probe constant was what
+    actually gave usable numbers.
+  - Found: the top HUD stats row has exactly 38px of headroom at the narrowest supported
+    viewport and a bare "Auto" CheckButton needs ~106px there; `KeyBindings.ACTIONS` is already
+    at nine entries against `KeyBindingScreen`'s own documented nine-is-the-last-that-fits
+    ceiling. Both would have shipped a silently-broken-at-narrow-width layout (or a keys panel
+    with its foot off the screen) had I trusted the doc comments' arithmetic without instantiating
+    the real scene and letting `test_the_top_row_fits_the_narrowest_viewport_the_stretch_mode_can_
+    produce` / `test_the_keys_panel_stays_inside_the_viewport` grade it.
+  - Cheaper: nothing, for the two hard-ceiling findings — they are exactly the class of thing
+    the comments predict but only the live layout confirms. The `--script` probe detour was
+    avoidable by reading `tools/eval.gd`'s header first.
+- Gap: **`cmd budgets` answers exactly "how much headroom does X have," unconditionally
+  (its own failure-message text points at it: "Read it with `python tools/devtools.py cmd
+  budgets`") — but it is a bridge verb, so it needs a launched, windowed game to ask. For a
+  layout question with no game running yet, that is a `launch`, a `ping` wait, then the call, for
+  one number.** Cheaper in this session was a wrong-on-purpose test constant plus
+  `run_tests.py -- --filter <name>`, reading the assertion text's "X of Y px max" back out —
+  which worked, but is guess-and-check where a headless equivalent would be a direct answer.
+  - [G-155] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: an offline/headless counterpart for `cmd budgets`, the way `list-commands
+    --offline` already exists beside the live verb — even a partial one covering the budgets
+    whose inputs (STAT_READOUTS, panel constants, viewport floors) are pure data with no live
+    node needed, which is most of the ones this session hit.
+
+## 2026-08-29 — owl6: the twelve gaps were already reconciled, twice
+
+- Value: **overkill** — `gap_ledger.py` plus a per-id `grep` answered the whole bead without
+  opening a single harness file.
+  - Expected: twelve ids to individually re-open (`addons/godot_selftest/dev_tools.gd`,
+    `tools/devtools.py`) and re-check against the installed 0.38.0 client.
+  - Got: `python tools/gap_ledger.py` already lists G-014, G-016, G-018, G-019, G-025, G-029,
+    G-030, G-033, G-046, G-047, G-049 as `fixed` on their LAST mention, and G-044 as `open`
+    on its last mention — the exact 11-fixed/1-open split owl6 asks for. Full per-id history
+    (`grep -n "^\s*- \[G-xxx\] status:"`) shows this was not a guess: G-014/016/018/019/025/
+    029/046/047/049 were reconciled at cycle 37 (line ~3969, "cited in templates/ code",
+    G-019 additionally re-verified in full against `dev_tools.gd`); G-030 was reconciled
+    separately at cycle 37 as a project-bug root cause (line 1861); G-033 was reconciled at a
+    later cycle once harness 0.33.0 actually shipped the fix (line 3263); and G-044 was
+    RE-confirmed still-open at cycle 152 (line 8850), newer than this bead's own cycle-173
+    source, with a note explaining exactly why the installed mitigation doesn't count as fixed.
+  - Found: owl6's own premise is stale. It was filed from a cycle-173 kanban read of a
+    newer (>=0.60.0) external `harness-version` scan that reported these 12 as "open in this
+    project's log" — but this project's own log had already carried a `fixed` (or
+    re-confirmed `open`) status line for every one of them since cycle 37/152, both earlier
+    than cycle 173. The external scanner's claim was about a stale copy of the log, not this
+    one. No status line was stale; nothing needed a new entry.
+  - Cheaper: this — `gap_ledger.py` plus one grep per id — was already the cheap version.
+    Reading the harness source itself would have re-derived a conclusion the log already
+    states, correctly, twice.
+- Gap: **no gaps this turn.**

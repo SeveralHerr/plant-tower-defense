@@ -89,6 +89,19 @@ NOT COVERED: this reads source, not a running tree. It cannot see <the specific
 
 ## Writing the scan
 
+**Decide what set you are scanning before you decide how to scan it — searching for the
+API you already have in mind reproduces the exact bug the checker exists to catch.** Three
+instances in this project's history are one shape, all found by enumerating a mechanism
+instead of a property: a tween census concluded no plant had idle motion (`Plant._wobble`
+is `_process`-driven, not tween-driven); a `draw_*` census for `gate_aim_check.py` found
+0 of 24 real cases because the population it needed was marks Board draws on a caller's
+behalf; a test-name census for message-row coverage missed the function that actually
+measures the row because it names no corpus symbol. **The tell: if you can name the API
+you searched for, you have probably searched for an implementation, not the behaviour** —
+grep for the property a defect would move (a pixel, a signal payload, a drawn colour),
+not for the call you imagine implements it. Full write-up, two more instances, and the
+absence-in-prose variant: `.claude/skills/kanban-idea-pass/SKILL.md` rule 2.
+
 **Strip comments and string bodies before matching.** A rule satisfied by prose is not a
 rule. This repo has already been bitten the other way round: a test scanned source for a
 token and matched the comment explaining why the token was absent.
