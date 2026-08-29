@@ -44,6 +44,9 @@ func teardown() -> void:
 
 
 func _board() -> Board:
+	# BOARD.NEW() VERDICT: PINS the shipped board -- the default-board factory this
+	# file's many road-shape assertions are pinned against; see _road_corpus() below
+	# for the property-swept counterpart.
 	var board := Board.new()
 	# Board builds its path lazily on first query, so no tree is needed to ask it
 	# about geometry — only the tile sprites want a running scene.
@@ -1000,6 +1003,9 @@ func test_a_cell_position_for_to_local_is_global_and_board_local_is_not() -> Str
 	var entities := Node2D.new()
 	entities.position = Vector2(0.0, Hud.BAR_HEIGHT)
 	tree.root.add_child(entities)
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- this exercises
+	# cell_to_world/cell_to_global's coordinate arithmetic, which does not read the
+	# road at all, so a corpus sweep would not exercise anything new.
 	var board := Board.new()
 	entities.add_child(board)
 
@@ -1269,6 +1275,7 @@ func _road_corpus() -> Array:
 func test_every_road_in_the_corpus_walks_the_length_its_corners_imply() -> String:
 	var err: String = ""
 	var checked: int = 0
+	# BOARD.NEW() VERDICT: PROPERTY -- already swept over _road_corpus() below.
 	for road: Dictionary in _road_corpus():
 		var name: String = str(road["name"])
 		var corners: Array[Vector2i] = road["corners"]
@@ -1353,6 +1360,7 @@ func test_dead_ground_is_exactly_the_cells_no_road_cell_reaches() -> String:
 	]
 	var checked: int = 0
 	var default_counts: Dictionary = {}
+	# BOARD.NEW() VERDICT: PROPERTY -- already swept over _road_corpus() below.
 	for road: Dictionary in _road_corpus():
 		if err != "":
 			break
@@ -1460,6 +1468,7 @@ func test_dead_ground_is_exactly_the_cells_no_road_cell_reaches() -> String:
 func test_a_sundews_best_patch_is_worth_laying_on_every_road_and_not_the_same_size() -> String:
 	var err: String = ""
 	var best_by_road: Dictionary = {}
+	# BOARD.NEW() VERDICT: PROPERTY -- already swept over _road_corpus() below.
 	for road: Dictionary in _road_corpus():
 		if err != "":
 			break
@@ -1574,6 +1583,7 @@ func test_no_road_in_the_corpus_leaves_a_reaching_plant_with_nothing_to_do() -> 
 	var never_asked: Array[StringName] = [
 		PlantCatalog.BRAMBLE, PlantCatalog.SUNFLOWER, PlantCatalog.MINT, PlantCatalog.ALOE,
 	]
+	# BOARD.NEW() VERDICT: PROPERTY -- already swept over _road_corpus() below.
 	for road: Dictionary in _road_corpus():
 		if err != "":
 			break
@@ -1627,6 +1637,9 @@ func test_no_road_in_the_corpus_leaves_a_reaching_plant_with_nothing_to_do() -> 
 ## obvious reason -- a test that hands the walker a diagonal to prove it hangs never
 ## returns, and would take the whole suite with it.
 func test_set_road_refuses_the_roads_that_cannot_be_walked() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- set_road()'s own
+	# input-validation contract, independent of which road is currently loaded;
+	# _road_corpus() holds only legal roads, so it does not apply to a refusal matrix.
 	var board := Board.new()
 	var err: String = _T.assert_true(board.set_road([
 			Vector2i(0, 0), Vector2i(3, 4)]).contains("diagonal"),
@@ -1667,6 +1680,9 @@ func test_set_road_refuses_the_roads_that_cannot_be_walked() -> String:
 ## new road's cells. Refusing is the honest answer and this pins it, because the
 ## alternative failure is silent and visual.
 func test_a_board_in_the_tree_will_not_change_its_road() -> String:
+	# BOARD.NEW() VERDICT: PINS the shipped board (non-road) -- exercises the
+	# refusal API using ROAD_SHORT/ROAD_LONG directly, not a specific road's shape;
+	# no corpus sweep applies since this tests a transition, not a static layout.
 	var board := Board.new()
 	var err: String = _T.assert_eq(board.set_road(ROAD_SHORT), "",
 		"the road is set before the board enters the tree")
