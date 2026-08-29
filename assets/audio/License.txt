@@ -1,6 +1,13 @@
 	Game audio for plant-tower-defense
 
-	Created/distributed by Kenney (www.kenney.nl)
+	THIS DIRECTORY NOW HOLDS THREE SOURCES, not one. The Kenney terms below
+	cover the Kenney files ONLY -- the two lists further down name every file
+	that is not Kenney's and says whose it is. Read the scope before reusing
+	anything out of here: it was a blanket "everything in this directory is
+	CC0" until a bought music track and five game-specific cues landed beside
+	the CC0 files, and a licence file that overclaims is worse than none.
+
+	Kenney portion -- created/distributed by Kenney (www.kenney.nl)
 
 			------------------------------
 
@@ -12,21 +19,20 @@
 
 			------------------------------
 
-	Every file in this directory is vendored unmodified from the Kenney
+	Every file in THIS section is vendored unmodified from the Kenney
 	"Game Assets All-in-1" bundle (3.6.0), keeping its original filename so it
 	can be traced back to the pack it came from. Only the files the game
 	actually plays are copied here — see `res://game/sfx.gd` for the
 	event -> file table that is the sole consumer of all of them.
 
 	From "Impact Sounds" (1.0):
-	  footstep_grass_000.ogg      a plant going into the soil — and, reused,
-	                              a plant deliberately dug back out of it, and
-	                              a Bomb Dandelion letting a seed go
+	  footstep_grass_000.ogg      a plant deliberately dug back out of the
+	                              soil — and, reused, a Bomb Dandelion letting
+	                              a seed go
 	  impactSoft_medium_002.ogg   a hungry pest taking a bite out of a plant —
-	                              and, reused, a Corn Cobbler's kernel volley
-	                              leaving the cob
-	  impactSoft_heavy_000.ogg    a pest squashed — and, reused, a dandelion
-	                              seed bomb bursting where it landed
+	                              and, reused, a Nettle's sting
+	  impactSoft_heavy_000.ogg    a dandelion seed bomb bursting where it
+	                              landed
 	  impactBell_heavy_002.ogg    a wave starting — and, reused, a Corn
 	                              Cobbler upgrade landing
 
@@ -48,11 +54,51 @@
 	  jingles-pizzicato_00.ogg    the run won
 
 	From "Music Loops" (1.1) -- general-purpose instrumental beds, not written
-	for this game. Placeholder pairing chosen for mood until a purpose-made
-	theme is sourced or commissioned; see the note atop game/music.gd.
+	for this game. Placeholder chosen for mood until a purpose-made theme is
+	sourced or commissioned; see the note atop game/music.gd.
 	  Farm Frolics.ogg            title screen bed, and the bed a finished run
 	                              settles back onto for the post-mortem card
-	  Mission Plausible.ogg       in-run bed, while a wave is actually live
+	  Mission Plausible.ogg       NO LONGER PLAYED. It was the in-run bed until
+	                              the licensed track below replaced it. Kept
+	                              vendored, and named here so it is a decision
+	                              rather than a leftover: it is the fallback if
+	                              that licence is ever withdrawn, and Music.TRACKS
+	                              is the only line that would change back.
+
+			------------------------------
+
+	MUSIC, licensed -- NOT CC0, NOT Kenney
+
+	  Cute Loops - Summer Sun.mp3   the in-run bed, playing for the whole of a
+	                                run
+
+	From the "Cute Loops" pack by ElvGames & pegonthetrack, bought for this
+	game. Full terms in CuteLoopsLicense.txt beside this file; in short, it may
+	be used and modified in this project, commercial or not, it may NOT be
+	resold as a pack even modified, and CREDIT TO ElvGames & pegonthetrack IS A
+	CONDITION of use -- so it belongs in whatever the game ships as credits, not
+	only in this file. https://elv-games.itch.io/terms
+
+			------------------------------
+
+	CUES WRITTEN FOR THIS GAME -- not Kenney's, not CC0
+
+	  shoot.wav                   a Corn Cobbler's kernel volley leaving the cob
+	  hit-received.wav            a pest taking the hit that kills it, at either
+	                              of the two kill grades
+	  bug-steps.wav               the looping bed of bugs on the move, running
+	                              while any pest is still walking the road (see
+	                              Sfx.AMBIENCE_SOUND — it is the one sound here
+	                              that is not a SOUNDS row)
+	  plant-place.ogg             soil closing over a planting
+	  clickanddrag.ogg            a packet picked out of the plant bar, click or
+	                              drag
+
+	Added to the project by its owner rather than vendored from a pack. THE
+	UPSTREAM SOURCE AND TERMS ARE NOT RECORDED HERE YET (plant-tower-defense-muyk):
+	if any of these came out of a pack rather than being made for the game, that
+	pack's own licence has to be named in this section before the game ships,
+	because "we do not know" is not a licence.
 
 			------------------------------
 

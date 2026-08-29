@@ -9,17 +9,21 @@ extends RefCounted
 ## the run's own end), so it earns its own small file instead of growing a
 ## second shape inside Sfx's dictionary.
 ##
-## PLACEHOLDER CONTENT, said plainly rather than shipped quietly. Both tracks
-## below are real CC0 Kenney loops (see assets/audio/License.txt) from the
-## same "Game Assets All-in-1" bundle the rest of assets/audio/ is vendored
-## from -- specifically "Music Loops" (1.1), which ships general-purpose
-## instrumental beds with no lyrics, stingers, or game-specific mixing. That
-## bundle, and every other CC0/licensed asset source findable on this machine,
-## has no track written for a plant-tower-defense game, or for any tower
-## defense at all -- so these two are a placeholder pairing chosen for mood
-## (title: pastoral and unhurried; run: brisk and a little tense) and NOT a
-## claim that either was composed for this game. Swap TRACKS below the day a
-## purpose-made theme exists; nothing else in this file should need to change.
+## HALF PLACEHOLDER, said plainly rather than shipped quietly.
+##
+## RUN is no longer one: "Summer Sun" is a licensed track from ElvGames'
+## "Cute Loops" pack, bought for this game and written to loop, and it is what
+## the player hears for the whole of a run. See assets/audio/CuteLoopsLicense.txt
+## for its terms -- they are NOT CC0, the credit to ElvGames & pegonthetrack is a
+## condition of use, and the pack may not be resold, even modified.
+##
+## TITLE still is. "Farm Frolics" is a CC0 Kenney loop (see
+## assets/audio/License.txt) from the "Game Assets All-in-1" bundle -- a
+## general-purpose instrumental bed with no lyrics, stingers or game-specific
+## mixing, chosen for mood (pastoral and unhurried) and NOT a claim that it was
+## composed for this game. Swap it in TRACKS below the day a purpose-made title
+## theme exists; nothing else in this file should need to change, which is the
+## whole of what swapping RUN cost.
 ##
 ## Deliberately NOT an autoload, for the same reason as Sfx: the host Node
 ## parents itself to the SceneTree root on first use, which survives both
@@ -33,7 +37,7 @@ const RUN := &"run"
 ## two actually are and why.
 const TRACKS: Dictionary = {
 	TITLE: "res://assets/audio/Farm Frolics.ogg",
-	RUN: "res://assets/audio/Mission Plausible.ogg",
+	RUN: "res://assets/audio/Cute Loops - Summer Sun.mp3",
 }
 
 ## Scene path -> the bed that scene plays. Read by play_for_scene(), which is
@@ -285,8 +289,9 @@ static func _start(player: AudioStreamPlayer, track: StringName, volume_db: floa
 
 
 ## The stream behind a track, or null if there isn't one. `loop` is set here,
-## not in the .ogg's import settings, so the file that decides a bed loops is
-## the same file that decides which bed plays which scene.
+## not in the file's import settings, so the file that decides a bed loops is
+## the same file that decides which bed plays which scene -- and a re-import
+## cannot quietly turn a bed into a one-shot.
 static func _stream_for(track: StringName) -> AudioStream:
 	if _streams.has(track):
 		return _streams[track] as AudioStream
@@ -294,9 +299,17 @@ static func _stream_for(track: StringName) -> AudioStream:
 	var stream: AudioStream = null
 	if path != "" and ResourceLoader.exists(path):
 		stream = load(path) as AudioStream
+		# Both stream types this project keeps beds in, and neither inherits the
+		# other: `loop` is declared on AudioStreamOggVorbis and on AudioStreamMP3
+		# separately, so a single cast covers one of them and silently leaves the
+		# other playing once and stopping. A bed that stops is the failure mode
+		# nobody hears until the second minute of a run.
 		var ogg := stream as AudioStreamOggVorbis
 		if ogg != null:
 			ogg.loop = true
+		var mp3 := stream as AudioStreamMP3
+		if mp3 != null:
+			mp3.loop = true
 	if stream == null:
 		push_warning("Music: no audio stream for '%s' (%s) -- that bed will be silent." % [track, path])
 	_streams[track] = stream

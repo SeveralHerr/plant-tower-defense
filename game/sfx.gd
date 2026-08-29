@@ -22,8 +22,11 @@ extends RefCounted
 # -- the sound table --------------------------------------------------------
 #
 # Event ids are StringNames so a call site is a constant, not a spelled-out
-# path. Every file below is CC0 Kenney audio vendored under assets/audio; see
-# the License.txt beside it for which pack each one came from.
+# path. Most files below are CC0 Kenney audio vendored under assets/audio; the
+# four written for this game (PEST_KILLED, CORN_FIRED, PLANT_PLACED,
+# PLANT_CHOSEN) are not Kenney's. See the License.txt beside them, which now says which is which —
+# the blanket "everything here is CC0" it used to say stopped being true the
+# moment a second source landed in the directory.
 
 const PLANT_PLACED := &"plant_placed"
 const PLANT_BITTEN := &"plant_bitten"
@@ -85,11 +88,13 @@ const SEED_BOMB_BURST := &"seed_bomb_burst"
 ## **A VARIANT, not a new voice, and the reason is what the file already means.**
 ## `impactSoft_medium_002.ogg` is not Corn's sound: it is this pack's generic soft
 ## impact, and two events already sit on it from opposite sides of the exchange —
-## PLANT_BITTEN at −8.0 (a pest's mouth closing) and CORN_FIRED at 0.0 (a kernel
-## leaving the cob). A third position on that same scale extends a statement the
-## table is already making; it does not borrow an identity. The refused
-## alternative was a twelfth vendored file: the palette is eleven voices on
-## purpose (see PITCH's header), and a timbre nobody else in the game shares would
+## PLANT_BITTEN at −8.0 (a pest's mouth closing) and this sting. CORN_FIRED used to
+## be the third and has since moved to its own `shoot.wav`, which leaves this cue as
+## the pair's other half rather than as one of three; a second position on that same
+## scale extends a statement the table is already making, and does not borrow an
+## identity. The refused
+## alternative was another vendored file: the palette is a small fixed set of
+## voices on purpose (see PITCH's header), and a timbre nobody else in the game shares would
 ## make the loudest new thing in the mix a plant that deals 3.0 damage every 0.7s
 ## and is dead weight until `WaveDirector.MUTATION_START_WAVE`. A specialist's
 ## tick should sound like a smaller version of a hit, which is exactly what a
@@ -101,6 +106,13 @@ const NETTLE_STING := &"nettle_sting"
 ## which buttons are deliberately left to their own outcome cues, and why a
 ## refusal must stay PURCHASE_DENIED rather than becoming a press plus a denial.
 const BUTTON_PRESSED := &"button_pressed"
+## Picking a packet out of the plant bar — the gesture that ARMS a placement, as
+## opposed to PLANT_PLACED's soil closing over one several seconds later. Split
+## off BUTTON_PRESSED once the bar became a drag as well as a click (see
+## Game._on_plant_chosen): the bar is the only control in the game a player can
+## hold, and a hold answered by the same blip every other button makes says the
+## thing in their hand is a button rather than a plant.
+const PLANT_CHOSEN := &"plant_chosen"
 ## A Sunflower paying out (Sunflower.grew_seeds -> Game._on_plant_grew_seeds).
 ## The other half of HUSK_COLLECTED: both are seeds arriving, one swept off the
 ## ground by hand and one grown on a clock — see SOUNDS for why they share a
@@ -112,15 +124,23 @@ const SEEDS_GROWN := &"seeds_grown"
 ## loads, because a typo'd path fails in the most literal way sound can — by
 ## being silent, which is exactly what the game already sounded like.
 const SOUNDS: Dictionary = {
-	PLANT_PLACED: "res://assets/audio/footstep_grass_000.ogg",
+	# Its own file, written for this game: soil closing over a seedling. It used to
+	# be Kenney's grass footstep, which PLANT_UPROOTED and DANDELION_PUFF still
+	# wear — the reverse of this act, and a seed head letting go, are both rustles,
+	# and this one no longer has to be.
+	PLANT_PLACED: "res://assets/audio/plant-place.ogg",
 	PLANT_BITTEN: "res://assets/audio/impactSoft_medium_002.ogg",
 	PLANT_DESTROYED: "res://assets/audio/chop.ogg",
-	PEST_KILLED: "res://assets/audio/impactSoft_heavy_000.ogg",
+	# The first cue in this table written FOR this game rather than borrowed from a
+	# general-purpose pack: a bug taking the hit, not a generic soft impact. See
+	# License.txt for where it came from and why the Kenney claim no longer covers
+	# the whole directory.
+	PEST_KILLED: "res://assets/audio/hit-received.wav",
 	# The SAME impact, deliberately: a hard kill is the same event, landing harder. A
 	# different file would say "a different thing happened", and what happened is a kill.
 	# The pitch below is what carries "harder", and `test_no_two_events_are_the_same_sound`
 	# is what stops the two collapsing into one sound.
-	PEST_KILLED_HARD: "res://assets/audio/impactSoft_heavy_000.ogg",
+	PEST_KILLED_HARD: "res://assets/audio/hit-received.wav",
 	PEST_ESCAPED: "res://assets/audio/error_002.ogg",
 	HUSK_COLLECTED: "res://assets/audio/handleCoins.ogg",
 	HUSK_ROTTED: "res://assets/audio/minimize_006.ogg",
@@ -141,33 +161,38 @@ const SOUNDS: Dictionary = {
 	# "something changed for the better" beats, and they never sound in the
 	# same breath — a wave starts in the calm between purchases.
 	PLANT_UPGRADED: "res://assets/audio/impactBell_heavy_002.ogg",
-	# Reuses PLANT_PLACED's stream for the reverse of the same act — a plant
-	# leaving the soil rather than going into it.
+	# Kenney's grass footstep, which is the only soft rustle in the borrowed
+	# palette and is what a plant leaving the soil is — the reverse of PLANT_PLACED,
+	# which has since moved onto a planting sound of its own. Shares the file with
+	# DANDELION_PUFF and is told apart from it by volume (see VOLUME_DB).
 	PLANT_UPROOTED: "res://assets/audio/footstep_grass_000.ogg",
-	# Reuses PLANT_BITTEN's stream — the same soft impact, on the other side of
-	# the exchange: a kernel leaving the cob instead of a pest's mouth closing.
-	CORN_FIRED: "res://assets/audio/impactSoft_medium_002.ogg",
+	# Its own file, and the second cue written for this game: a kernel leaving the
+	# cob is the one sound in here a borrowed impact never really carried, because
+	# an impact is a landing and this is a launch. PLANT_BITTEN keeps the soft
+	# impact the two used to share — see NETTLE_STING for who is left on it.
+	CORN_FIRED: "res://assets/audio/shoot.wav",
 	# Reuses PLANT_DESTROYED's stream — both are a chomp, just aimed the other
 	# way: a Chomp Flower's own bite instead of a hungry pest's.
 	CHOMP_BITE: "res://assets/audio/chop.ogg",
 	# Reuses UPROOT_ARMED's stream — a light chime for a catch that only slows,
 	# not the heavier PEST_KILLED impact a Sundew never earns since it never kills.
 	SUNDEW_CLAIM: "res://assets/audio/question_002.ogg",
-	# Reuses PLANT_PLACED's grass footstep, which is the only soft rustle this
-	# pack vendored — and a seed head letting go of its fluff is a rustle rather
-	# than an impact. Told apart from a planting by level (see VOLUME_DB) and by
-	# the fact that a planting happens once and this happens two or three times in
-	# a second, from a plant already on the board.
+	# Reuses PLANT_UPROOTED's grass footstep, the only soft rustle this pack
+	# vendored — and a seed head letting go of its fluff is a rustle rather than an
+	# impact. Told apart from an uprooting by level (see VOLUME_DB) and by the fact
+	# that an uprooting happens once, by hand, and this happens two or three times
+	# a second from a plant already on the board.
 	DANDELION_PUFF: "res://assets/audio/footstep_grass_000.ogg",
-	# Reuses PEST_KILLED's heavy soft impact, the only landing-sized sound in the
-	# table. A burst that kills therefore plays this AND that in the same frame,
-	# which is right: a blast that took something down should sound bigger than
-	# one that only clipped it.
+	# Kenney's heavy soft impact, the largest thing left in the borrowed palette
+	# once PEST_KILLED moved onto its own file. Deliberately NOT following the kill
+	# over: a burst is a blast going off, a kill is a bug being hit, and a burst
+	# that kills plays this AND that in the same frame — which is right, a blast
+	# that took something down should sound bigger than one that only clipped it.
 	SEED_BOMB_BURST: "res://assets/audio/impactSoft_heavy_000.ogg",
-	# Reuses PLANT_BITTEN's and CORN_FIRED's soft impact — the third position on
-	# that file, and the one that actually lands on a pest. See NETTLE_STING's own
-	# comment for why this is a variant rather than a twelfth vendored voice; the
-	# pitch and the volume below are what make it one.
+	# Reuses PLANT_BITTEN's soft impact — the second position on that file now that
+	# CORN_FIRED has its own, and the one that actually lands on a pest. See
+	# NETTLE_STING's own comment for why this is a variant rather than another
+	# vendored voice; the pitch and the volume below are what make it one.
 	NETTLE_STING: "res://assets/audio/impactSoft_medium_002.ogg",
 	# Reuses HUSK_COLLECTED's coins for the same reason the flying glyph reuses
 	# the husk's gold: seeds arriving are seeds arriving, and a second currency
@@ -179,6 +204,10 @@ const SOUNDS: Dictionary = {
 	# claiming to be an event. The two are told apart by level and by place — a
 	# husk rots quietly out on the board at -6, a press answers the cursor.
 	BUTTON_PRESSED: "res://assets/audio/minimize_006.ogg",
+	# Its own file rather than BUTTON_PRESSED's blip: this is a click AND a drag
+	# (Game._unhandled_input's touch branch), so it is the one control whose cue
+	# has to survive being held. See the id's own comment above.
+	PLANT_CHOSEN: "res://assets/audio/clickanddrag.ogg",
 }
 
 ## Per-event trim, in dB, for the handful that are not level with the rest.
@@ -206,20 +235,22 @@ const VOLUME_DB: Dictionary = {
 	# WAVE_STARTED's bell sound in the SAME frame — this is meant to read as the
 	# click under that bell, not as a second event competing with it.
 	BUTTON_PRESSED: -10.0,
-	# Under PLANT_PLACED's 0.0, same stream: planting is a thing the player did
-	# and wants confirmed, a seed leaving a head is the plant working on its own
+	# Under PLANT_UPROOTED's 0.0, same stream: an uprooting is a thing the player
+	# did and wants confirmed, a seed leaving a head is the plant working on its own
 	# clock two or three times a volley. Ambience, not an answer to an act — the
 	# same split SEEDS_GROWN makes against HUSK_COLLECTED.
 	DANDELION_PUFF: -9.0,
-	# Under PEST_KILLED's -3.0, same stream, so a burst that killed something is
-	# audibly bigger than the burst alone.
+	# Under PEST_KILLED's -3.0, so a burst that killed something is audibly bigger
+	# than the burst alone. The two stopped sharing a stream when the kill moved to
+	# `hit-received.wav`; the ordering is what carried the meaning, not the file, so
+	# the number stays where it was.
 	SEED_BOMB_BURST: -6.0,
-	# The middle rung of the three events sharing impactSoft_medium_002.ogg, and
-	# the position is the whole point: CORN_FIRED at 0.0 announces a volley that
-	# will travel across the board, this is one plant's contact hit on the cell
-	# beside it, and PLANT_BITTEN at -8.0 is a pest chewing in the background. A
-	# sting is smaller than the volley and larger than the chew, so it sounds that
-	# way rather than being trimmed to whatever was free.
+	# The upper rung of the two events left on impactSoft_medium_002.ogg, and the
+	# position is the whole point: this is one plant's contact hit on the cell beside
+	# it, and PLANT_BITTEN at -8.0 is a pest chewing in the background. It stays
+	# under CORN_FIRED's 0.0 volley, which now announces itself on its own file — a
+	# sting is smaller than a volley and larger than a chew, so it sounds that way
+	# rather than being trimmed to whatever was free.
 	NETTLE_STING: -5.0,
 }
 
@@ -234,8 +265,8 @@ const VOLUME_DB: Dictionary = {
 ## second, and the call site stays a single unguarded `Sfx.play()`.
 ## The palette's third axis, and the one that separates a loss from a no-op.
 ##
-## 22 named beats share 11 audio files, which is a palette rather than a problem —
-## eleven voices used deliberately. What was a problem is two events arriving at
+## 25 named beats share 15 audio files, which is a palette rather than a problem —
+## a small set of voices used deliberately. What was a problem is two events arriving at
 ## the player *identically*: `play()` composes exactly the stream, the volume and
 ## (now) the pitch, so before this table `PEST_ESCAPED` and `PURCHASE_DENIED` were
 ## the same `error_002.ogg` at the same 0.0 dB, and `PLANT_DESTROYED` and
@@ -361,8 +392,9 @@ const PITCH_GRADE: Dictionary = {
 ##
 ## **And what is absent because the rule excludes it, not because nobody thought of it.**
 ##
-##   * The UI acknowledgements — `BUTTON_PRESSED`, `PURCHASE_DENIED`, `UPROOT_ARMED`. A click
-##     that wobbles does not read as variety, it reads as a fault in the button.
+##   * The UI acknowledgements — `BUTTON_PRESSED`, `PLANT_CHOSEN`, `PURCHASE_DENIED`,
+##     `UPROOT_ARMED`. A click that wobbles does not read as variety, it reads as a fault
+##     in the button.
 ##   * Everything once-a-run or once-a-wave: `RUN_WON`, `RUN_LOST`, `WAVE_STARTED`,
 ##     `WAVE_CLEARED`, `PLANT_PLACED`, `PLANT_UPGRADED`, `PLANT_UPROOTED`, `PLANT_DESTROYED`,
 ##     and `SEEDS_GROWN` at one per flower per six seconds. There is nothing for them to vary
@@ -575,6 +607,12 @@ static func set_muted(value: bool) -> bool:
 	_muted = value
 	if _muted:
 		stop_all()
+	else:
+		# The bed is the one sound that is not re-fired by the next thing that
+		# happens: a wave already under way asks for it exactly once, at each spawn.
+		# Without this, unmuting mid-wave leaves the garden silent until the next
+		# pest walks on. See `_resume_ambience`.
+		_resume_ambience()
 	return _muted
 
 
@@ -886,11 +924,19 @@ static func stream_for(event: StringName) -> AudioStream:
 	return stream
 
 
-## Silences every voice — used by mute, and available to a scene teardown.
+## Silences every voice — used by mute, and available to a scene teardown. The
+## bed goes with them, and `_ambience_wanted` deliberately does NOT: what the
+## board wants is not changed by whether the player can hear it, which is what
+## lets `set_muted(false)` put the bed back exactly where it was.
 static func stop_all() -> void:
 	for voice: AudioStreamPlayer in _voices:
 		if is_instance_valid(voice):
 			voice.stop()
+	if _ambience_fade != null and _ambience_fade.is_valid():
+		_ambience_fade.kill()
+	_ambience_fade = null
+	if _ambience_voice != null and is_instance_valid(_ambience_voice):
+		_ambience_voice.stop()
 
 
 ## How many voices are currently sounding. Cheap liveness for a devtools status
@@ -944,3 +990,207 @@ static func _ensure_pool() -> bool:
 		_voices.append(voice)
 	loop.root.add_child(_host)
 	return true
+
+
+# -- the bed ----------------------------------------------------------------
+#
+# THE THIRD SHAPE, and why it is neither a `SOUNDS` row nor a `Music` track.
+#
+# Everything in `SOUNDS` is a one-shot fired at a moment, and every mechanism
+# `play()` wraps one in — the repeat gate, the wobble, the voice stealing — is a
+# statement about one-shots: how two of the same thing in a frame should sound,
+# and which of nine simultaneous cues may be dropped. A bed asks none of those
+# and asks one they never do: **when does it stop.** Routed through `play()` it
+# would have been a cue re-fired forever that a kill could steal mid-note.
+#
+# It is not a `Music` track either. `Music` crossfades ONE bed chosen by which
+# SCENE the player is in; this one is chosen by what is on the BOARD, rides the
+# `Sfx` bus because it is a sound the garden makes rather than a score under it,
+# and has to be able to sound while a track is already playing. So it gets its
+# own voice — one node, never stolen, outside the pool.
+
+## The bed's file. Not in `SOUNDS` on purpose (see above), and asserted absent
+## from it by test, because an id in that table is a cue something must fire.
+const AMBIENCE_SOUND := "res://assets/audio/bug-steps.wav"
+
+## Where the bed sits under the cues. Below `PLANT_BITTEN`'s −8.0, the quietest
+## continuous thing in `VOLUME_DB`: a chew is one pest at one plant and this is
+## the whole board's traffic, so it has to be the floor of the mix or it becomes
+## what the player hears instead of the kill they are waiting for.
+const AMBIENCE_VOLUME_DB: float = -13.0
+
+## How long the bed takes to arrive and to leave. A cut to silence the instant
+## the last pest dies lands on top of that pest's own kill cue and reads as the
+## audio dropping out; a fade about as long as a corpse's `Pest.DEATH_LINGER`
+## reads as the garden going quiet.
+const AMBIENCE_FADE_SECONDS: float = 0.45
+
+## Silence, as a fade target. The same value `Music.SILENT_DB` uses, written here
+## rather than reached across so this file's mixer numbers stay in this file.
+const AMBIENCE_SILENT_DB: float = -80.0
+
+## What the BOARD wants, independent of whether anything can hear it. Kept across
+## a mute so unmuting mid-wave brings the bed back rather than waiting for the
+## next pest to spawn — the same split `_muted` makes against `_level`.
+static var _ambience_wanted: bool = false
+static var _ambience_voice: AudioStreamPlayer = null
+static var _ambience_fade: Tween = null
+## Loaded once and cached like `_streams`; null for "asked once, not loadable".
+static var _ambience_stream: AudioStream = null
+static var _ambience_asked: bool = false
+
+
+## Whether the bed should be sounding, as a pure function of its inputs — the
+## `should_play` of the loop, and for the same reason: audibility is not
+## observable headlessly, so the tests assert the decision instead.
+##
+## Takes a COUNT rather than a tree, so the caller decides what counts as a
+## walker (`Game.walking_pests` counts pests still alive, not corpses still
+## lingering in the group) and this file never has to know what a pest is.
+static func should_loop_ambience(walkers: int, muted: bool, headless: bool) -> bool:
+	return walkers > 0 and not muted and not headless
+
+
+## Asks for the bed on or off. Returns whether it is now actually sounding, so a
+## caller can tell "the board wants it" from "the player can hear it".
+##
+## Idempotent, which it has to be: this is called from every spawn and every
+## death, many times a wave, and a call that agrees with the current state must
+## not restart the loop from its first footfall.
+static func set_ambience(active: bool) -> bool:
+	_ambience_wanted = active
+	if not should_loop_ambience(1 if active else 0, _muted, is_headless()):
+		_fade_ambience_out()
+		return false
+	return _fade_ambience_in()
+
+
+## Whether a voice is actually carrying the bed right now. The honest answer for
+## a devtools status provider, and what a live check asserts.
+static func ambience_playing() -> bool:
+	if _ambience_voice == null or not is_instance_valid(_ambience_voice):
+		return false
+	return _ambience_voice.playing
+
+
+## What the board last asked for, whether or not it is audible.
+static func ambience_wanted() -> bool:
+	return _ambience_wanted
+
+
+## The bed's stream. `loop_mode` is expected to come from the .import
+## (`edit/loop_mode=2`, and note that **2 is Forward — the importer's 1 is
+## "Disabled"**, because its enum starts at "Detect From WAV"; a 1 there imports a
+## bed that does not loop and says nothing), which is the only place `loop_end` can
+## be set correctly
+## without this file guessing at a sample's frame count — but a re-import that
+## drops the setting must not silently turn a bed into a one-shot, so this warns
+## and `_ensure_ambience_voice` re-fires the voice on `finished` as the degraded
+## path. A stream that really loops never emits `finished`, so that connection
+## costs nothing when the import is right.
+static func ambience_stream() -> AudioStream:
+	if _ambience_asked:
+		return _ambience_stream
+	_ambience_asked = true
+	if ResourceLoader.exists(AMBIENCE_SOUND):
+		_ambience_stream = load(AMBIENCE_SOUND) as AudioStream
+	if _ambience_stream == null:
+		push_warning("Sfx: no ambience stream (%s) — the board will be silent." % AMBIENCE_SOUND)
+		return null
+	var wav := _ambience_stream as AudioStreamWAV
+	if wav != null and wav.loop_mode == AudioStreamWAV.LOOP_DISABLED:
+		push_warning(("Sfx: %s imported without a loop (edit/loop_mode=2, Forward) — the "
+			+ "bed will restart with a seam instead of running unbroken.") % AMBIENCE_SOUND)
+	return _ambience_stream
+
+
+## Whether the bed's own stream loops on its own. False means the seam path above
+## is what is carrying it, which is a defect in the .import rather than in this
+## file — so it is readable, and a headless test reads it.
+static func ambience_stream_loops() -> bool:
+	var wav := ambience_stream() as AudioStreamWAV
+	if wav == null:
+		return false
+	return wav.loop_mode != AudioStreamWAV.LOOP_DISABLED
+
+
+## Starts the bed silent and fades it up. Returns false for every reason it could
+## not start, exactly as `play()` does.
+static func _fade_ambience_in() -> bool:
+	if ambience_stream() == null or not _ensure_ambience_voice():
+		return false
+	if not _ambience_voice.playing:
+		_ambience_voice.volume_db = AMBIENCE_SILENT_DB
+		_ambience_voice.play()
+	_tween_ambience_to(AMBIENCE_VOLUME_DB, false)
+	return true
+
+
+## Fades the bed out and stops the voice at the end of the fade. Safe to call
+## when nothing is playing, which is what every death in an empty garden does.
+static func _fade_ambience_out() -> void:
+	if not ambience_playing():
+		return
+	_tween_ambience_to(AMBIENCE_SILENT_DB, true)
+
+
+## The one place a fade is built, so an in cancels an out and neither leaks a
+## Tween. The running one is killed rather than left to finish: two live tweens
+## on one `volume_db` is the defect `Music._start_playing` documents.
+static func _tween_ambience_to(target_db: float, stop_after: bool) -> void:
+	if _ambience_fade != null and _ambience_fade.is_valid():
+		_ambience_fade.kill()
+	_ambience_fade = null
+	if _ambience_voice == null or not is_instance_valid(_ambience_voice):
+		return
+	if not _ambience_voice.is_inside_tree():
+		_ambience_voice.volume_db = target_db
+		if stop_after:
+			_ambience_voice.stop()
+		return
+	_ambience_fade = _ambience_voice.create_tween()
+	if _ambience_fade == null:
+		_ambience_voice.volume_db = target_db
+		if stop_after:
+			_ambience_voice.stop()
+		return
+	_ambience_fade.tween_property(_ambience_voice, "volume_db", target_db,
+		AMBIENCE_FADE_SECONDS)
+	if stop_after:
+		_ambience_fade.tween_callback(_ambience_voice.stop)
+
+
+## The bed's own voice, built beside the pool and outside it. Parented to the
+## pool's host, so it survives `reload_current_scene()` for the same reason the
+## voices do and goes away with them if the host is ever torn down.
+static func _ensure_ambience_voice() -> bool:
+	if _ambience_voice != null and is_instance_valid(_ambience_voice) \
+			and _ambience_voice.is_inside_tree():
+		return true
+	if not _ensure_pool():
+		return false
+	_ambience_voice = AudioStreamPlayer.new()
+	_ambience_voice.name = "Ambience"
+	_ambience_voice.bus = String(BUS_NAME)
+	_ambience_voice.stream = ambience_stream()
+	_ambience_voice.volume_db = AMBIENCE_SILENT_DB
+	# The degraded path documented on `ambience_stream()`: a stream that really
+	# loops never finishes, so this only fires if the import lost its loop.
+	_ambience_voice.finished.connect(_on_ambience_finished)
+	_host.add_child(_ambience_voice)
+	return true
+
+
+static func _on_ambience_finished() -> void:
+	if not _ambience_wanted or not audio_enabled():
+		return
+	if _ambience_voice != null and is_instance_valid(_ambience_voice):
+		_ambience_voice.play()
+
+
+## Brings the bed back after an unmute, if the board still wants it. Called by
+## `set_muted`, the only thing that can silence it without the board having
+## changed its mind.
+static func _resume_ambience() -> void:
+	if _ambience_wanted:
+		set_ambience(true)

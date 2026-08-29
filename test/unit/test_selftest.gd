@@ -8258,8 +8258,40 @@ func test_every_music_track_actually_loads_and_loops() -> String:
 		err = _T.assert_true(stream != null, "and it loads as an AudioStream: %s" % path)
 		if err != "":
 			return err
+		# The formats `_stream_for` knows how to loop, and the assertion is that the
+		# stream is ONE OF THEM rather than that it is an .ogg: the moment a bought
+		# .mp3 became the in-run bed, an ogg-only check would have failed on a file
+		# that loops perfectly well — and, worse, an ogg-only `_stream_for` would
+		# have shipped a bed that stops after one play with nothing to catch it.
+		# Both branches are named here so adding a third format has to fail loudly
+		# in one place instead of going quiet in two.
+		var loops: bool = false
+		var kind: String = stream.get_class()
 		var ogg := stream as AudioStreamOggVorbis
-		err = _T.assert_true(ogg != null, "it is an .ogg, the format _stream_for sets .loop on: %s" % path)
+		if ogg != null:
+			loops = ogg.loop
+		var mp3 := stream as AudioStreamMP3
+		if mp3 != null:
+			loops = mp3.loop
+		err = _T.assert_true(ogg != null or mp3 != null,
+			("Music.TRACKS['%s'] is a format _stream_for can set .loop on "
+				+ "(AudioStreamOggVorbis or AudioStreamMP3), got %s: %s")
+				% [track, kind, path])
+		if err != "":
+			return err
+		# And the flag is actually ON once the file has been through `_stream_for`,
+		# which is the half a type check cannot see. Asked through the real accessor
+		# rather than of the raw `load()` above, because `_stream_for` is what the
+		# game calls and its cache is what a second `_play` reads.
+		var served: AudioStream = Music._stream_for(track)
+		err = _T.assert_true(served != null, "and _stream_for serves it: %s" % path)
+		if err != "":
+			return err
+		loops = bool(served.get("loop"))
+		err = _T.assert_true(loops,
+			("Music._stream_for('%s') hands back a stream with .loop set — a bed that "
+				+ "does not loop goes silent partway through a run and nothing else "
+				+ "in the game would notice: %s") % [track, path])
 		if err != "":
 			return err
 	return ""
@@ -12886,8 +12918,13 @@ func test_the_sting_is_told_apart_from_everything_sharing_its_file() -> String:
 	## being made -- a volley that will cross the board is louder than one plant's
 	## contact hit, which is louder than a pest chewing in the background.
 	##
-	## The sharers are derived from `SOUNDS` rather than named, so a fourth event
-	## put on this file is checked against the sting the day it is added.
+	## The sharers are derived from `SOUNDS` rather than named, so an event put on
+	## this file tomorrow is checked against the sting the day it is added — which is
+	## also how this test noticed CORN_FIRED LEAVING the file for `shoot.wav`. The
+	## sting is a variant of PLANT_BITTEN's soft impact now rather than the middle of
+	## three, so the volume ordering below spans two files: the volley is still the
+	## loudest of the three and the chew still the quietest, and that ordering is a
+	## claim about the MIX, which a file boundary does not exempt it from.
 	var file: String = String(Sfx.SOUNDS.get(Sfx.NETTLE_STING, "")).get_file()
 	var sharers: Array[StringName] = []
 	for event: StringName in Sfx.SOUNDS:
@@ -12896,9 +12933,10 @@ func test_the_sting_is_told_apart_from_everything_sharing_its_file() -> String:
 		if String(Sfx.SOUNDS[event]).get_file() == file:
 			sharers.append(event)
 	# Denominator: if nothing shares the file, the sweep below proves nothing and
-	# the whole "variant" argument in Sfx.NETTLE_STING's comment has gone stale.
-	var err: String = _T.assert_gt(sharers.size(), 1,
-		("the sting really is sharing %s with others, which is what makes it a "
+	# the whole "variant" argument in Sfx.NETTLE_STING's comment has gone stale — the
+	# sting would have become a voice of its own without anyone deciding that.
+	var err: String = _T.assert_gt(sharers.size(), 0,
+		("the sting really is sharing %s with something, which is what makes it a "
 			+ "variant rather than a voice of its own -- got %d sharer(s)")
 			% [file, sharers.size()])
 	var sting_db: float = float(Sfx.VOLUME_DB.get(Sfx.NETTLE_STING, 0.0))
@@ -12914,7 +12952,9 @@ func test_the_sting_is_told_apart_from_everything_sharing_its_file() -> String:
 				+ "cannot tell them apart") % [event, file, db, pitch])
 	if err == "":
 		err = _T.assert_gt(float(Sfx.VOLUME_DB.get(Sfx.CORN_FIRED, 0.0)), sting_db,
-			"a volley crossing the board is louder than one plant's contact hit")
+			("a volley crossing the board is louder than one plant's contact hit -- "
+				+ "across two files since CORN_FIRED moved to shoot.wav, which changes "
+				+ "the timbre and not the ordering"))
 	if err == "":
 		err = _T.assert_gt(sting_db, float(Sfx.VOLUME_DB.get(Sfx.PLANT_BITTEN, 0.0)),
 			"and a contact hit is louder than a pest chewing in the background -- "
@@ -16383,9 +16423,13 @@ func test_every_hint_card_claim_still_holds() -> String:
 			"by": "here"},
 		{"id": "seen_road_tip", "claim": "everything WALKING one stops to chew through it",
 			"by": "here"},
-		{"id": "seen_dead_ground_tip", "claim": "the bars are drawn slanted", "by": "here"},
+		{"id": "seen_dead_ground_tip", "claim": "the mark is a padlock -- a closed "
+			+ "figure, and not the stroke it was until plant-tower-defense-uqer",
+			"by": "here"},
+		{"id": "seen_dead_ground_tip", "claim": "they are only ever drawn on grass",
+			"by": "test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board"},
 		{"id": "seen_dead_ground_tip",
-			"claim": "a short-reaching plant darkens more of the garden than a cob does",
+			"claim": "a short-reaching plant locks more of the garden than a cob does",
 			"by": "here"},
 		{"id": "seen_dead_ground_tip",
 			"claim": "which beds are dead depends on the plant hovered",
@@ -16439,17 +16483,34 @@ func test_every_hint_card_claim_still_holds() -> String:
 			("and a winged one is not -- which is why the card says 'walking' and is the "
 				+ "word an edit must not tidy away"))
 
-	# "They are drawn slanted." Asserted as a real diagonal rather than as "not zero": a
-	# bar at 0.1 radians is non-zero and is not slanted, and the card's next clause
-	# distinguishes these bars from the axis-aligned one by exactly this property.
+	# "Padlocks on the grass." The card names a SHAPE, so what has to hold is that the
+	# glyph is one: a closed body with an arc standing on it, which is three claims a
+	# point count alone would not carry. This replaced a 45-degree-slant assertion when
+	# plant-tower-defense-uqer changed the cue -- the old card said "drawn slanted" and
+	# a player read the slash as a rendering artifact.
 	if err == "":
-		var slant: float = PlacementPreview.DEAD_BAR_ANGLE
-		err = _T.assert_true(absf(absf(sin(slant)) - absf(cos(slant))) < 0.001,
-			("seen_dead_ground_tip's 'drawn slanted' is a true 45-degree diagonal, which "
-				+ "is what keeps it distinct from the bar square to the lane. Angle is "
-				+ "%.4f rad") % slant)
+		var lock: PackedVector2Array = PlacementPreview.dead_lock_points()
+		err = _T.assert_gt(lock.size(), PlacementPreview.LOCK_ARC_SEGMENTS + 4,
+			("seen_dead_ground_tip's padlock is a figure: a %d-segment shackle plus the "
+				+ "body's four corners at least, %d points in all")
+				% [PlacementPreview.LOCK_ARC_SEGMENTS, lock.size()])
+	if err == "":
+		# The shackle rises ABOVE the body rather than hanging under it. Screen Y grows
+		# downward, so the crown is the most negative Y and the body's base the most
+		# positive; a sign error here draws a handbag and every point count still passes.
+		var lock2: PackedVector2Array = PlacementPreview.dead_lock_points()
+		var crown: float = 0.0
+		var base: float = 0.0
+		for point: Vector2 in lock2:
+			crown = minf(crown, point.y)
+			base = maxf(base, point.y)
+		err = _T.assert_float_eq(crown, -PlacementPreview.LOCK_HALF_HEIGHT, 0.001,
+			"the shackle's crown is the top of the glyph, at y %.3f" % crown)
+		if err == "":
+			err = _T.assert_float_eq(base, PlacementPreview.LOCK_HALF_HEIGHT, 0.001,
+				"and the body's base is the bottom, at y %.3f" % base)
 
-	# "A short-reaching one darkens more of the garden than a Corn Cobbler does."
+	# "A short-reaching one locks more of the garden than a Corn Cobbler does."
 	if err == "":
 		err = _T.assert_gt(PlantCatalog.reach(PlantCatalog.CORN),
 			PlantCatalog.reach(PlantCatalog.MINT),
@@ -22920,5 +22981,103 @@ func test_every_stream_a_run_owns_is_reachable_from_one_seeder() -> String:
 		err = _T.assert_eq(game.bank._rng.seed, 31337,
 			"and the seed bank's packet stream -- three streams, one call, so a "
 				+ "caller cannot pin two of three and believe the run is fixed")
+	_T.free_ui(game)
+	return err
+
+
+# -- Right-click clears the selection (plant-tower-defense-lzw4) -------------
+
+
+func _right_click(at: Vector2) -> InputEventMouseButton:
+	var event := InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_RIGHT
+	event.pressed = true
+	event.position = at
+	event.global_position = at
+	return event
+
+
+func test_a_right_click_clears_the_selected_plant() -> String:
+	## The gesture that means "never mind". Every other exit from a selection either
+	## moves the rings to another plant or spends something, so a player who clicked a
+	## bed only to read it had no way to put the board back.
+	##
+	## Driven through the viewport rather than by calling `_select(null)`, because the
+	## claim is about the INPUT HANDLER: a `_select(null)` test passes just as happily
+	## against a `_unhandled_input` that never reads MOUSE_BUTTON_RIGHT at all.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "",
+		"planted, which selects")
+	var plant: Plant = game.plant_at(cell)
+	if err == "":
+		err = _T.assert_true(plant != null and game.selected_placed == plant,
+			"CONTROL: the plant is the live selection before the right click")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	_T.dispatch_events(game.get_viewport(), [_right_click(plant.global_position)])
+	err = _T.assert_true(game.selected_placed == null,
+		"a right press cleared the selection")
+	if err == "":
+		# The flag on the plant, not only Game's reference: half a deselect leaves the
+		# reach ring painted on a bed the panel has stopped describing.
+		err = _T.assert_false(plant._selected,
+			"and the plant itself stopped drawing as selected")
+	_T.free_ui(game)
+	return err
+
+
+func test_a_right_click_cancels_an_armed_uproot() -> String:
+	## `_select(null)` disarms by its own rule, so this asserts the rule holds THROUGH
+	## the new branch rather than restating it. The armed window is a destructive
+	## confirm on a clock, which makes it the selection a player most wants out of.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
+	if err == "":
+		# "confirm needed" is the ARMING answer, not a refusal: "" is what the second
+		# call returns, and that one has already removed the plant.
+		err = _T.assert_eq(game.arm_uproot(), Game.UPROOT_CONFIRM_NEEDED, "the uproot armed")
+	if err == "":
+		err = _T.assert_true(game.uproot_armed(), "CONTROL: the window is open")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	_T.dispatch_events(game.get_viewport(),
+		[_right_click(game.plant_at(cell).global_position)])
+	err = _T.assert_false(game.uproot_armed(),
+		"the right press closed the armed window instead of leaving a live confirm "
+			+ "behind a cleared selection")
+	if err == "":
+		err = _T.assert_true(game.plant_at(cell) != null,
+			"and did NOT uproot the plant -- cancelling is not confirming")
+	_T.free_ui(game)
+	return err
+
+
+func test_a_right_click_with_nothing_selected_is_left_alone() -> String:
+	## The half that keeps the button available. With no selection the branch returns
+	## before touching anything, so a right press over bare board neither plants, nor
+	## sweeps, nor reports -- and the button stays free for whatever wants it next.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var cell: Vector2i = _grass(game)
+	var before: int = game.bank.seeds
+	var err: String = _T.assert_true(game.selected_placed == null,
+		"CONTROL: nothing is selected on a fresh board")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	_T.dispatch_events(game.get_viewport(),
+		[_right_click(game.board.cell_to_global(cell))])
+	err = _T.assert_true(game.selected_placed == null, "still nothing selected")
+	if err == "":
+		err = _T.assert_true(game.plant_at(cell) == null,
+			"and the right press planted nothing -- it is not a second placing click")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, before, "and spent nothing")
 	_T.free_ui(game)
 	return err

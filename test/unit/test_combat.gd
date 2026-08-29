@@ -683,6 +683,9 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 		# and up to Dandelion.RANGE apart — see Sfx.DANDELION_PUFF.
 		Sfx.DANDELION_PUFF, Sfx.SEED_BOMB_BURST,
 		Sfx.SEEDS_GROWN, Sfx.BUTTON_PRESSED,
+		# The plant bar's own cue, split off BUTTON_PRESSED when the bar became a
+		# drag as well as a click — see Sfx.PLANT_CHOSEN and Game._on_plant_chosen.
+		Sfx.PLANT_CHOSEN,
 	]
 	for event: StringName in used:
 		var err: String = _T.assert_true(Sfx.SOUNDS.has(event),
@@ -691,6 +694,170 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 			return err
 	return _T.assert_eq(used.size(), Sfx.SOUNDS.size(),
 		"and the table holds nothing the game never plays")
+
+
+# -- the ambience bed -------------------------------------------------------
+
+
+## The bed is deliberately outside `SOUNDS`, and that absence is load-bearing:
+## `test_every_event_id_the_call_sites_use_is_in_the_table` asserts the table holds
+## nothing the game never plays, and a loop is never played by `Sfx.play()`. So the
+## file has to be checked somewhere, and this is that somewhere — otherwise the one
+## sound in the project with no table row is also the one with no test.
+func test_the_bed_is_not_a_cue_and_still_loads() -> String:
+	for event: StringName in Sfx.SOUNDS:
+		var err: String = _T.assert_true(String(Sfx.SOUNDS[event]) != Sfx.AMBIENCE_SOUND,
+			("'%s' points at the ambience bed. A loop with an event id is a cue nothing "
+				+ "fires: `play()` would start it, the repeat gate would throttle it and "
+				+ "the next kill would steal its voice") % event)
+		if err != "":
+			return err
+	var err: String = _T.assert_true(ResourceLoader.exists(Sfx.AMBIENCE_SOUND),
+		"Sfx.AMBIENCE_SOUND names a file that exists: %s" % Sfx.AMBIENCE_SOUND)
+	if err != "":
+		return err
+	var stream: AudioStream = Sfx.ambience_stream()
+	err = _T.assert_true(stream != null, "and it loads: %s" % Sfx.AMBIENCE_SOUND)
+	if err == "":
+		err = _T.assert_gt(stream.get_length(), 0.0,
+			"and it has a length — a zero-length bed is silence with a voice held open")
+	return err
+
+
+## The half of the bed that lives in the .import rather than in any .gd file, which is
+## exactly why it needs an assertion: `edit/loop_mode=2` is one line in a generated file
+## that a re-import can drop, and losing it does not break anything loudly. (2 is Forward.
+## The importer's enum starts at "Detect From WAV", so its 1 means DISABLED — writing the
+## obvious 1 there imports a bed that silently does not loop, which is what this caught.) It downgrades
+## the bed to `Sfx._on_ambience_finished` re-firing the voice, which restarts the footfalls
+## with a seam every %.2f seconds for the whole of every wave.
+func test_the_bed_loops_rather_than_restarting_with_a_seam() -> String:
+	var stream: AudioStream = Sfx.ambience_stream()
+	var err: String = _T.assert_true(stream != null, "the bed loads at all")
+	if err != "":
+		return err
+	var wav := stream as AudioStreamWAV
+	err = _T.assert_true(wav != null,
+		"the bed is the AudioStreamWAV whose loop_mode the .import sets, got %s"
+			% stream.get_class())
+	if err == "":
+		err = _T.assert_true(Sfx.ambience_stream_loops(),
+			("%s came back with loop_mode == LOOP_DISABLED — its .import lost "
+				+ "`edit/loop_mode=2`, and the bed will restart with an audible seam "
+				+ "every %.2fs instead of running unbroken")
+				% [Sfx.AMBIENCE_SOUND, stream.get_length()])
+	return err
+
+
+## The bed's decision, over the whole grid of what can silence it. Hand-typed
+## expectations rather than a recomputed `walkers > 0 and not muted and not headless`,
+## which would assert the implementation against itself.
+func test_should_loop_ambience_answers_the_whole_truth_table() -> String:
+	# walkers, muted, headless, expected
+	var cases: Array = [
+		[0, false, false, false],
+		[1, false, false, true],
+		[5, false, false, true],
+		[1, true, false, false],
+		[1, false, true, false],
+		[1, true, true, false],
+		[0, true, false, false],
+		[0, false, true, false],
+		# A count that has gone negative is a bug in the caller, not permission to
+		# run the bed forever.
+		[-1, false, false, false],
+	]
+	for case: Array in cases:
+		var err: String = _T.assert_eq(
+			Sfx.should_loop_ambience(int(case[0]), bool(case[1]), bool(case[2])),
+			bool(case[3]),
+			"should_loop_ambience(walkers=%d, muted=%s, headless=%s)"
+				% [int(case[0]), case[1], case[2]])
+		if err != "":
+			return err
+	return _T.assert_eq(cases.size(), 9, "the grid is the whole grid, not a sample")
+
+
+## What the board wants survives a mute, and that is the whole reason `_ambience_wanted`
+## exists as state rather than being recomputed. A wave is asked for exactly once per
+## spawn: without this, unmuting mid-wave leaves the garden silent until the next pest
+## walks on, which can be a wave away.
+func test_a_mute_silences_the_bed_without_the_board_changing_its_mind() -> String:
+	var stashed_muted: bool = Sfx.is_muted()
+	var stashed_wanted: bool = Sfx.ambience_wanted()
+	Sfx.set_muted(false)
+	var sounding: bool = Sfx.set_ambience(true)
+	var err: String = _T.assert_true(Sfx.ambience_wanted(),
+		"the board asked for the bed")
+	if err == "":
+		# Headless is the runner's own state and the gate is documented to hold there,
+		# so "wanted but not sounding" is the CORRECT answer here, not a failure.
+		err = _T.assert_false(sounding,
+			"and headless it is wanted without sounding — Sfx.audio_enabled()'s gate")
+	if err == "":
+		err = _T.assert_false(Sfx.ambience_playing(), "so no voice is carrying it")
+	if err == "":
+		Sfx.set_muted(true)
+		err = _T.assert_true(Sfx.ambience_wanted(),
+			"a mute silences the bed and leaves the board's answer alone")
+	if err == "":
+		Sfx.set_muted(false)
+		err = _T.assert_true(Sfx.ambience_wanted(),
+			"so unmuting has something to bring back")
+	if err == "":
+		Sfx.set_ambience(false)
+		err = _T.assert_false(Sfx.ambience_wanted(),
+			"and an empty board is the only thing that clears it")
+	Sfx.set_muted(stashed_muted)
+	Sfx.set_ambience(stashed_wanted)
+	return err
+
+
+## The bed follows PESTS THAT WALK, not nodes in the "pests" group, and the two
+## disagree for `Pest.DEATH_LINGER` after every kill. Staged through the real game so
+## the corpse is a real corpse: `Pest.kill()` clears `_alive` and emits `died`, and the
+## node stays in the group until it frees itself a third of a second later.
+##
+## Without the split, the garden would keep making walking noises after the wave that
+## cleared it — audible on every single wave, and invisible to any test that counted
+## the group.
+func test_the_bed_counts_walkers_not_corpses() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	game.spawn_pest(Pest.APHID)
+	game.spawn_pest(Pest.APHID)
+	err = _T.assert_eq(game.walking_pests(), 2, "two pests are on the road")
+	if err == "":
+		var pests: Array[Node] = game.get_tree().get_nodes_in_group("pests")
+		err = _T.assert_eq(pests.size(), 2, "and both are in the group")
+		if err == "":
+			var victim := pests[0] as Pest
+			var corpse_id: int = victim.get_instance_id()
+			victim.kill()
+			# By IDENTITY against a set captured before the kill, not by count. A count
+			# read zero frames after `kill()` cannot be false — the body is handed to a
+			# tween and `queue_free` defers to the end of the frame, so "still 2" is
+			# guaranteed by the frame count rather than by the behaviour being asserted.
+			# The id is what makes this a claim: THIS corpse is still in the group, which
+			# is exactly what walking_pests() has to see past.
+			var ids: Array[int] = []
+			for node: Node in game.get_tree().get_nodes_in_group("pests"):
+				ids.append(node.get_instance_id())
+			err = _T.assert_true(ids.has(corpse_id),
+				"the corpse itself is still in the group while it lies there")
+			if err == "":
+				err = _T.assert_eq(game.walking_pests(), 1,
+					("but only one pest is still walking — a bed counting the group "
+						+ "would keep the garden noisy for Pest.DEATH_LINGER after "
+						+ "every kill, on every wave"))
+			if err == "":
+				(pests[1] as Pest).kill()
+				err = _T.assert_eq(game.walking_pests(), 0,
+					"and the last kill empties the road, corpses and all")
+	_T.free_ui(game)
+	return err
 
 
 func test_playing_an_unknown_event_is_a_silent_no_op() -> String:
@@ -5415,7 +5582,7 @@ func test_a_pest_killed_headless_is_eventually_freed() -> String:
 
 ## No two events may be the same sound (plant-tower-defense-1fzh).
 ##
-## 22 named beats share 11 audio files, which is deliberate and fine — a palette
+## 24 named beats share 13 audio files, which is deliberate and fine — a palette
 ## with eleven voices is a palette. What is not fine is two events arriving at the
 ## player identically, and `Sfx.play` composes exactly three things: the stream
 ## from `SOUNDS`, `VOLUME_DB.get(event, 0.0)` and `PITCH.get(event, 1.0)`. So the
@@ -9115,9 +9282,9 @@ func test_the_wobble_is_the_same_wobble_on_every_machine() -> String:
 ## file and a volume.
 ##
 ## Pairs that differ in volume are deliberately not checked. Volume is the other axis of
-## the same triple and it separates them on its own — `PEST_KILLED` and `SEED_BOMB_BURST`
-## are the same file at the same centre and are told apart at 3 dB, which is the table's
-## own long-standing answer (see `WAVE_CLEARED` against `RUN_WON`).
+## the same triple and it separates them on its own — `WAVE_CLEARED` and `RUN_WON` are the
+## same jingle at the same centre and are told apart at 5 dB, which is the table's own
+## long-standing answer.
 ##
 ## Derived from `SOUNDS`, so an event added to a shared file tomorrow is checked against
 ## every wobble already on that file.

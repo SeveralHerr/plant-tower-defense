@@ -1056,6 +1056,11 @@ func _new_pest(species: StringName) -> Pest:
 	)
 	pest.died.connect(_on_pest_died)
 	pest.escaped.connect(_on_pest_escaped)
+	# Every arrival goes through here — the director's spawns, a boss's brood and the
+	# devtools verb alike — so this is the one place the bed has to be told a garden
+	# stopped being empty. Sfx.set_ambience is idempotent; the second pest of a wave
+	# does not restart the loop from its first footfall.
+	_refresh_pest_ambience()
 	return pest
 
 
@@ -1134,6 +1139,31 @@ static func weather_seed_value_for(base: int, under: StringName) -> int:
 	return maxi(1, int(round(float(base) * WaveDirector.seed_multiplier_for(under))))
 
 
+## How many pests are still WALKING, as opposed to how many nodes are still in the
+## "pests" group. The two disagree for `Pest.DEATH_LINGER` after every kill, because a
+## corpse stays in the group while it lies there — and a bed that counted corpses would
+## keep the garden noisy for a third of a second after the wave was over, every wave.
+##
+## Public because it is the number `Sfx.should_loop_ambience` is documented to take, and
+## because a devtools status provider and a test both want it without reaching into the
+## group themselves.
+func walking_pests() -> int:
+	var walking: int = 0
+	for node: Node in get_tree().get_nodes_in_group("pests"):
+		var pest := node as Pest
+		if pest != null and pest.is_alive():
+			walking += 1
+	return walking
+
+
+## Tells the bed what the board looks like now. Called from the spawn funnel and from
+## both ways a pest leaves, which between them are every transition the count has —
+## deliberately not from `_process`, because a loop that is re-decided sixty times a
+## second is a loop nothing can be asserted about.
+func _refresh_pest_ambience() -> void:
+	Sfx.set_ambience(walking_pests() > 0)
+
+
 func _on_pest_died(pest: Pest) -> void:
 	# Played here, not in Pest, on purpose: Pest._play_death() queue_frees the
 	# node DEATH_LINGER seconds later, and a freed node cannot finish a sound.
@@ -1144,6 +1174,10 @@ func _on_pest_died(pest: Pest) -> void:
 	# reading it here means a fourth mutation is audible the day it is added without anyone
 	# editing this line (plant-tower-defense-tgoc).
 	Sfx.play(Sfx.kill_event_for(pest.husk_multiplier()))
+	# Pest.kill() clears `_alive` BEFORE it emits `died`, so the pest being buried here
+	# is already excluded from walking_pests() — the bed fades on the last kill rather
+	# than DEATH_LINGER later, when the corpse finally leaves the group.
+	_refresh_pest_ambience()
 	pests_defeated += 1
 	_note_lane_loss(pest.position)
 	# Scaled by the weather this wave arrived under: a drought pays more, because it
@@ -1199,6 +1233,9 @@ func _on_pest_escaped(pest: Pest) -> void:
 	# says so by returning rather than by guarding the whole handler.
 	_note_lane_loss(board.cell_to_world(board.exit_cell()), true)
 	Sfx.play(Sfx.PEST_ESCAPED)
+	# An escaped pest is off the board but still in the group for this frame, and a
+	# losing escape frees the whole group below — both are handled by counting again
+	# at the end of the handler rather than here. See the _refresh() tail.
 	lives -= 1
 	if lives <= 0:
 		lives = 0
@@ -1206,6 +1243,7 @@ func _on_pest_escaped(pest: Pest) -> void:
 		_commit_lane_pressure()
 		_end_run("The garden is eaten")
 		get_tree().call_group("pests", "queue_free")
+	_refresh_pest_ambience()
 	_refresh()
 
 
@@ -1240,6 +1278,12 @@ func _end_run(_banner: String) -> void:
 	# paths can be reached twice in a frame, and the run-ender is the one cue in
 	# the game long enough for a doubled play to be audible as a doubled play.
 	Sfx.play(Sfx.RUN_WON if victory else Sfx.RUN_LOST)
+	# The run is over however it ended, so the board's traffic is over with it. Asked
+	# for unconditionally rather than counted: a victory ends with pests still walking
+	# (the last wave is cleared by the kill that emptied it, but a loss is not), and a
+	# bed still running under the post-mortem card is the one place this would be heard
+	# as a bug rather than as ambience.
+	Sfx.set_ambience(false)
 	# Not a scene change, so play_for_scene has nothing to key off -- the run
 	# ending is the direct-override case SCENE_TRACKS' own doc comment names.
 	Music.play_title()
@@ -1486,7 +1530,7 @@ func summary_stats(new_record: bool) -> Dictionary:
 ## with silence. This is the only route in; there is no keyboard shortcut for
 ## selecting a plant, so the cue cannot fall out of step with a second path.
 func _on_plant_chosen(id: StringName) -> void:
-	Sfx.play(Sfx.BUTTON_PRESSED)
+	Sfx.play(Sfx.PLANT_CHOSEN)
 	selected_plant = id
 	_offer_road_hint()
 	_select(null)
@@ -1505,8 +1549,10 @@ func _on_plant_chosen(id: StringName) -> void:
 ## The board's dead-ground marks, repushed. One question at a time: with a shop
 ## entry hovered the board answers about THAT plant (tzz7); with nothing hovered it
 ## answers about the garden the player already owns (g8kc). Never both, which is why
-## board_dead_cells() returns one list rather than two -- two bars on that angle is
-## PlacementPreview's redundant-patch cue, a different sentence.
+## board_dead_cells() returns one list rather than two -- two locks stacked on one
+## cell is a smear, and before plant-tower-defense-uqer it was worse than that: two
+## marks on that angle WAS PlacementPreview's redundant-patch cue, so an overlap
+## did not read as clutter, it read as a different sentence.
 func _refresh_dead_ground() -> void:
 	if board == null or not is_instance_valid(board):
 		return
@@ -1514,7 +1560,7 @@ func _refresh_dead_ground() -> void:
 		board, _hovered_shop_plant, bank.unlocked)
 	board.mark_dead_ground(
 		dead,
-		PlacementPreview.dead_bar_arm(),
+		PlacementPreview.dead_lock_points(),
 		PlacementPreview.board_dead_color(),
 		PlacementPreview.DEAD_BAR_WIDTH)
 	_offer_dead_ground_hint(dead)
@@ -2766,6 +2812,29 @@ func _unhandled_input(event: InputEvent) -> void:
 		_update_cursor(motion.position)
 		return
 	var click := event as InputEventMouseButton
+	# NEVER MIND (plant-tower-defense-lzw4). A plant selected on the board had no way out
+	# of the selection but to select ANOTHER plant, pick a packet out of the bar, or uproot
+	# it — every exit either moved the rings somewhere else or spent something, and none of
+	# them is the thing a player reaches for when they only wanted a look. Right-click is
+	# that gesture, and it was free: nothing else in this project reads MOUSE_BUTTON_RIGHT,
+	# so this takes no click away from anything that already had one.
+	#
+	# IT IS ALSO THE CANCEL FOR AN ARMED UPROOT, and by _select's own rule rather than by
+	# a second call here: `_select(null)` disarms whenever the new selection is not the
+	# armed plant. That window is the one a player most wants out of, because it is holding
+	# a destructive confirm open on a clock.
+	#
+	# NOT CONSUMED WHEN NOTHING IS SELECTED. A right press over bare board is not this
+	# gesture; swallowing it would quietly reserve the button against anything added later.
+	#
+	# No emulated-device guard, unlike the left branch below: mouse-from-touch emulation
+	# only ever synthesises MOUSE_BUTTON_LEFT, so there is no second event to tell apart.
+	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_RIGHT:
+		if selected_placed == null or not is_instance_valid(selected_placed):
+			return
+		_select(null)
+		_refresh()
+		return
 	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
 		# THE EMULATED PRESS IS THE ONE THAT MUST NOT PLANT.
 		#

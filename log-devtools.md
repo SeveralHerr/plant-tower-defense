@@ -10012,3 +10012,102 @@ is likely to be at least as productive.
   test-only. The pass is advisory, never gates, and labels itself a heuristic — carried
   here because the direction of the error is the unhelpful one: it cried wolf on a live
   function and stayed quiet on the dead-ish one.
+
+## 2026-08-29 — Turn the dead-ground bar into a padlock (plant-tower-defense-uqer)
+
+- Value: **warranted** — the running game caught a wrong shape that all 1043 headless tests passed.
+  - Expected: the geometry tests would carry it and the screenshot would be a formality — the
+    glyph is 16 points from one static function, and a test asserts every one of them.
+  - Got: `screenshot --region 700,420,220,240` of the corner the player reported. Six locks on
+    the grass and no diagonal strokes anywhere in the crop — but at the first proportions
+    (`LOCK_BODY_HALF_W` 0.48, `LOCK_SHACKLE_RADIUS` 0.26 of `PREVIEW_HALF`) they read as
+    handbags, not padlocks. Also `get-state --node .../DeadMark0 --property points` →
+    16 points, crown `(608, 19.04)` over a closed body, cell centre `(608, 32)`.
+  - Found: the handbag. Retuned to 0.42/0.30 and re-read the live points to confirm the
+    running game took it. Nothing in the suite moved between the two versions: the shape test
+    reads the `LOCK_*` constants, so it moved with them, which is correct and is exactly why
+    it cannot hold the claim the bead was filed on.
+  - Cheaper: nothing. The bead was a report about what a shape LOOKS like on grass.
+
+- Gap: **the verify ledger's `found[].phase` vocabulary is only discoverable by failing it** —
+  `verify_ledger.py record` with `"phase": 4` (the number the DEVTOOLS LOG block and /verify
+  both use for the runtime pass) printed `` `found` phase 4 is not one of import, lint, tests,
+  runtime, other - recorded as null `` and stored a null. The row is otherwise correct, so the
+  one field that says WHICH phase catches defects silently lost its value on a row that caught
+  one — which is the field's whole purpose.
+  - [G-151] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: name the five values in `record`'s `--help` and in the docstring's run-object
+    description, and accept the phase NUMBERS as aliases (`4` → `runtime`) since every other
+    surface in this harness numbers the phases.
+
+## 2026-08-29 — Right-click clears the placed-plant selection (plant-tower-defense-lzw4)
+
+- Value: **warranted** — the headless suite held the claim the diff could not, and a mutation
+  run proved the three new tests actually depend on the branch.
+  - Expected: three tests dispatching a real `InputEventMouseButton` with
+    `button_index == MOUSE_BUTTON_RIGHT` through the hosted viewport would pass, and the
+    armed-uproot one would fall out of `_select(null)`'s existing disarm rule for free.
+  - Got: `[PASS] test_a_right_click_clears_the_selected_plant`,
+    `[PASS] test_a_right_click_cancels_an_armed_uproot`,
+    `[PASS] test_a_right_click_with_nothing_selected_is_left_alone`; full suite
+    `Total: 1046 | Passed: 1046 | Failed: 0`, `Assertions: 19925 executed`,
+    `Suite: 8 test script(s)`, lint `0 error(s), 0 warning(s) -> exit 0`.
+    Then the run that mattered: with the branch's constant flipped to
+    `MOUSE_BUTTON_MIDDLE`, two of the three failed —
+    `a right press cleared the selection: Expected true but got false` and
+    `the right press closed the armed window ...: Expected false but got true`.
+  - Found: `arm_uproot()` returns `Game.UPROOT_CONFIRM_NEEDED`, not `""` — the test asserted
+    `""` first and failed with `Expected  but got confirm needed`. That is the exact hazard
+    `arm_`/`commit_`'s own header describes: `""` is this API's SUCCESS value and the second
+    call returns it having already removed the plant. Caught at minute one by running it.
+  - Cheaper: nothing headless was cheaper, and the live game was not available for this at
+    all (see the gap). Reading `_unhandled_input` alone could not have told me whether the
+    event reaches it — the emulated-touch guard sits in the same ladder.
+
+- Gap: **the bridge cannot send a mouse BUTTON press, so no mouse-button branch in
+  `_unhandled_input` is reachable from a running game** — every other pointer gesture is:
+  `touch_press`/`touch_release`/`touch_drag` for fingers, `mouse_move` for motion, `press`
+  for a `BaseButton` node. `python tools/devtools.py list-commands --offline | grep -i
+  "mouse\|click"` returns exactly one row, `mouse_move  args: relative, steps, position,
+  buttons` — and `buttons` is the held-button MASK on a motion event, not a press. So the
+  left-click placement ladder and this new right-click branch are both verifiable ONLY
+  headless, and `press --node` cannot stand in: it emits `pressed` on a `BaseButton`, and
+  the board is a `Node2D` that reads raw events.
+  - [G-152] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: a `mouse-click` verb — `--button left|right|middle --position X,Y`, plus
+    `--pressed`/`--released` for the two halves, pushed through `Viewport.push_input()` the
+    way `touch_press` already does. Same shape as the touch verbs, one file over.
+
+## 2026-08-29 — Wired five owner-added audio files into Sfx and Music, plus a looping ambience bed
+
+- Value: **warranted** — the running game proved the bed sounds, resumes after an unmute and that
+  each rerouted cue loads its new file into a real voice; the headless suite structurally cannot
+  see any of that, because `Sfx.audio_enabled()` is false there.
+  - Expected: the ambience bed starts a real AudioStreamPlayer under SfxPool while pests walk and
+    stops after the last one dies, and each rerouted cue actually loads its new file into a voice —
+    neither of which the headless suite can observe, because audio_enabled() is false there and
+    every ambience test asserts wanted-state only.
+  - Got: `/root/SfxPool/Ambience [AudioStreamPlayer] bus=Sfx playing=true volume_db=-13.0` with
+    `stream.resource_path=res://assets/audio/bug-steps.wav`, `stream.loop_mode=1`,
+    `stream.loop_end=25723`; after `clear_nodes --via-method kill`, `playing: false` at
+    `volume_db: -80.0`; after the M key, `playing: false` then `playing: true` again with two pests
+    still walking. Voice reads caught `hit-received.wav` (one kill of three), `plant-place.ogg`,
+    `shoot.wav` and `clickanddrag.ogg`; `/root/MusicHost/Bed1` carries
+    `Cute Loops - Summer Sun.mp3` with `stream.loop: true`.
+  - Found: the .wav importer's `edit/loop_mode` enum starts at "Detect From WAV", so the obvious
+    `edit/loop_mode=1` means **Disabled** and Forward is `2`. The bed imported without a loop and
+    the new headless test failed on it (`came back with loop_mode == LOOP_DISABLED`); nothing else
+    in the run would have said so, and the seam would have repeated every 0.58s for the whole game.
+    Also: moving CORN_FIRED onto its own file cost `test_the_sting_is_told_apart_from_everything_sharing_its_file`
+    its denominator (2 sharers → 1) and it failed loudly rather than passing vacuously.
+  - Cheaper: the headless suite alone would have caught the loop-mode defect — it is the test that
+    did. Runtime was what the bed, the mute/unmute resume and the four voice reads needed.
+
+- Gap: **no gaps this turn.** Every verb the run needed existed (`spawn_pest`, `clear_nodes
+  --via-method kill`, `find-nodes --class AudioStreamPlayer --property stream.resource_path`,
+  `key M`), and the dotted-path property read is what made "which file is this voice actually
+  holding" a one-call assertion instead of a screenshot and a guess.
+  - Note: this project runs harness 0.38.0 while 0.65.0 is on the machine (27 releases behind);
+    `harness-drift` exits 0 but reports 6 files carrying local lines with no 0.38.0 base to
+    subtract, so the refresh cost is unknown. Tracked as plant-tower-defense-abxv; not taken here,
+    because a 14-file harness refresh inside an audio diff is two changes in one commit.
