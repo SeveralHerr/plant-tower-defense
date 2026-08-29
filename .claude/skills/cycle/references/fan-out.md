@@ -173,6 +173,20 @@ git log --oneline main..lane/<bead-id>  # EMPTY means it committed nothing
 
 An empty log is the tell, not `git status`. Clean up with `git worktree remove --force`
 and `git branch -D` before re-spawning, or the new lane collides with the old branch name.
+
+**A garbled final report is not evidence the work is bad — it can mean the work is real
+and just uncommitted.** One lane's whole reply was "I'll stop making tool calls now and
+wait for the background task/monitor notifications to arrive" — no diff-stat, no numbers,
+nothing usable. `git log main..lane/<id>` was empty (the tell above), but `git status`
+inside its worktree showed real, substantial, uncommitted work: a new test file, a new
+doc, a CLAUDE.md edit, all exactly matching the bead's ask. The agent had done the job and
+then confused itself out of ever calling `git commit` or writing a real summary. **Read
+the worktree's actual files and `git status` before deciding a lane failed** — an empty
+log plus a garbled report is not the same finding as an empty log plus an empty `git
+status`, and treating them the same throws away real, verified-able work. Recovering it
+cost one read of the diff, one test run to confirm it still passed, and one commit — far
+cheaper than re-running the lane.
+
 Two things worth knowing while you are in there:
 
 - **`git worktree prune` does not remove a stale worktree DIRECTORY** whose admin files are

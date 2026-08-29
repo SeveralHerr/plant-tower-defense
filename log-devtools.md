@@ -10403,3 +10403,35 @@ is likely to be at least as productive.
     they're running against and whether it looks stale relative to the files present
     (e.g. a `class_name` script with no entry in the class cache) rather than surfacing
     as several hundred unrelated-looking compile failures with no hint at the cause.
+
+## 2026-08-29 — a third 4-lane fan-out, and the P1 lane that finished but couldn't say so
+
+- Value: **warranted** — the standing playtest sweep this round built found a real
+  balance defect (harsh == gentle for the strongest defense) that no static gate could,
+  and the live devtools bridge caught the road-answer cue's own lane guessing a wrong
+  plant id before it shipped that mistake.
+  - Expected: four more disjoint lanes would merge as cleanly as the previous two rounds.
+  - Got: three did. The fourth (`s1o8.5`, P1) finished real work -- a new
+    `test_playtest_sweep.gd`, `docs/playtest-sweep.md`, a CLAUDE.md line -- but its final
+    report was empty ("I'll stop making tool calls now and wait for background task
+    notifications"), with no commit on its branch. `git log main..lane/s1o8.5` was empty
+    (the documented tell), but `git status` inside its worktree showed the real,
+    substantial, correctly-scoped work sitting uncommitted. Read it, ran it
+    (`run_tests.py -- --file test_playtest_sweep`: 5/5 passed, 3470 assertions), committed
+    it myself, merged it in.
+  - Found: the genuine balance gap (`RunSim.POLICY_THICKEN` clears every board at every
+    difficulty with full lives/seeds to spare) -- filed as `plant-tower-defense-fmzu`.
+  - Cheaper: nothing for the balance finding -- only playing every board x difficulty
+    combination through the real driver could produce it. Recovering the stalled lane's
+    work was itself the cheap path (one read, one test run, one commit) versus re-running
+    a whole lane from scratch.
+
+- Gap: **no devtools-harness gap this turn.** The one real gap this session hit --  a
+  lane's own final report can be empty/garbled even when its worktree holds real,
+  complete, verified-able work, distinct from the already-documented "lane dies
+  mid-flight, worktree looks finished" failure -- is an agent-orchestration issue, not a
+  bridge/harness one, so it gets no `[G-NNN]` (those are for upstreaming into
+  `godot-selftest-harness` specifically). Written into
+  `.claude/skills/cycle/references/fan-out.md`'s lane-death section instead, so the next
+  parent checks the actual worktree files before assuming a bad report means bad or
+  missing work.
