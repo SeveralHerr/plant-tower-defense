@@ -1208,7 +1208,7 @@ func _show_gape_sprite() -> void:
 	if _idle_texture == null:
 		_idle_texture = _sprite.texture
 	if _gape_texture == null:
-		_gape_texture = load(GAPE_TEXTURE_PATH) as Texture2D
+		_gape_texture = load(frame_texture_path(GAPE_TEXTURE_PATH)) as Texture2D
 	if _gape_texture == null:
 		return
 	_sprite.texture = _gape_texture
@@ -1228,7 +1228,7 @@ func _show_eating_sprite() -> void:
 	if _idle_texture == null:
 		_idle_texture = _sprite.texture
 	if _eating_texture == null:
-		_eating_texture = load(EATING_TEXTURE_PATH) as Texture2D
+		_eating_texture = load(frame_texture_path(EATING_TEXTURE_PATH)) as Texture2D
 	if _eating_texture != null:
 		_sprite.texture = _eating_texture
 
@@ -1239,7 +1239,7 @@ func _show_eating_late_sprite() -> void:
 	if _idle_texture == null:
 		_idle_texture = _sprite.texture
 	if _eating_late_texture == null:
-		_eating_late_texture = load(EATING_LATE_TEXTURE_PATH) as Texture2D
+		_eating_late_texture = load(frame_texture_path(EATING_LATE_TEXTURE_PATH)) as Texture2D
 	if _eating_late_texture != null:
 		_sprite.texture = _eating_late_texture
 
