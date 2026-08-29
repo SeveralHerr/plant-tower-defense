@@ -94,11 +94,25 @@
 	  clickanddrag.ogg            a packet picked out of the plant bar, click or
 	                              drag
 
-	Added to the project by its owner rather than vendored from a pack. THE
-	UPSTREAM SOURCE AND TERMS ARE NOT RECORDED HERE YET (plant-tower-defense-muyk):
-	if any of these came out of a pack rather than being made for the game, that
-	pack's own licence has to be named in this section before the game ships,
-	because "we do not know" is not a licence.
+	ALL FIVE WERE MADE FOR THIS GAME by its owner, James Herr. They are not
+	vendored from any pack, no third party holds rights in them, and no upstream
+	licence applies to them: the project owns them outright and the only terms
+	they carry are whatever the project itself ships under. Confirmed by the
+	owner 2026-08-29, closing plant-tower-defense-muyk.
+
+	ONE THING THAT LOOKS LIKE A PACK AND IS NOT, recorded here so the question is
+	not re-opened by the next person to run `ogginfo` over this directory. The two
+	.ogg cues carry Vorbis comments that read like a numbered pack:
+
+	  plant-place.ogg      TITLE=place10   MP3GAIN_UNDO=+002,+002,N
+	  clickanddrag.ogg     TITLE=place6    MP3GAIN_UNDO=-005,-005,N
+
+	A numbered TITLE out of a set, a batch gain-normalisation tag, and NO
+	ARTIST -- where every Kenney file in this directory carries ARTIST=Kenney and
+	COMMENT=www.kenney.nl. That combination is the usual fingerprint of a pack
+	file, and it is what prompted the bead. It is an artefact of the owner's own
+	take-numbering and mastering pass, not of a pack. The three .wav cues carry no
+	metadata at all (bare 44.1kHz stereo PCM), so there is nothing to mistake.
 
 			------------------------------
 
