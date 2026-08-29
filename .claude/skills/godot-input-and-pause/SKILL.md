@@ -131,6 +131,12 @@ any `_unhandled_input` click handler never runs.
 
 **The click is not misrouted. It is deleted, and nothing reports it.**
 
+> **And no test that builds its own `InputEvent` can see this happen.** Calling
+> `node._unhandled_input(event)` starts *after* the GUI pass, so it delivers everything it
+> sends and a Control eating an event is structurally invisible to it — including when the
+> Control is behaving perfectly correctly, which is the case this section does not cover.
+> See `synthetic-input-is-not-input`, which is that case and the tell for it.
+
 This shipped here twice. Health-bar `ColorRect`s on `Plant` ate clicks on the plant's own
 cell *and* two pixels of the cell above; the same rects on `Pest` ate the click that
 collects a husk — unrecoverable, because every husk lands on the road and road cells route
