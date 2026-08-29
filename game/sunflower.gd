@@ -85,17 +85,29 @@ var _bloom_flash: float = 0.0
 
 func _act(delta: float, _pests: Array[Pest]) -> void:
 	_timer += delta
-	if _timer >= INTERVAL:
-		_timer -= INTERVAL
+	var span: float = interval()
+	if _timer >= span:
+		_timer -= span
 		grew_seeds.emit(YIELD)
 		_bloom()
 	_refresh_gauge()
 
 
+## Seconds between payouts for THIS flower. `INTERVAL` for one the player planted,
+## shorter for a Gold Sunflower — the sport (`PlantMutation`).
+##
+## Every clock this plant owns is routed through here for the reason the two statics
+## below are routed through one another: the gauge, the countdown and the payout are
+## three readings of one interval, and a sport that paid out faster while the gauge
+## filled at the old rate would be the drift those functions exist to prevent.
+func interval() -> float:
+	return INTERVAL * sport_rate_scale()
+
+
 ## Seconds until the next payout. The selection panel's "Next %d seeds in %.0fs"
 ## reads this.
 func seconds_until_next_yield() -> float:
-	return seconds_left_at(_timer)
+	return seconds_left_at(_timer, interval())
 
 
 ## How full the gauge is: 0.0 the instant a payout lands, approaching 1.0 as the
@@ -106,20 +118,22 @@ func seconds_until_next_yield() -> float:
 ## readout at all, and the cheapest way to guarantee they agree is for there to
 ## be only one clock.
 func yield_progress() -> float:
-	return progress_at(_timer)
+	return progress_at(_timer, interval())
 
 
 ## Pure: seconds left after `elapsed` seconds of an interval. Clamped at 0 so a
 ## frame that overshoots never shows a negative countdown.
-static func seconds_left_at(elapsed: float) -> float:
-	return maxf(0.0, INTERVAL - elapsed)
+static func seconds_left_at(elapsed: float, span: float = INTERVAL) -> float:
+	return maxf(0.0, span - elapsed)
 
 
 ## Pure: the gauge fill fraction for `elapsed` seconds into an interval, defined
 ## as the complement of the countdown rather than as a second division of its
 ## own — same input, same clock, no drift.
-static func progress_at(elapsed: float) -> float:
-	return clampf(1.0 - seconds_left_at(elapsed) / INTERVAL, 0.0, 1.0)
+static func progress_at(elapsed: float, span: float = INTERVAL) -> float:
+	if span <= 0.0:
+		return 1.0
+	return clampf(1.0 - seconds_left_at(elapsed, span) / span, 0.0, 1.0)
 
 
 ## The gauge's empty trough, in the plant's own space.

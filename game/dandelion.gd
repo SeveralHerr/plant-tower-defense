@@ -185,6 +185,20 @@ func _on_setup() -> void:
 	_refresh_fluff_sprite()
 
 
+## Seconds between seeds as this head will actually throw them — the base interval with
+## the sky, the neighbours and the sport all folded in through the one function that
+## composes them (`Plant.composed_interval`).
+##
+## A named accessor rather than the expression inline at the arming site, which is what it
+## was: `CornCobbler.fire_interval` and `Nettle.sting_interval` are both public for the
+## reason corn's own header gives — "the surfaces that DESCRIBE a value are a separate
+## population from the code that USES it" — and this head was the one of the three where
+## no surface could ask.
+func shot_interval() -> float:
+	return composed_interval(SHOT_INTERVAL, fire_interval_scale, neighbour_interval_scale,
+		sport_rate_scale())
+
+
 func _act(delta: float, pests: Array[Pest]) -> void:
 	_since_shot += delta
 	_shot_cooldown = maxf(0.0, _shot_cooldown - delta)
@@ -282,8 +296,7 @@ func _launch_at(offset: Vector2) -> void:
 	# later would have is_volley_open() reporting "mid-volley" on a plant with
 	# nothing left to fire — which is what the selection panel reads.
 	_volley_open = volley_open(_fluff, _volley_open)
-	_shot_cooldown = composed_interval(SHOT_INTERVAL, fire_interval_scale,
-		neighbour_interval_scale)
+	_shot_cooldown = shot_interval()
 	_since_shot = 0.0
 	_refresh_fluff_sprite()
 	Sfx.play(Sfx.DANDELION_PUFF)

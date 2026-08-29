@@ -250,7 +250,8 @@ static func sustained_dps() -> float:
 ## speeds up exactly as a Corn does, and it does so because it reads the same function rather
 ## than because someone remembered to copy the line.
 func sting_interval() -> float:
-	return composed_interval(STING_INTERVAL, fire_interval_scale, neighbour_interval_scale)
+	return composed_interval(STING_INTERVAL, fire_interval_scale, neighbour_interval_scale,
+		sport_rate_scale())
 
 
 func _act(delta: float, pests: Array[Pest]) -> void:

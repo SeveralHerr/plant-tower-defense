@@ -218,6 +218,56 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 179 — the garden produces a plant, and a planting verb had no gate
+
+- **The board can now make something the player did not buy** (`plant-tower-defense-f21v`).
+  Two plants of a kind sharing an edge sometimes throw a mutated third — a *sport* — into
+  a legal empty cell beside them. `CrossBreeder` is the rule as pure functions,
+  `PlantMutation` is the trait table, and `Game` owns only the clock. **A sport is never a
+  parent**, which is the bound on the whole thing: every child needs two bought parents,
+  so the population cannot grow with itself.
+  What is worth reading back later is the shape it did NOT take. A sport cannot be a
+  tenth `PlantCatalog` entry — `test_plant_order_lists_every_plant_once` asserts
+  `ids().size() == PLANTS.size()`, and `ORDER` is the shop bar and the title screen's
+  hand-placed slots, so nine sports as entries is nine packets nobody can buy in a bar
+  sized by counting them. It is a FLAG on the instance instead, which is the shape `Pest`
+  already uses for its own mutations. Both sides of the board are now built the same way.
+
+- **`_sprout_sport` planted at any cell it was handed, and James saw cobs in the pest
+  lane.** The roll cannot produce an illegal cell — `CrossBreeder.open_cells` filters on
+  `board.is_buildable_for` — so the RULE was right and the ENTRY POINT was ungated. It is
+  reachable from the devtools bridge and from a test with any argument at all, and driving
+  it that way during verification planted plants down the middle of the road.
+  **The generalisation is worth a sweep: which other verbs are legal only because their
+  one caller happens to pass legal arguments?** `place_plant` refuses six ways; this one
+  refused none, and the difference was invisible because the two call sites that exist are
+  both correct. The pattern to grep for is a `func _verb(...)` with no early return whose
+  arguments come from a computation somewhere else — `_install_plant`, `_select`,
+  `_sprout_sport`, `Board.mark_dead_ground`, `HuskLayer`'s spawn. A bridge that can call
+  any method by name means "the only caller is correct" stopped being a defence some time
+  ago, and nothing in the repo says so.
+
+- **A constant read where an instance was in hand, found twice in one diff.** The
+  selection panel printed `StickySundew.SLOW_FACTOR` and `Game._apply_aloe_healing`
+  computed one `Aloe.heal_for(delta)` for every Aloe on the board. Both were correct for
+  exactly as long as every member of a set was identical, and both went wrong the moment
+  one of them was a sport. **The tell is a `ClassName.CONSTANT` or a `ClassName.static()`
+  in a body that already has an instance of that class in a local variable** — it reads as
+  tidy and it is a claim that all instances are the same. `corn_cobbler.gd`'s own header
+  names the failure ("the surfaces that DESCRIBE a value are a separate population from
+  the code that USES it") and it is the same one arriving from a third direction.
+  Worth a checker: `tools/` could flag a `Foo.BAR` inside a function whose scope holds a
+  `Foo`-typed local. Cheap to write, and this cycle found two instances by hand.
+
+- **`StickySundew`'s slow was order-dependent and nobody could have noticed.** `_claim`
+  set a pest's speed only when it was the first patch to catch it, which is exactly right
+  while every patch cuts by the same 0.55 and silently wrong the moment one cuts harder.
+  Now `strongest_factor_for` asks every patch holding the pest and takes the minimum, on
+  claim AND on release. **The class of bug is "a rule that is correct because a set is
+  uniform, in a codebase that is adding members to that set"**, and this cycle produced
+  three of them (this, the Sundew's panel line, the Aloe's shared heal). That is the same
+  sentence three times, which usually means it wants a skill rather than three fixes.
+
 ### New in cycle 167 — nodes are asserted, `_draw()` is not, and the project knew
 
 - **Deleting four draw calls left all 1003 tests green.** The risk ring, the dead bar, the

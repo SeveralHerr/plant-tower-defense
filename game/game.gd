@@ -206,6 +206,16 @@ var _preview: PlacementPreview
 var _hover_cell: Vector2i = Vector2i(-1, -1)
 var _husk_layer: HuskLayer
 var _plants: Dictionary = {}
+
+## The cross-breeding clock and its generator (`CrossBreeder`, plant-tower-defense-f21v).
+##
+## A generator of its own rather than a share of `WaveDirector`'s: the two mechanics
+## draw at completely unrelated moments, and a single stream would mean the sports a
+## garden throws depend on how many mutation rolls the waves happened to make. A seed
+## that reproduces one run has to reproduce both, which is what two streams give and
+## one does not.
+var _cross_clock: float = 0.0
+var _cross_rng := RandomNumberGenerator.new()
 var _prep_left: float = 0.0
 var _wave_live: bool = false
 ## The weather the current wave arrived under, or CLEAR between waves.
@@ -499,6 +509,7 @@ func _process(delta: float) -> void:
 	# than counting the time the player spends reading the post-mortem.
 	run_seconds += delta
 	_apply_aloe_healing(delta)
+	_tick_cross_breeding(delta)
 	_check_wave_cleared()
 	if not _wave_live and director.has_more_waves():
 		# `delta` is already scaled by Engine.time_scale, so the prep countdown runs
@@ -1709,11 +1720,36 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 	# The free starter really does add 0, which is the truth: a run that planted
 	# nothing but its free cob spent nothing on breadth.
 	seeds_on_plants += price
+	var plant: Plant = _install_plant(id, cell, false)
+	Sfx.play(Sfx.PLANT_PLACED)
+	_select(plant)
+	_refresh()
+	return ""
+
+
+## Builds a plant, puts it on the board and wires everything Game owns about it.
+##
+## Extracted from `place_plant` when the sports arrived (plant-tower-defense-f21v),
+## and the extraction is the point rather than a tidy-up: there are now TWO ways a
+## plant reaches this board, and every one of the five wirings below — the destroyed
+## signal, the two duck-typed ones, the weather scale, the plant dictionary — is a
+## thing a second planting path would have had to remember. Four of the five are
+## silent when forgotten. A sport that never connected `destroyed` would leave a
+## ghost in `_plants` at the cell it died on, and nothing would report it.
+##
+## `sport` is set BEFORE `setup()` because `Plant._build_visuals` reads it — see
+## `Plant.is_sport`. That ordering is the one thing about this function a caller
+## could get wrong, and it is why the flag is a parameter here rather than something
+## the caller assigns afterwards.
+##
+## Charges nothing and selects nothing. Both belong to the caller: a purchase pays
+## and takes the selection, a sport does neither.
+func _install_plant(id: StringName, cell: Vector2i, sport: bool) -> Plant:
 	var plant: Plant = _new_plant(id)
+	plant.is_sport = sport
 	_entities.add_child(plant)
 	plant.setup(id, cell, board)
 	_plants[cell] = plant
-	Sfx.play(Sfx.PLANT_PLACED)
 	plant.destroyed.connect(_on_plant_destroyed)
 	if plant.has_signal("grew_seeds"):
 		# Bound here rather than added to Sunflower's own signal. What a plant
@@ -1733,7 +1769,80 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 	# a drought would be to plant into it, which is the opposite of what the weather
 	# is for -- and it would only ever be discovered by a player who tried it.
 	plant.fire_interval_scale = WaveDirector.fire_interval_scale_for(weather)
-	_select(plant)
+	return plant
+
+
+## -- the garden throws a sport (plant-tower-defense-f21v) --------------------
+##
+## Two plants of a kind standing side by side sometimes produce a third, mutated,
+## in an empty cell beside them. The whole RULE lives in `CrossBreeder`, which is
+## pure; what lives here is the clock, the planting and the sentence the player
+## reads. See that class for why the split is where it is.
+##
+## Seeded from the same generator the rest of the run uses so a seeded run stays
+## reproducible, and ticked out of `_process` AFTER the game-over return, so a
+## finished run does not keep growing plants under the post-mortem card.
+func _tick_cross_breeding(delta: float) -> void:
+	_cross_clock += delta
+	if _cross_clock < CrossBreeder.TICK_SECONDS:
+		return
+	# Subtracted rather than zeroed, so a frame that overshoots does not quietly
+	# lengthen the interval — the same reason `Sunflower._act` subtracts its own.
+	_cross_clock -= CrossBreeder.TICK_SECONDS
+	var sprout: Dictionary = CrossBreeder.roll(_plants, board, _cross_rng)
+	if sprout.is_empty():
+		return
+	# The refusal is dropped on purpose HERE and only here: `CrossBreeder.open_cells`
+	# has already filtered to legal empty cells, so this call cannot be refused, and a
+	# handler for a branch that cannot be taken is a branch nothing will ever maintain.
+	# The refusal exists for the OTHER callers -- the bridge and the tests, which pass
+	# any cell at all.
+	_sprout_sport(sprout["kind"] as StringName, sprout["cell"] as Vector2i)
+
+
+## Plants a sport. The one planting path in this game that never touches `SeedBank`.
+##
+## Returns "" on success or the reason it refused, in the same shape `place_plant` uses,
+## because it is reachable from the same two places `place_plant` is -- a test and the
+## devtools bridge -- and a planting verb that silently succeeds at an illegal cell is
+## how a cob ended up standing in the road during live verification.
+##
+## Does NOT select it, and that is deliberate rather than an omission: a sport can
+## arrive at any moment, including while the player is reading the panel for a plant
+## they are about to upgrade, and stealing the selection would make a gift into an
+## interruption. The message row says where it happened; the mark on the plant says
+## which one it is.
+##
+## `Sfx.SEEDS_GROWN` rather than `PLANT_PLACED`, reusing the Sunflower's payout cue:
+## both are the garden handing the player something they did not spend on, and this
+## board's audio vocabulary already spells that with one sound. A press cue here
+## would say the player did it.
+func _sprout_sport(kind: StringName, cell: Vector2i) -> String:
+	# THE GUARD, and it is not belt-and-braces. `CrossBreeder.open_cells` already only
+	# ever offers a legal empty cell, so the roll cannot reach this — but this function
+	# is also the sprout's only ENTRY POINT, and it was reachable from the devtools
+	# bridge and from a test with any cell at all. Driven that way it planted a cob in
+	# the middle of the road, where a plant is not merely wrong but standing in the lane
+	# the pests walk down.
+	#
+	# `is_buildable_for` and not `is_buildable`: a Barrier Bramble belongs ON the road
+	# (`PlantCatalog.on_road`) and every other kind beside it, which is the same
+	# question `place_plant` asks and the reason there is one function that answers it.
+	if not PlantCatalog.has(kind):
+		return "no such plant: %s" % kind
+	if board == null or not board.is_buildable_for(cell, kind):
+		return REFUSAL_ON_ROAD if PlantCatalog.on_road(kind) else REFUSAL_ON_GRASS
+	if _plants.has(cell):
+		return "something is already growing there"
+	var plant: Plant = _install_plant(kind, cell, true)
+	Sfx.play(Sfx.SEEDS_GROWN)
+	if hud == null or not is_instance_valid(hud):
+		# The headless suite drives a Game with no HUD (see `_refresh`'s own note on
+		# the same guard). A sport still arrives; only the sentence about it does not.
+		_refresh()
+		return ""
+	hud.show_message(Hud.sport_message(plant.display_name(), PlantMutation.note(kind)),
+		Hud.message_seconds(Hud.ROLE_NOTICE))
 	_refresh()
 	return ""
 
@@ -2960,21 +3069,25 @@ func _apply_board_layout() -> void:
 ## the first loop is over `_plants` and breaks nothing, but the second is not entered at all
 ## and the common case stays one cheap pass.
 func _apply_aloe_healing(delta: float) -> void:
-	var aloes: Array[Vector2i] = []
+	# CELL -> the amount that Aloe puts back this frame, rather than a list of cells
+	# and one shared number. An Amber Aloe (the sport, `PlantMutation`) mends harder
+	# than the one beside it, so "how much healing arrives at this plant" stopped being
+	# a property of the frame and became a property of the healer.
+	var aloes: Dictionary = {}
 	for key: Vector2i in _plants:
 		var plant := _plants[key] as Plant
 		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
 			continue
 		if plant is Aloe:
-			aloes.append(key)
+			aloes[key] = Aloe.heal_for(delta, plant.sport_power_scale())
 	if aloes.is_empty():
 		return
-	var amount: float = Aloe.heal_for(delta)
 	for key: Vector2i in _plants:
 		var plant := _plants[key] as Plant
 		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
 			continue
 		for from_cell: Vector2i in aloes:
+			var amount: float = float(aloes[from_cell])
 			if Aloe.reaches(from_cell, key):
 				# `Plant.heal` already refuses a destroyed or full-health plant and clamps
 				# at MAX_HEALTH, so two Aloes overlapping one Corn heal it twice as fast up
@@ -2990,8 +3103,15 @@ func _refresh_neighbour_buffs() -> void:
 		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
 			continue
 		if plant is Mint:
+			# A sport Mint counts TWICE, which is the whole of its buff — see
+			# `PlantMutation`'s MINT row for why that rides in the same `power` key
+			# as every other sport's multiplier rather than in a third key only one
+			# plant uses. `Mint.scale_for` is unchanged and still answers "what does
+			# N Mints' worth of neighbour do", which is now a question a single plant
+			# can be the whole of.
+			var worth: int = int(round(plant.sport_power_scale()))
 			for cell: Vector2i in Mint.neighbours_of(key):
-				mints[cell] = int(mints.get(cell, 0)) + 1
+				mints[cell] = int(mints.get(cell, 0)) + worth
 	for key: Vector2i in _plants:
 		var plant := _plants[key] as Plant
 		if plant == null or not is_instance_valid(plant):

@@ -94,8 +94,13 @@ var _pulse_time: float = 0.0
 ## Clamped at zero rather than trusting the caller: `_process` deltas are non-negative in
 ## practice, but a negative one here would turn a healer into a second mouth, and that is a
 ## bad enough failure to spend one `maxf` on.
-static func heal_for(delta: float) -> float:
-	return HEAL_PER_SECOND * maxf(0.0, delta)
+## `power` is the sport's multiplier (`Plant.sport_power_scale`), defaulted so every
+## existing caller and every test still asks what an ordinary Aloe does. It is a
+## parameter rather than a read of `is_sport` because this is a static: `Game` owns
+## the iteration over Aloes (see the class header) and therefore owns which one is
+## asking.
+static func heal_for(delta: float, power: float = 1.0) -> float:
+	return HEAL_PER_SECOND * maxf(0.0, delta) * power
 
 
 ## Does an Aloe at `from_cell` reach a plant at `to_cell`?

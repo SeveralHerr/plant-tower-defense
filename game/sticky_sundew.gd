@@ -289,8 +289,8 @@ func _claim(pest: Pest) -> void:
 	var sources: int = slow_sources(pest)
 	if sources == 0:
 		pest.set_meta(META_BASE_SPEED, pest.speed)
-		pest.speed = slowed_speed(pest.speed)
 	pest.set_meta(META_SOURCES, sources + 1)
+	_resettle(pest)
 
 
 func _release_at(index: int) -> void:
@@ -303,6 +303,12 @@ func _release_at(index: int) -> void:
 	var sources: int = slow_sources(pest) - 1
 	if sources > 0:
 		pest.set_meta(META_SOURCES, sources)
+		# Re-settled rather than left alone, and this line is the whole of what the
+		# sports changed about the slow. While every patch cut speed by the same
+		# 0.55 a release could not change the answer; a Tar Sundew cuts harder, so
+		# a pest walking out of one is walking out of the patch that was setting
+		# its speed and the remaining patches have to be asked again.
+		_resettle(pest)
 		return
 	pest.remove_meta(META_SOURCES)
 	if pest.has_meta(META_BASE_SPEED):
@@ -329,9 +335,73 @@ func stuck_count() -> int:
 
 # ------------------------------------------------------------------ pure model
 
-## Pure: what a pest walking at `base_speed` slows to inside a patch.
-static func slowed_speed(base_speed: float) -> float:
-	return base_speed * SLOW_FACTOR
+## Pure: what a pest walking at `base_speed` slows to inside a patch of `factor`.
+##
+## The factor is defaulted rather than required so every existing caller and every
+## test that asks "what does a Sundew do to an aphid" still asks exactly that. It
+## is a parameter at all because a Tar Sundew — the sport, `PlantMutation` — holds
+## a pest harder than an ordinary patch does, and a static that reads the constant
+## directly cannot express two patches with two answers.
+static func slowed_speed(base_speed: float, factor: float = SLOW_FACTOR) -> float:
+	return base_speed * factor
+
+
+## The hardest a slow may ever be, whatever a sport multiplies it by.
+##
+## A floor and not a balance number: 0.55 is documented above as "never a stun — a
+## Sundew always leaks", and that sentence is the plant's design. A power scale that
+## drove the factor to zero would turn the cheapest support plant in the game into a
+## permanent hold, which is the Chomp Flower's whole reason to exist. At the shipped
+## power of 1.25 the answer is 0.4375 and this clamp does nothing; it is here so that
+## retuning `PlantMutation` cannot silently cross a line this file draws.
+const MIN_SLOW_FACTOR: float = 0.30
+
+
+## What THIS patch multiplies a caught pest's speed by. `SLOW_FACTOR` for an
+## ordinary Sundew; harder for a sport, and never past `MIN_SLOW_FACTOR`.
+##
+## Written as a scale on the CUT (`1.0 - SLOW_FACTOR`) rather than on the factor
+## itself, because the factor is what is left and the cut is what the plant does.
+## Scaling 0.55 by 1.25 would make a sport SLOWER at slowing; scaling the 0.45 cut
+## is the direction the word "better" points in.
+func slow_factor() -> float:
+	return clampf(1.0 - (1.0 - SLOW_FACTOR) * sport_power_scale(), MIN_SLOW_FACTOR, 1.0)
+
+
+## The strongest slow any patch currently holding `pest` applies — the smallest
+## factor, since smaller is slower.
+##
+## Membership is `_stuck`, not geometry: `_release_at` removes the pest from its own
+## list before asking, so a patch the pest has just left must not still be counted,
+## and it is standing on that patch's ground for one more frame either way.
+##
+## 1.0 when nothing holds it, which is the same answer as "not slowed" and is what
+## makes this safe to call from the release path.
+static func strongest_factor_for(pest: Pest) -> float:
+	var factor: float = 1.0
+	for patch: StickySundew in live_patches():
+		if patch._stuck.has(pest):
+			factor = minf(factor, patch.slow_factor())
+	return factor
+
+
+## Puts `pest` at whatever speed the patches holding it right now imply.
+##
+## One function called from both the claim and the release path, so "how fast is a
+## pest standing in two patches" has exactly one answer. Before the sports there
+## were two — the claim path set the speed and the release path only ever restored
+## it — and they agreed because every patch was identical. That is the shape of
+## agreement that stops being true the moment one member of a set is different.
+##
+## The non-stacking rule above is unchanged and is now stated by the MIN rather than
+## by a guard: two ordinary patches both answer 0.55, so their minimum is 0.55.
+func _resettle(pest: Pest) -> void:
+	if pest == null or not is_instance_valid(pest):
+		return
+	if not pest.has_meta(META_BASE_SPEED):
+		return
+	pest.speed = slowed_speed(float(pest.get_meta(META_BASE_SPEED)),
+		strongest_factor_for(pest))
 
 
 ## Pure: how much longer the same stretch of road takes to cross once it is

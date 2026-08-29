@@ -9743,3 +9743,39 @@ is likely to be at least as productive.
     degrading to a scene-tree-only number that looks like a measurement. Logged here
     rather than filed upstream: the harness is `0.60.0` on this machine and this is one
     flag on one verb, below the bar the global instructions set for an issue.
+
+## 2026-08-25 — Surveyed .claude/skills for repo-agnostic candidates to upstream
+
+- Value: **inconclusive** — no harness verb run; task was reading skill prose, not exercising the game.
+  - Expected: nothing from runtime; the question was "which skills are portable".
+  - Got: n/a — answered by `grep -c` over SKILL.md files for godot/bd coupling.
+  - Found: `enumerate-the-pairs/SKILL.md` has NO YAML frontmatter — no `name:`/`description:`, so it cannot be surfaced by description-matching the way the other 20 are.
+  - Cheaper: nothing cheaper; this was already a static read.
+
+- Gap: **no gaps this turn** — harness not exercised.
+
+## 2026-08-25 — Ported five skills into somewhat-useful-claude-skills (PRs #12, #13)
+
+- Value: **inconclusive** — no harness verb run; the work was reading and rewriting skill prose in another repo.
+  - Expected: nothing from this project's runtime.
+  - Got: n/a — the target repo's own gates did the checking (`release_check`, `lint_markdown`, `smoke_test_tools`).
+  - Found: nothing in this repo. Two portability defects in the SOURCE skills, both still unfixed here: `enumerate-the-pairs/SKILL.md` has no YAML frontmatter at all, and `cycle/SKILL.md` + `references/` cite `verify-bd-item` and `merge-the-fanout`, which are the two the port had to inline.
+  - Cheaper: nothing — this was prose work, not a runtime question.
+
+- Gap: **no gaps this turn** — harness not exercised.
+
+## 2026-08-28 — Two plants of a kind can throw a mutated sport (plant-tower-defense-f21v)
+
+- Value: **warranted** — the running game produced a defect class no gate here asks about: a planting verb reachable from the bridge with an unchecked cell.
+  - Expected: that a forced sprout would plant a tinted, marked cob, and that the tick wired into `_process` would produce one on its own at roughly `CrossBreeder.mean_seconds_between()`. Both were the boring half.
+  - Got: `_cross_clock` 0.486 → 1.728 over `wait-frames 120`, so the clock is genuinely driven; 30 × `run-method _tick_cross_breeding [6.0]` produced exactly one sport at (2,0) adjacent to the pair, which is 180 s of play against a designed mean of 150; `find-nodes --class Plant --call display_name` read back Popcorn Cobbler / Snap Flower / Gold Sunflower / Tar Sundew / Burr Dandelion / Wild Mint / Iron Nettle / Amber Aloe off nine live plants in one call.
+  - Found: **three, and the first was found by the user looking at my own screen.** (1) `_sprout_sport` planted at ANY cell handed to it — the roll cannot produce an illegal one, but the bridge can, and driving it that way put cobs in the middle of the pest lane. Guarded and pinned. (2) The selection panel quoted `StickySundew.SLOW_FACTOR` as a class constant, so a Tar Sundew would have advertised 55% while running at 44%. (3) The Sundew's first-claimer-wins slow made a sport's cut depend on which patch caught the pest first; replaced with `strongest_factor_for`.
+  - Cheaper: nothing cheaper finds the road bug. It is a missing guard on a path no gate walks, and its whole signature is a picture of a cob standing in the lane. Everything else this run confirmed — the tint, the badge, the nine names — is already asserted headless and could have been skipped.
+
+- Gap: **`find-nodes --call` cannot pass an argument, so a one-arg reading needs one round trip per node** — `python tools/devtools.py find-nodes --class Plant --call display_name` reads a zero-arg getter beside every hit in one trip, which is what made "do all nine sports name themselves" a single command. The same question about `chew_seconds_against(11.0)` or `Aloe.heal_for(1.0, power)` cannot be asked at all: `--call` takes a method name and nothing else. Workaround was `get-state --property` per node, which is one command per plant and cannot reach a method.
+  - [G-146] status: open | seen: 1 | harness: 0.65.0
+  - Improvement: let `--call` take `METHOD:JSON_ARGS` (`--call "chew_seconds_against:[11.0]"`), reusing `run-method`'s existing `--args` parser. A method needing an argument is the normal case for anything scaled — every buff in this cycle is a function of something — and the fallback is N round trips.
+
+- Gap: **`devtools_config.json` names a Godot binary and nothing checks it exists until a launch fails** — `python tools/import_check.py` answered `Error: Godot binary not found: C:\Users\gotmi\Downloads\Godot_v4.7.1\Godot_v4.7.1-stable_win64_console.exe`, which is a directory that had been renamed to `Godot_v4.7.1_fixed`. Every gate that opens the project was dead until the config was corrected, and the three that do not (`name_check`, `check_all`, `coverage_check`) reported clean throughout — so the failure looked like a green run with a couple of tools missing.
+  - [G-147] status: open | seen: 1 | harness: 0.65.0
+  - Improvement: have `check_all.py` stat `godot_bin` and print it as a named skipped check rather than leaving it to the first tool that needs it. The harness already treats "a check that could not run" as a thing to name rather than drop; this is the same idea one level up, and the fix is one `os.path.exists`.

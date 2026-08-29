@@ -2432,7 +2432,11 @@ func _refresh_selection(state: Dictionary) -> void:
 	# anyone re-typing what it can say — the same move `message_corpus()` made for
 	# the status row, for the same reason: the hand-recovered list was wrong three
 	# cycles running (plant-tower-defense-r722).
-	var display: String = PlantCatalog.display_name(plant.kind)
+	# `plant.display_name()` and NOT `PlantCatalog.display_name(plant.kind)`, which is
+	# what this line said until the sports arrived. This panel exists to tell the
+	# player what they have selected, and a Popcorn Cobbler printed as "Corn Cobbler"
+	# is indistinguishable in the one readout whose job is to distinguish it.
+	var display: String = plant.display_name()
 	if corn != null:
 		# The kernel count alone stopped being the story. Past ~80px most of a
 		# bunch's five kernels sail past the pest it aimed at, so what an upgrade
@@ -2484,8 +2488,13 @@ func _refresh_selection(state: Dictionary) -> void:
 			# A Sundew is never busy and never idle — it is always working, and the
 			# only question is how many pests are in the patch. "Idle" was simply
 			# the wrong word for the one plant that cannot be.
+			# THIS patch's factor, not the class constant, since a Tar Sundew (the
+			# sport, `PlantMutation`) holds harder than the one beside it. The panel
+			# quoting 55% over a patch running at 44% is exactly the drift
+			# `CornCobbler.fire_interval`'s header is about: the surfaces that
+			# DESCRIBE a value are a separate population from the code that uses it.
 			busy = sundew_detail(sundew.stuck_count(),
-				int(round(StickySundew.SLOW_FACTOR * 100.0)))
+				int(round(sundew.slow_factor() * 100.0)))
 		# A plant that grows says which rung it is on, the way the cob's line does.
 		# Asked of the plant rather than of `chomp != null`, so the third plant with
 		# a ladder needs no branch here.
@@ -2797,10 +2806,15 @@ static func selection_corpus() -> Array[String]:
 	var details: Array[String] = selection_detail_corpus()
 	var levels: Array[String] = selection_level_names()
 	for id: StringName in PlantCatalog.ids():
-		var display: String = PlantCatalog.display_name(id)
-		for level_name: String in levels:
-			for detail: String in details:
-				out.append(selection_line(display, level_name, detail))
+		# BOTH names for every plant: the one on the packet and the one a sport of it
+		# wears (`PlantMutation`). Neither is derivable from the other and either can
+		# be the wider — "Popcorn Cobbler" is longer than "Corn Cobbler", "Wild Mint"
+		# shorter than "Garden Mint" — so pricing one would leave this budget wrong in
+		# a direction that depends on which plant the player selected.
+		for display: String in [PlantCatalog.display_name(id), PlantMutation.display_name(id)]:
+			for level_name: String in levels:
+				for detail: String in details:
+					out.append(selection_line(display, level_name, detail))
 	return out
 
 
@@ -3744,6 +3758,11 @@ static func message_corpus() -> Array[String]:
 			maxi(Plant.ladder_spend(CornCobbler.LEVELS, CornCobbler.LEVELS.size()),
 				Plant.ladder_spend(ChompFlower.LEVELS, ChompFlower.LEVELS.size()))))
 		out.append(packet_message(display))
+		# The sport line, per plant, priced against the SPORT'S name and note rather
+		# than the ordinary plant's — the two differ (`PlantMutation.TABLE`) and it is
+		# always the longer of the two that reaches this row, because a sport is the
+		# only thing that can produce the sentence at all.
+		out.append(sport_message(PlantMutation.display_name(id), PlantMutation.note(id)))
 		# The upgrade hint, priced per plant name and at a cost the ladders cannot
 		# reach. Every plant gets a row because the tip names whichever plant on the
 		# board is cheapest to upgrade, and that is a fact about the player's garden
@@ -4144,6 +4163,19 @@ static func uproot_shows_tip(with_tip: bool, forfeited: int) -> bool:
 
 static func packet_message(plant_name: String) -> String:
 	return "The packet held a %s!" % plant_name
+
+
+## The garden threw a sport (`CrossBreeder`, plant-tower-defense-f21v).
+##
+## Names the plant AND what is different about it, in one line, because those are two
+## separate pieces of news and the player only gets this sentence once. "A Popcorn
+## Cobbler sprouted" alone would say a plant appeared and leave the player to work out
+## why they should care; `PlantMutation.note` is the half-sentence that answers it.
+##
+## "sprouted", not "grew" or "was planted": nobody planted it, and `grew_seeds` already
+## owns "grew" in this row's vocabulary.
+static func sport_message(plant_name: String, note: String) -> String:
+	return "Your plants crossed — a %s sprouted, and it %s." % [plant_name, note]
 
 
 ## Takes the plant's name now that more than one plant grows. The Chomp Flower's

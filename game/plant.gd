@@ -110,6 +110,20 @@ var kind: StringName = &""
 var cell: Vector2i = Vector2i.ZERO
 var board: Board = null
 var health: float = MAX_HEALTH
+
+## A SPORT: a plant the garden threw rather than one the player bought
+## (`CrossBreeder`). Same kind, one buff, its own tint and mark.
+##
+## **Set BEFORE `setup()`, never after.** `_build_visuals` reads it to tint the
+## sprite and to add the mark, and it is the only chance either gets — nothing
+## repaints a plant that changes its mind about being a sport. `Game._sprout_sport`
+## is the one caller and sets it on the line after `_new_plant`.
+##
+## An instance flag and not a subclass, for the reason `PlantMutation`'s header
+## gives at length: a sport has to be the same kind as its parents everywhere that
+## reads `kind`, which is the shop, the packets, the coverage map, the wave-side
+## readouts and every test over the catalogue.
+var is_sport: bool = false
 ## What this plant's firing interval is multiplied by right now. 1.0 is clear
 ## weather; a drought wave sets 2.0 (plant-tower-defense-q3lx).
 ##
@@ -147,8 +161,47 @@ var neighbour_interval_scale: float = 1.0
 ## change — which matters more here than usual, because the bug this function exists to
 ## prevent only appears on the SECOND event (place a Mint, then change the weather) and a
 ## test that stages one event would pass against the broken version.
-static func composed_interval(base: float, weather_scale: float, neighbour_scale: float) -> float:
-	return base * weather_scale * neighbour_scale
+##
+## A THIRD factor arrived with the sports (`PlantMutation`), and it is defaulted
+## rather than required. That is not laziness about the call sites: `sport_scale` is
+## not owned by anybody who can ASSIGN it — it is derived from `is_sport` and the
+## kind, both fixed for the life of the plant — so it carries none of the
+## overwrite hazard the two paragraphs above are about, and a caller that does not
+## pass it is a caller with nothing to lose. The three plants that time a shot pass
+## `sport_rate_scale()`; every existing test that calls this with three arguments
+## still describes exactly the composition it was written to describe.
+static func composed_interval(base: float, weather_scale: float, neighbour_scale: float,
+		sport_scale: float = 1.0) -> float:
+	return base * weather_scale * neighbour_scale * sport_scale
+
+
+## What this plant multiplies a LOWER-IS-BETTER quantity by: a firing interval, a
+## chew, a bite-resistance fraction. 1.0 for anything the garden did not throw.
+##
+## Two accessors on `Plant` rather than nine `if is_sport` branches spread over the
+## subclasses, so "an ordinary plant is unaffected" is stated once and cannot be got
+## wrong in the ninth place it is written.
+func sport_rate_scale() -> float:
+	return PlantMutation.rate_scale(kind) if is_sport else 1.0
+
+
+## What this plant multiplies a HIGHER-IS-BETTER quantity by: a radius, a heal, a
+## count of Mints. 1.0 for anything the garden did not throw.
+func sport_power_scale() -> float:
+	return PlantMutation.power_scale(kind) if is_sport else 1.0
+
+
+## The name a readout should print for THIS plant, which is not always its kind's.
+##
+## Every surface that names a placed plant goes through here rather than through
+## `PlantCatalog.display_name(plant.kind)`, which is what they all said before the
+## sports: a sport printed as "Corn Cobbler" is a plant the player cannot tell from
+## the cob beside it in the one readout that exists to tell them apart.
+##
+## The shop and the packets keep asking the catalogue directly, and correctly so —
+## nothing there is a plant yet, and a packet cannot promise a sport.
+func display_name() -> String:
+	return PlantMutation.display_name(kind) if is_sport else PlantCatalog.display_name(kind)
 
 var _sprite: Sprite2D
 ## The node the idle motion lives on, sitting between the plant and its sprite.
@@ -419,6 +472,12 @@ func _build_visuals() -> void:
 
 	_sprite = Sprite2D.new()
 	_sprite.texture = load(PlantCatalog.texture_path(kind)) as Texture2D
+	# A sport wears its parent's drawing with a shift over it, which is the whole of
+	# "different but similar". Multiplied into `modulate` rather than swapped for a
+	# second texture: nine more PNGs is nine more things for `test_sprite_style` to
+	# police and nine more chances for a sport to stop looking like its own kind.
+	if is_sport:
+		_sprite.modulate = PlantMutation.TINT
 	_sway_pivot.add_child(_sprite)
 
 	_health_back = ColorRect.new()
@@ -470,6 +529,15 @@ func _build_visuals() -> void:
 	_selection_marker.name = SelectionMarker.NODE_NAME
 	_selection_marker.visible = false
 	add_child(_selection_marker)
+
+	# After the selection marker, so a selected sport shows both and the mark sits on
+	# top. See SportMark's header for why this is a node and not three lines inside
+	# `_draw`: seven of the nine plant scripts override `_draw`, so a cue painted in
+	# the base class would appear on two kinds and quietly not on the rest.
+	if is_sport:
+		var mark := SportMark.new()
+		mark.name = SportMark.NODE_NAME
+		add_child(mark)
 
 	# Planting pop: the sprites are centred on their own vertical axis, which is
 	# what makes a scale tween land without drifting off the cell.

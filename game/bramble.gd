@@ -181,8 +181,13 @@ func take_damage(amount: float) -> void:
 ## The declaration the HUD and `Plant.seconds_of_chewing_left` read. `take_damage` above
 ## reads it too rather than reaching for `BITE_RESISTANCE` directly, so a readout saying
 ## "holds 11 seconds" and the mouth actually eating it cannot come apart.
+## A Thorn Bramble — the sport, `PlantMutation` — takes the rung's resistance down
+## further, and it is scaled HERE rather than in `take_damage` for the reason the
+## paragraph above gives: this is the one number both the mouth and the readout read,
+## so a sport that holds longer is a sport the panel says holds longer, with nothing
+## remembered at a second site.
 func bite_resistance() -> float:
-	return resistance_at(level)
+	return resistance_at(level) * sport_rate_scale()
 
 
 ## How long it holds under one mouth, before and after (plant-tower-defense-jvnm).

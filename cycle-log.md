@@ -1,10 +1,56 @@
-# Cycle 178
+# Cycle 179
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
 what `bd` structurally cannot: which cycle we are on, what the last one taught, what is
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
+
+## Cycle 179 — the garden makes a plant, and the user found the bug from the screen
+
+James asked for four things in one sentence: new waves, new enemies, unlockable skins for
+each, and a rare cross-breed between adjacent plants. They are filed as `-vyov`, `-4zyb`,
+`-ncfv` and `-f21v`; only the last is done. The other three are specified against the code
+rather than against the sentence, which is the part worth having: `-vyov` records that the
+wave table's own header leaves the campaign finale about one beetle of headroom before
+`ENDLESS_BEETLE_BASE`'s derivation breaks, and `-ncfv` records that `RunConfig`'s header
+already says a per-plant setting wants its own save LINE rather than a widened one. Neither
+of those is discoverable from the ask.
+
+**THE LESSON OF THIS CYCLE IS WHERE THE DEFECT CAME FROM.** Every gate passed — name_check
+0, import 0, lint 0/0, 1021 tests, check_all 23 of 24 — and the bug that mattered was
+reported by James, mid-turn, from looking at the screen: sports were standing in the pest
+lane. It was not the rule. `CrossBreeder.open_cells` filters on `board.is_buildable_for`
+and a test pins it. It was that `Game._sprout_sport` planted at ANY cell handed to it, and
+the bridge calls demonstrating the feature handed it road cells. **A verb reachable from
+the devtools bridge has no trusted callers.** `place_plant` refuses six ways; its sibling
+refused none, and the difference was invisible because both real call sites are correct.
+The kanban entry names the sweep this wants.
+
+**A rule that is correct because a set is uniform, in a codebase that is adding members to
+that set.** Three of them, in one diff, all in code nobody had touched: the selection panel
+printed `StickySundew.SLOW_FACTOR` as a class constant; `Game._apply_aloe_healing` computed
+one `Aloe.heal_for(delta)` for every Aloe on the board; and `StickySundew._claim` set a
+pest's speed only for the FIRST patch to catch it. Each was right for exactly as long as
+every member of its set was identical. The tell is a `ClassName.CONSTANT` or a
+`ClassName.static()` in a body that already holds an instance of that class in a local —
+tidy-looking, and a claim that all instances are the same. Three instances of one sentence
+usually wants a skill rather than three fixes.
+
+**The harness could not open the project at all when this cycle started.** `godot_bin` in
+`devtools_config.json` named `Godot_v4.7.1/`, a directory that had been renamed to
+`Godot_v4.7.1_fixed/`. Every gate that opens the project was dead; the three that do not —
+`name_check`, `check_all`, `coverage_check` — reported clean throughout, so it read as a
+green run missing a couple of tools. Logged as G-147 with the one-line fix (`check_all`
+should stat the binary and name it as a skipped check).
+
+**Two ledger rows were written and removed before the third stuck.** The first had the
+wrong key names, so `verify_ledger` recorded its checks as empty; the second was missing
+`verdict`/`lint`/`tests`, which default silently. `python tools/run_json_check.py` catches
+both in under a second and the file at the top of this log already says to run it BEFORE
+`verify_ledger record`. It was run after, twice. A rule written down is not a rule followed.
+
+Waiting on the user: nothing. The three remaining beads are ready to work.
 
 ## Cycles 107, 108 and 109 are MISSING from this file, and that is the first thing to fix
 

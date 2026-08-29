@@ -539,10 +539,26 @@ func _nearest_free_pest(pests: Array[Pest]) -> Pest:
 	return best
 
 
+## How long THIS flower takes over a meal whose own chew is `base_seconds` — the rung's
+## scale and the sport's, together.
+##
+## An instance method beside the static above, and the split is the same one
+## `CornCobbler.fire_interval` makes against its own LEVELS table: the static answers
+## "what does a flower at rung N do", which a readout reasoning about an upgrade needs,
+## and this answers "what will THIS flower do", which is what the mouth acts on. Before
+## the sports they were the same number and the static was enough.
+##
+## Applied where the meal is SIZED rather than where it is counted down: a Snap Flower
+## that started an eleven-second queen and then had its scale read would otherwise finish
+## the mouthful the ordinary flower's clock began.
+func chew_seconds_against(base_seconds: float) -> float:
+	return chew_seconds_for(level, base_seconds) * sport_rate_scale()
+
+
 func _grab(pest: Pest) -> void:
 	_held = pest
 	pest.held_by = self
-	_chew_total = chew_seconds_for(level, pest.chew_seconds)
+	_chew_total = chew_seconds_against(pest.chew_seconds)
 	_chew_left = _chew_total
 	_bite()
 	# ONLY if the gape did not take. `_bite()` wears the open jaw for

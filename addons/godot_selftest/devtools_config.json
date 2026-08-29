@@ -80,7 +80,7 @@
   "log_check_dated_entry": true,
   "log_check_value": true,
   "mute": true,
-  "godot_bin": "C:/Users/gotmi/Downloads/Godot_v4.7.1/Godot_v4.7.1-stable_win64_console.exe",
+  "godot_bin": "C:/Users/gotmi/Downloads/Godot_v4.7.1_fixed/Godot_v4.7.1-stable_win64_console.exe",
   "godot_version": "4.7.1",
   "_scaffold_defaults": {
     "note": "Written by /scaffold-godot-harness. 'values' is what scaffold last left here and 'owned' lists the keys it may still update; edit a key and it becomes yours permanently. Safe to commit; delete to reset the tracking.",
@@ -171,7 +171,7 @@
       "log_check_dated_entry": true,
       "log_check_value": true,
       "mute": true,
-      "godot_bin": "C:/Users/gotmi/Downloads/Godot_v4.7.1/Godot_v4.7.1-stable_win64_console.exe",
+      "godot_bin": "C:/Users/gotmi/Downloads/Godot_v4.7.1_fixed/Godot_v4.7.1-stable_win64_console.exe",
       "godot_version": "4.7.1"
     }
   },

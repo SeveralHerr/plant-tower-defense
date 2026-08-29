@@ -11843,7 +11843,14 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	# EIGHT per plant since cycle 117: road_plant_tip joins the two death lines, priced
 	# per plant for the same reason -- pricing only the one plant that can currently show
 	# it is a budget that is wrong the first time a second road plant exists.
-	var catalogue_entries: int = (PlantCatalog.PLANTS.size() * 8
+	# NINE per plant since the sports (plant-tower-defense-f21v): `sport_message` is a
+	# ninth per-plant producer. It is NOT counted by the "every catalogue name reaches
+	# the corpus" sweep above, and that is why it has to be counted here instead -- the
+	# sweep matches on `PlantCatalog.display_name`, and a sport's line carries
+	# `PlantMutation.display_name` ("Snap Flower", which does not contain "Chomp
+	# Flower"). A producer that is invisible to direction one is exactly what direction
+	# two is for.
+	var catalogue_entries: int = (PlantCatalog.PLANTS.size() * 9
 		+ CornCobbler.LEVELS.size() + ChompFlower.LEVELS.size())
 	# TEN since cycle 144: the lapsed-move refusal (plant-tower-defense-b9bl) is a
 	# plant-name-free producer and is on this row INSTEAD of a purchase rather than
@@ -17267,12 +17274,21 @@ func test_the_selection_corpus_is_derived_from_the_catalogue_and_both_ladders() 
 	var ids: Array[StringName] = PlantCatalog.ids()
 	var err: String = _T.assert_gt(ids.size(), 6,
 		"the catalogue has plants to sweep (an empty sweep prices a roomy panel)")
+	# TWO names per plant since the sports landed (plant-tower-defense-f21v): the
+	# catalogue's and `PlantMutation`'s. Written as `NAMES_PER_PLANT` and multiplied
+	# rather than folded into the plant count, because the two factors answer different
+	# questions -- how many plants there are is the catalogue's, how many names each can
+	# wear is the mutation table's -- and a nine that silently means eighteen is how a
+	# corpus stops being readable as a cross product at all.
+	var names_per_plant: int = 2
 	if err == "":
-		err = _T.assert_eq(corpus.size(), ids.size() * levels.size() * details.size(),
-			("the corpus is exactly the cross product -- %d plant(s) x %d rung(s) x %d "
-				+ "detail(s). A size that does not multiply out means a branch was added "
-				+ "to _refresh_selection that selection_corpus() never learned about")
-				% [ids.size(), levels.size(), details.size()])
+		err = _T.assert_eq(corpus.size(),
+			ids.size() * names_per_plant * levels.size() * details.size(),
+			("the corpus is exactly the cross product -- %d plant(s) x %d name(s) each "
+				+ "x %d rung(s) x %d detail(s). A size that does not multiply out means "
+				+ "a branch was added to _refresh_selection that selection_corpus() "
+				+ "never learned about")
+				% [ids.size(), names_per_plant, levels.size(), details.size()])
 	if err != "":
 		return err
 
@@ -17289,6 +17305,11 @@ func test_the_selection_corpus_is_derived_from_the_catalogue_and_both_ladders() 
 	var wanted_names: Array = []
 	for id: StringName in ids:
 		wanted_names.append(PlantCatalog.display_name(id))
+		# The sport's name too, and derived from the same id rather than listed: a
+		# plant whose sport was never given a row would show up here as the catalogue
+		# name twice, which the Dictionary above collapses -- so this comparison is
+		# also what would catch a `PlantMutation.TABLE` gap in the panel's budget.
+		wanted_names.append(PlantMutation.display_name(id))
 	wanted_names.sort()
 	var got_names: Array = names_seen.keys()
 	got_names.sort()
@@ -21708,4 +21729,796 @@ func test_the_armed_move_hint_fits_the_panel_it_is_drawn_in() -> String:
 					("and bought no pixels either: %.1f without it, %.1f with (%.1f px of "
 						+ "room left)") % [float(before["stack_height"]),
 						float(with_hint["stack_height"]), float(with_hint["height_left"])])
+	return err
+
+
+# ---------------------------------------------------------------------------
+# The sports (plant-tower-defense-f21v): two plants of a kind standing side by
+# side sometimes throw a mutated third into a cell beside them.
+#
+# The mechanic is split across three files on purpose -- `PlantMutation` is the
+# trait table, `CrossBreeder` is the rule, and `Game` owns only the clock and the
+# planting -- so almost all of it is assertable with no tree and no frame. These
+# tests are grouped in that order: the table, the rule, then the parts that
+# genuinely need a Game.
+
+
+## Every plant has a sport, and every sport is better than its parent in exactly one
+## respect.
+##
+## Walks `PlantCatalog.ids()` and NOT `PlantMutation.TABLE`'s own keys, which is the
+## whole point of the test: a tenth plant added to the catalogue with no row here
+## would pass a sweep over the table and would silently never mutate. Same wrong-set
+## hazard `test_every_plant_declares_whether_it_engages` exists to close, arriving
+## from the other side.
+func test_every_plant_has_a_sport_and_every_sport_is_strictly_better() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 6,
+		"the catalogue really has plants to sweep -- a loop over nothing asserts nothing")
+	if err != "":
+		return err
+	for id: StringName in ids:
+		err = _T.assert_true(PlantMutation.has(id),
+			"%s has a sport row -- a plant with none can never mutate" % id)
+		if err != "":
+			return err
+		var rate: float = PlantMutation.rate_scale(id)
+		var power: float = PlantMutation.power_scale(id)
+		err = _T.assert_true(rate <= 1.0,
+			("%s's rate is %.3f. `rate` multiplies a LOWER-IS-BETTER quantity, so a "
+				+ "value above 1.0 is a sport WORSE than the plant that threw it")
+				% [id, rate])
+		if err == "":
+			err = _T.assert_true(power >= 1.0,
+				("%s's power is %.3f. `power` multiplies a HIGHER-IS-BETTER quantity, so "
+					+ "a value under 1.0 is a sport worse than its parent") % [id, power])
+		if err == "":
+			var moved: int = (1 if rate < 1.0 else 0) + (1 if power > 1.0 else 0)
+			err = _T.assert_eq(moved, 1,
+				("%s moves exactly one of rate/power (rate %.3f, power %.3f). Zero is a "
+					+ "sport that does nothing and reads as a bug; two is a second buff "
+					+ "that arrived without anyone deciding it should") % [id, rate, power])
+		if err == "":
+			# Read back through `Plant.sport_rate_scale`'s own source of truth, so the
+			# accessor the nine subclasses actually call is the one graded here rather
+			# than the table it happens to read.
+			err = _T.assert_float_eq(PlantMutation.rate_scale(id), rate, 0.0001,
+				"%s's rate is what the accessor hands a plant" % id)
+		if err == "":
+			err = _T.assert_gt(PlantMutation.display_name(id).length(), 0,
+				"%s's sport has a name" % id)
+		if err == "":
+			err = _T.assert_gt(PlantMutation.note(id).length(), 0,
+				("%s's sport says what it does differently -- `Hud.sport_message` "
+					+ "interpolates this, and an empty one ships a sentence with a hole "
+					+ "in it") % id)
+		if err != "":
+			return err
+	return ""
+
+
+## No sport is named more widely than the catalogue already is.
+##
+## `Hud.selection_corpus` prices the selection panel against every name a plant can
+## wear, so a long sport name is not a silent problem -- it is a panel overflow the
+## budget test would report as a mysterious regression in a file that never mentions
+## the sports. This test is the one that names the cause.
+##
+## Measured against the catalogue's OWN widest name rather than against a recorded
+## number, so retiring "Barrier Bramble" for something shorter tightens this bound
+## with it instead of leaving a stale allowance behind.
+func test_no_sport_name_is_wider_than_the_catalogue_already_is() -> String:
+	var widest_plain: int = 0
+	var plain_name: String = ""
+	for id: StringName in PlantCatalog.ids():
+		var display: String = PlantCatalog.display_name(id)
+		if display.length() > widest_plain:
+			widest_plain = display.length()
+			plain_name = display
+	var err: String = _T.assert_gt(widest_plain, 0, "the catalogue has names at all")
+	if err != "":
+		return err
+	for id: StringName in PlantCatalog.ids():
+		var sport: String = PlantMutation.display_name(id)
+		err = _T.assert_true(sport.length() <= widest_plain,
+			("%s (%d chars) is wider than the widest name the catalogue already has, "
+				+ "%s (%d). The selection panel width budget is priced on that maximum "
+				+ "-- see Hud.selection_corpus")
+				% [sport, sport.length(), plain_name, widest_plain])
+		if err != "":
+			return err
+	return ""
+
+
+## A sport is never a parent, which is the bound on the whole mechanic.
+##
+## Without it the sports breed sports and the population grows with itself: a garden
+## that fills itself with free plants has stopped being a garden the player is
+## building. With it, every child needs two BOUGHT parents.
+##
+## Asserted through `eligible_kinds`, which is the one function in `CrossBreeder` that
+## touches a `Plant` at all -- everything downstream reads the Dictionary it returns,
+## so a sport excluded here is a sport excluded from every rule below it.
+func test_a_sport_is_never_a_parent() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var bought: Plant = game._new_plant(PlantCatalog.CORN)
+	bought.kind = PlantCatalog.CORN
+	var thrown: Plant = game._new_plant(PlantCatalog.CORN)
+	thrown.kind = PlantCatalog.CORN
+	thrown.is_sport = true
+	var plants: Dictionary = {Vector2i(2, 2): bought, Vector2i(3, 2): thrown}
+	var kinds: Dictionary = CrossBreeder.eligible_kinds(plants)
+	var err: String = _T.assert_eq(kinds.size(), 1,
+		("one of the two plants is a sport and only the bought one may breed -- got %d "
+			+ "eligible") % kinds.size())
+	if err == "":
+		err = _T.assert_true(kinds.has(Vector2i(2, 2)),
+			"and it is the bought one that remains, not the sport")
+	if err == "":
+		err = _T.assert_eq(CrossBreeder.pairs(kinds).size(), 0,
+			"so the two of them are not a breeding pair, however adjacent they stand")
+	bought.free()
+	thrown.free()
+	_T.free_ui(game)
+	return err
+
+
+## The pair scan sees each shared edge exactly once, and only between plants of one
+## kind.
+##
+## Counted rather than eyeballed: a pair emitted twice would breed at double the rate
+## of every other pair for a reason no player could see, since `CrossBreeder.roll`
+## draws uniformly over the list this returns.
+func test_the_pair_scan_finds_each_edge_once_and_only_between_matching_kinds() -> String:
+	# Three cobs in a row plus a lone Chomp touching the middle one. The row is two
+	# edges; the Chomp shares an edge with a cob and must produce none.
+	var kinds: Dictionary = {
+		Vector2i(1, 1): PlantCatalog.CORN,
+		Vector2i(2, 1): PlantCatalog.CORN,
+		Vector2i(3, 1): PlantCatalog.CORN,
+		Vector2i(2, 2): PlantCatalog.CHOMP,
+		# Diagonal to a cob, and touching nothing orthogonally.
+		Vector2i(4, 2): PlantCatalog.CORN,
+	}
+	var found: Array = CrossBreeder.pairs(kinds)
+	var err: String = _T.assert_eq(found.size(), 2,
+		("three cobs in a row share two edges, the Chomp shares none with a cob, and the "
+			+ "diagonal cob shares none at all -- got %d pair(s): %s")
+			% [found.size(), str(found)])
+	if err != "":
+		return err
+	var seen: Dictionary = {}
+	for pair: Array in found:
+		err = _T.assert_eq(pair.size(), 2, "a pair is two cells")
+		if err != "":
+			return err
+		var key: String = "%s|%s" % [pair[0], pair[1]]
+		err = _T.assert_false(seen.has(key), "no pair is listed twice -- %s repeats" % key)
+		if err != "":
+			return err
+		seen[key] = true
+		err = _T.assert_true(CrossBreeder._precedes(pair[0], pair[1]),
+			("a pair is emitted in reading order, so one edge cannot arrive twice wearing "
+				+ "two orders -- %s") % str(pair))
+		if err != "":
+			return err
+	return ""
+
+
+## A sport only ever lands where the player could have planted one themselves.
+##
+## Two halves, and the second is the one that would have shipped broken. Every plant
+## in this game goes on the grass except the Barrier Bramble, which goes on the road
+## (`PlantCatalog.on_road`) -- so a rule asking `is_buildable` rather than
+## `is_buildable_for` would have thrown Bramble sports onto grass, where a wall blocks
+## nothing at all and the purchase path already refuses to put one.
+func test_a_sport_only_lands_where_that_kind_could_have_been_planted() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var board: Board = game.board
+	var err: String = ""
+	var checked: int = 0
+	for id: StringName in PlantCatalog.ids():
+		# A pair anywhere legal for this kind, found off the board rather than typed:
+		# the road shape is Board's business and a hand-picked cell goes stale the
+		# first time it moves.
+		var seat: Vector2i = Vector2i(-1, -1)
+		for y: int in range(Board.ROWS):
+			for x: int in range(Board.COLS):
+				var cell := Vector2i(x, y)
+				if board.is_buildable_for(cell, id) and board.is_buildable_for(
+						cell + Vector2i(1, 0), id):
+					seat = cell
+					break
+			if seat.x >= 0:
+				break
+		if seat.x < 0:
+			# No two legal cells side by side for this kind on the shipped board. A
+			# fact about the road rather than a failure -- but it means this kind can
+			# never breed, and the count below is what says how many are in that boat.
+			continue
+		checked += 1
+		var pair: Array = [seat, seat + Vector2i(1, 0)]
+		var occupied: Dictionary = {seat: true, seat + Vector2i(1, 0): true}
+		var cells: Array[Vector2i] = CrossBreeder.open_cells(pair, occupied, id, board)
+		err = _T.assert_gt(cells.size(), 0,
+			"a pair of %s standing on open ground has somewhere to throw a sport" % id)
+		if err != "":
+			break
+		for cell: Vector2i in cells:
+			err = _T.assert_true(board.is_buildable_for(cell, id),
+				("a %s sport landed on %s, which the player could not have planted a %s "
+					+ "on") % [id, cell, id])
+			if err == "":
+				err = _T.assert_false(occupied.has(cell),
+					"and never on a cell that already holds a plant -- %s" % cell)
+			if err != "":
+				break
+		if err != "":
+			break
+	if err == "":
+		err = _T.assert_gt(checked, 6,
+			("the sweep really covered the catalogue -- only %d of %d kind(s) had a legal "
+				+ "pair on the shipped board") % [checked, PlantCatalog.ids().size()])
+	_T.free_ui(game)
+	return err
+
+
+## A pair with nowhere to put a child never spends a tick.
+##
+## `CrossBreeder.candidates` drops the boxed-in pair BEFORE the roll, and the ordering
+## is the behaviour: rolling first and then finding nowhere to plant would silently
+## consume the chance, so a densely planted garden would mutate more and more rarely
+## with no cause the player could observe. What `CHANCE_PER_TICK` means is "the chance
+## of a sport", not "the chance of an attempt", and this is where that is true.
+func test_a_boxed_in_pair_never_spends_a_tick() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var board: Board = game.board
+	var err: String = ""
+	# Fill every buildable cell with a cob. Every pair in it is boxed in by
+	# construction, and there are a great many pairs -- so a roll that COULD fire
+	# would certainly fire at the chance of 1.0 used below.
+	var plants: Dictionary = {}
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if not board.is_buildable_for(cell, PlantCatalog.CORN):
+				continue
+			var plant: Plant = game._new_plant(PlantCatalog.CORN)
+			plant.kind = PlantCatalog.CORN
+			plants[cell] = plant
+	err = _T.assert_gt(plants.size(), 20,
+		"the board really was filled -- an empty garden has no pairs for a trivial reason")
+	if err == "":
+		var kinds: Dictionary = CrossBreeder.eligible_kinds(plants)
+		err = _T.assert_gt(CrossBreeder.pairs(kinds).size(), 10,
+			"and it is full of adjacent pairs, so the drop below is about the open cells")
+	if err == "":
+		err = _T.assert_eq(CrossBreeder.candidates(plants, board).size(), 0,
+			"none of them has anywhere to put a child, so none is a candidate")
+	if err == "":
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 1
+		err = _T.assert_true(CrossBreeder.roll(plants, board, rng, 1.0).is_empty(),
+			("and a roll that CANNOT fail still produces nothing, which is the half that "
+				+ "says the guard is before the draw rather than after it"))
+	for key: Variant in plants:
+		(plants[key] as Plant).free()
+	_T.free_ui(game)
+	return err
+
+
+## A sport stays an event: rare enough to be news, common enough to be met.
+##
+## Stated in SECONDS of play rather than in ticks, because the tick length is one of
+## the two constants being graded and a bound written in ticks would move with it. A
+## full campaign is roughly ten minutes of live play, so the band below reads as "a
+## garden holding a matching pair throws between one and six of these in a campaign".
+func test_a_sport_is_rare_enough_to_stay_an_event() -> String:
+	var mean: float = CrossBreeder.mean_seconds_between()
+	var err: String = _T.assert_gt(mean, 90.0,
+		("a sport every %.0f s is not an event -- a garden holding one pair would throw "
+			+ "one most waves, and free plants would out-earn the shop") % mean)
+	if err == "":
+		err = _T.assert_true(mean < 600.0,
+			("a sport every %.0f s is longer than a whole campaign, so the mechanic would "
+				+ "ship unseen by most players") % mean)
+	if err == "":
+		err = _T.assert_true(CrossBreeder.TICK_SECONDS > 0.0,
+			"and the clock actually advances -- a zero tick divides the mean by nothing")
+	return err
+
+
+## A quiet tick draws exactly one number, so the same seed grows the same garden.
+##
+## `roll` asks the chance FIRST and only then picks a pair and a cell. Drawing the
+## recipient first would consume two or three numbers on every quiet tick, and how
+## many are consumed would depend on how many plants happened to be standing -- so two
+## runs from one seed would diverge purely because the player planted in a different
+## order. The mechanic would still look random; it would just stop being reproducible,
+## which is exactly the failure `WaveDirector.set_seed` exists to prevent.
+func test_a_quiet_tick_draws_once_so_a_seed_reproduces_a_garden() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var board: Board = game.board
+	var err: String = ""
+	var plants: Dictionary = {}
+	var seat: Vector2i = Vector2i(-1, -1)
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if board.is_buildable_for(cell, PlantCatalog.CORN) and board.is_buildable_for(
+					cell + Vector2i(1, 0), PlantCatalog.CORN):
+				seat = cell
+				break
+		if seat.x >= 0:
+			break
+	err = _T.assert_gte(seat.x, 0, "the shipped board seats two cobs side by side")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	for cell: Vector2i in [seat, seat + Vector2i(1, 0)]:
+		var plant: Plant = game._new_plant(PlantCatalog.CORN)
+		plant.kind = PlantCatalog.CORN
+		plants[cell] = plant
+
+	# A chance of 0.0 can never fire, so every draw this loop makes is the chance draw
+	# and nothing else. If the recipient were picked first the streams would part.
+	var quiet := RandomNumberGenerator.new()
+	quiet.seed = 7
+	for i: int in range(5):
+		err = _T.assert_true(CrossBreeder.roll(plants, board, quiet, 0.0).is_empty(),
+			"a chance of zero never fires")
+		if err != "":
+			break
+	if err == "":
+		var reference := RandomNumberGenerator.new()
+		reference.seed = 7
+		for i: int in range(5):
+			reference.randf()
+		err = _T.assert_float_eq(quiet.randf(), reference.randf(), 0.0000001,
+			("five quiet ticks consumed exactly five numbers. A different count means the "
+				+ "recipient is being drawn before the chance, and a seeded run stops "
+				+ "reproducing the moment the garden shape changes"))
+	for key: Variant in plants:
+		(plants[key] as Plant).free()
+	_T.free_ui(game)
+	return err
+
+
+## Every sport's buff is observable through the plant's OWN reading, not through the
+## table it came from.
+##
+## The distinction is the whole value of this test. `PlantMutation.rate_scale` being
+## 0.82 says nothing about whether a Popcorn Cobbler fires faster; what says it is
+## `CornCobbler.fire_interval` coming back smaller on the sport than on the plant
+## beside it. Nine kinds, nine seams, and a kind whose subclass never learned to read
+## its own scale fails here while the table test above still passes.
+##
+## The covered set is compared against `PlantCatalog.ids()` at the end rather than
+## trusted, because the loop is hand-written by necessity -- the seams are nine
+## different methods with nine signatures -- and a hand-written list of cases is
+## exactly what goes stale when a tenth plant lands. See
+## `.claude/skills/derive-the-list`.
+func test_every_sport_reads_its_own_buff_through_its_own_plant() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = ""
+	var covered: Dictionary = {}
+	for id: StringName in PlantCatalog.ids():
+		var plain: Plant = game._new_plant(id)
+		plain.kind = id
+		var sport: Plant = game._new_plant(id)
+		sport.kind = id
+		sport.is_sport = true
+		# LOWER is better for a rate and HIGHER for a power, so the direction the
+		# reading has to move is read off the table rather than restated per plant.
+		var lower_is_better: bool = PlantMutation.rate_scale(id) < 1.0
+		var before: float = _sport_reading(plain)
+		var after: float = _sport_reading(sport)
+		covered[id] = true
+		# The gate first: both accessors are the identity on a plant the player
+		# bought. Nine subclasses multiply by these, so an accessor that answered the
+		# table for every plant would buff the entire garden and every reading below
+		# would still move in the right direction.
+		err = _T.assert_float_eq(plain.sport_rate_scale(), 1.0, 0.0001,
+			"an ordinary %s multiplies its rate by exactly one" % id)
+		if err == "":
+			err = _T.assert_float_eq(plain.sport_power_scale(), 1.0, 0.0001,
+				"and its power by exactly one" % [])
+		if err == "":
+			err = _T.assert_float_eq(sport.sport_rate_scale(),
+				PlantMutation.rate_scale(id), 0.0001,
+				"while the sport reads the table's rate for %s" % id)
+		if err != "":
+			plain.free()
+			sport.free()
+			break
+		if lower_is_better:
+			err = _T.assert_true(after < before,
+				("a %s sport reads %.4f against its parent %.4f, and lower is better for "
+					+ "this plant -- the subclass is not reading sport_rate_scale()")
+					% [id, after, before])
+		else:
+			err = _T.assert_true(after > before,
+				("a %s sport reads %.4f against its parent %.4f, and higher is better for "
+					+ "this plant -- the subclass is not reading sport_power_scale()")
+					% [id, after, before])
+		plain.free()
+		sport.free()
+		if err != "":
+			break
+	if err == "":
+		var missing: Array[String] = []
+		for id: StringName in PlantCatalog.ids():
+			if not covered.has(id):
+				missing.append(String(id))
+		err = _T.assert_true(missing.is_empty(),
+			("every plant in the catalogue was read through a seam of its own -- %s "
+				+ "reached no branch of _sport_reading") % [missing])
+	_T.free_ui(game)
+	return err
+
+
+## The one number that tells a sport from its parent, per kind.
+##
+## Nine branches and no default, deliberately: a `_:` arm returning a constant would
+## make a tenth plant PASS the test above by reading the same number twice, which is
+## the exact opposite of what that test is for. An unknown kind returns NAN, and NAN
+## compares false against everything, so it fails both directions.
+func _sport_reading(plant: Plant) -> float:
+	match plant.kind:
+		PlantCatalog.CORN:
+			return (plant as CornCobbler).fire_interval()
+		PlantCatalog.CHOMP:
+			# A queen-sized mouthful, so the number is one a player would recognise.
+			return (plant as ChompFlower).chew_seconds_against(11.0)
+		PlantCatalog.SUNFLOWER:
+			return (plant as Sunflower).interval()
+		PlantCatalog.SUNDEW:
+			# The CROSSING-TIME multiplier, not the slow factor, and the inversion is
+			# the honest reading rather than a way of passing the test. The Sundew's
+			# `power` scales the CUT a patch takes off (see `StickySundew.slow_factor`),
+			# so the factor itself falls while the thing the plant is FOR -- how much
+			# longer every gun covering that road gets -- rises. `crossing_time_multiplier`
+			# is what the plant's own file calls that number.
+			return 1.0 / (plant as StickySundew).slow_factor()
+		PlantCatalog.DANDELION:
+			return (plant as Dandelion).shot_interval()
+		PlantCatalog.MINT:
+			# A Mint acts through Game rather than on itself, so its seam is what
+			# `Game._refresh_neighbour_buffs` reads off it: how many Mints it is worth.
+			return plant.sport_power_scale()
+		PlantCatalog.NETTLE:
+			return (plant as Nettle).sting_interval()
+		PlantCatalog.ALOE:
+			# One second of tending, which is the unit Aloe's own header argues in.
+			return Aloe.heal_for(1.0, plant.sport_power_scale())
+		PlantCatalog.BRAMBLE:
+			return (plant as Bramble).bite_resistance()
+	return NAN
+
+
+## A sport wears its difference: the tint on the sprite and the mark over it.
+##
+## Both halves, because either alone is not enough. The tint is invisible next to a
+## plant of a different kind -- a player would need the parent two cells away to see
+## it -- and the mark alone would leave two identical drawings differing by three
+## small diamonds. This is the test that says a sport is legible at all.
+func test_a_sport_wears_its_tint_and_its_mark_and_an_ordinary_plant_wears_neither() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var board: Board = game.board
+	var seat: Vector2i = Vector2i(-1, -1)
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			if board.is_buildable_for(Vector2i(x, y), PlantCatalog.CORN):
+				seat = Vector2i(x, y)
+				break
+		if seat.x >= 0:
+			break
+	var err: String = _T.assert_gte(seat.x, 0, "the board has grass to plant on")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# Through Game's own planting path rather than by hand, so what is asserted is
+	# what a real sport arriving mid-run would look like -- including the ordering
+	# `_install_plant` documents, where is_sport must be set before setup().
+	err = _T.assert_eq(game._sprout_sport(PlantCatalog.CORN, seat), "",
+		"a sprout onto legal empty grass is accepted")
+	var sport: Plant = game._plants.get(seat) as Plant
+	if err == "":
+		err = _T.assert_true(sport != null, "the sprout actually planted something")
+	if err == "":
+		err = _T.assert_true(sport.is_sport, "and it knows it is a sport")
+	if err == "":
+		err = _T.assert_eq(sport.display_name(), PlantMutation.display_name(PlantCatalog.CORN),
+			"and names itself as one, which is what the selection panel prints")
+	if err == "":
+		var mark: Node = sport.find_child(SportMark.NODE_NAME, true, false)
+		err = _T.assert_true(mark != null,
+			("a sport carries a %s node. Painted in Plant._draw instead, this cue would "
+				+ "appear on the two kinds that do not override _draw and silently not on "
+				+ "the other seven") % SportMark.NODE_NAME)
+	if err == "":
+		var sprites: Array[Node] = sport.find_children("*", "Sprite2D", true, false)
+		var sprite: Sprite2D = null if sprites.is_empty() else sprites[0] as Sprite2D
+		err = _T.assert_true(sprite != null, "and it has a sprite to tint")
+		if err == "":
+			err = _T.assert_eq(sprite.modulate, PlantMutation.TINT,
+				"which wears the sport tint rather than the default white")
+	# The control: an ordinary plant of the same kind, planted the ordinary way.
+	if err == "":
+		var free_cell: Vector2i = Vector2i(-1, -1)
+		for y: int in range(Board.ROWS):
+			for x: int in range(Board.COLS):
+				var cell := Vector2i(x, y)
+				if cell != seat and board.is_buildable_for(cell, PlantCatalog.CORN):
+					free_cell = cell
+					break
+			if free_cell.x >= 0:
+				break
+		game.bank.seeds = 999
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, free_cell), "",
+			"the control cob really was planted")
+		if err == "":
+			var plain: Plant = game._plants.get(free_cell) as Plant
+			err = _T.assert_false(plain.is_sport, "a bought plant is not a sport")
+			if err == "":
+				err = _T.assert_true(plain.find_child(SportMark.NODE_NAME, true, false) == null,
+					"and wears no mark")
+			if err == "":
+				var plain_sprites: Array[Node] = plain.find_children("*", "Sprite2D",
+					true, false)
+				var plain_sprite: Sprite2D = plain_sprites[0] as Sprite2D
+				err = _T.assert_eq(plain_sprite.modulate, Color.WHITE,
+					"and no tint -- the sports must not have recoloured every plant")
+	_T.free_ui(game)
+	return err
+
+
+## The sprout line names the plant AND what is different about it.
+##
+## Both halves, because the player gets this sentence once and a plant appearing is
+## only half the news. "A Popcorn Cobbler sprouted" says something happened; the note
+## is what says why they should care, and a message that interpolated an empty note
+## would read as a sentence with a hole in it -- which is what
+## `test_every_plant_has_a_sport_and_every_sport_is_strictly_better` checks from the
+## table's end.
+func test_the_sport_message_names_the_plant_and_what_it_does() -> String:
+	var err: String = ""
+	for id: StringName in PlantCatalog.ids():
+		var line: String = Hud.sport_message(PlantMutation.display_name(id),
+			PlantMutation.note(id))
+		err = _T.assert_true(line.contains(PlantMutation.display_name(id)),
+			"the %s sprout line names the sport: %s" % [id, line])
+		if err == "":
+			err = _T.assert_true(line.contains(PlantMutation.note(id)),
+				"and says what it does differently: %s" % line)
+		if err == "":
+			err = _T.assert_false(line.contains(PlantCatalog.display_name(id)),
+				("and does NOT fall back to the ordinary name -- a sprout announced as "
+					+ "'%s' is a sentence about the plant the player already had")
+					% PlantCatalog.display_name(id))
+		if err != "":
+			return err
+	return ""
+
+
+## The sport badge sits clear of everything else parked over a plant, and never fades
+## out.
+##
+## Every number here is read through a pure static so the cue is assertable in a
+## headless run, where no `_draw` ever executes -- the shape
+## `.claude/skills/assert-an-animation` argues for.
+##
+## The CLEARANCE half is the one worth having. Two things already live above a plant:
+## the health bar (`Plant.HEALTH_BAR_ORIGIN`/`HEALTH_BAR_SIZE`) and the selection box.
+## A badge centred over the head would sit on both, and it would only be seen to do so
+## on a plant that was simultaneously damaged and selected -- which is the state a
+## player is in exactly when they need to read both.
+func test_the_sport_badge_stays_clear_of_the_health_bar_and_never_pulses_away() -> String:
+	var ring: PackedVector2Array = PlantMutation.badge_ring()
+	var err: String = _T.assert_gt(ring.size(), 8,
+		"the badge is drawn as a real ring, not a stub")
+	if err == "":
+		for at: Vector2 in ring:
+			err = _T.assert_float_eq(at.distance_to(PlantMutation.BADGE_CENTRE),
+				PlantMutation.BADGE_RADIUS, 0.001,
+				"every point of the ring is one radius from the badge's centre")
+			if err != "":
+				return err
+	if err == "":
+		var star: PackedVector2Array = PlantMutation.badge_star()
+		err = _T.assert_eq(star.size(), PlantMutation.STAR_POINTS * 2,
+			"a four-point star is eight vertices: a spike and a valley each")
+		if err == "":
+			err = _T.assert_float_eq(star[0].distance_to(PlantMutation.BADGE_CENTRE),
+				PlantMutation.STAR_OUTER, 0.001,
+				"the first vertex is a spike, at the outer radius")
+		if err == "":
+			err = _T.assert_float_eq(star[1].distance_to(PlantMutation.BADGE_CENTRE),
+				PlantMutation.STAR_INNER, 0.001,
+				"and the second is a valley, at the inner one")
+		if err == "":
+			err = _T.assert_true(star[0].x > PlantMutation.BADGE_CENTRE.x - 0.001
+					and star[0].x < PlantMutation.BADGE_CENTRE.x + 0.001
+					and star[0].y < PlantMutation.BADGE_CENTRE.y,
+				("the first spike points up-screen, which art_src/STYLE.md makes the "
+					+ "facing of everything directional in this kit -- got %s") % star[0])
+		if err == "":
+			err = _T.assert_true(PlantMutation.STAR_OUTER < PlantMutation.BADGE_RADIUS,
+				"and the whole star fits inside the disc it is drawn on")
+	if err == "":
+		# The clearance. The health bar is a rect in the same space the badge is drawn
+		# in, so this is a box against a circle and not an impression.
+		var bar := Rect2(Plant.HEALTH_BAR_ORIGIN, Plant.HEALTH_BAR_SIZE)
+		var nearest: Vector2 = Vector2(
+			clampf(PlantMutation.BADGE_CENTRE.x, bar.position.x, bar.end.x),
+			clampf(PlantMutation.BADGE_CENTRE.y, bar.position.y, bar.end.y))
+		err = _T.assert_true(
+			nearest.distance_to(PlantMutation.BADGE_CENTRE) > PlantMutation.BADGE_RADIUS,
+			("the badge clears the health bar %s -- a damaged sport must not have its "
+				+ "remaining health covered by the mark that says it is a sport") % bar)
+	if err == "":
+		# Both extremes of the pulse plus a sample between them, because a floor read
+		# at one instant says nothing about the trough.
+		var lowest: float = 1.0
+		for i: int in range(24):
+			var at: float = SportMark.PULSE_SECONDS * float(i) / 24.0
+			lowest = minf(lowest, SportMark.pulse_at(at))
+		err = _T.assert_true(lowest > 0.5,
+			("the mark dims to %.2f of its alpha at the trough. A cue that animates "
+				+ "toward invisible reads as a flicker, and nothing about a sport is "
+				+ "urgent") % lowest)
+		if err == "":
+			err = _T.assert_float_eq(SportMark.pulse_at(0.0), 1.0, 0.001,
+				"and starts at full, so a mark added mid-frame does not fade in from "
+				+ "nothing")
+	return ""
+
+
+## The hardest patch holding a pest sets its speed, whichever patch caught it first.
+##
+## THIS IS WHY `strongest_factor_for` EXISTS. Before the sports every patch cut speed
+## by the same 0.55, so `_claim`'s "only the first source sets the speed" rule was
+## correct by accident -- every answer was the same answer. A Tar Sundew cuts harder,
+## and under the old rule a pest that wandered into the ordinary patch first would be
+## held at 55% inside a patch advertising 44%, while the same pest arriving from the
+## other side would be held at 44%. A buff whose size depends on walk order is a buff
+## no player can read.
+##
+## Both orders are staged here, and the non-stacking rule the plant's own header
+## states -- two patches do not multiply to 0.30 -- is asserted alongside, since the
+## minimum is now what enforces it.
+func test_the_hardest_patch_sets_the_speed_whichever_one_caught_the_pest_first() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var board: Board = game.board
+	var seat: Vector2i = Vector2i(-1, -1)
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if board.is_buildable_for(cell, PlantCatalog.SUNDEW) and board.is_buildable_for(
+					cell + Vector2i(1, 0), PlantCatalog.SUNDEW):
+				seat = cell
+				break
+		if seat.x >= 0:
+			break
+	var err: String = _T.assert_gte(seat.x, 0, "the board seats two patches side by side")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	game.bank.seeds = 999
+	# Unlocked by hand: a Sundew comes out of a packet, and staging a packet roll to
+	# test a slow would make this test about the shop.
+	if not game.bank.is_unlocked(PlantCatalog.SUNDEW):
+		game.bank.unlocked.append(PlantCatalog.SUNDEW)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.SUNDEW, seat), "",
+		"an ordinary patch is planted")
+	game._sprout_sport(PlantCatalog.SUNDEW, seat + Vector2i(1, 0))
+	var plain := game._plants.get(seat) as StickySundew
+	var sport := game._plants.get(seat + Vector2i(1, 0)) as StickySundew
+	if err == "":
+		err = _T.assert_true(plain != null and sport != null, "and both are patches")
+	if err == "":
+		err = _T.assert_true(sport.slow_factor() < plain.slow_factor(),
+			("the sport really is the harder of the two -- %.4f against %.4f")
+				% [sport.slow_factor(), plain.slow_factor()])
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var base: float = 100.0
+	var orders: Array = [[plain, sport], [sport, plain]]
+	for order: Array in orders:
+		var pest := Pest.new()
+		game.add_child(pest)
+		pest.speed = base
+		# Midway between the two patches, so both cover it: the cells are one
+		# Board.CELL apart and SAP_RADIUS is nearly two cells.
+		pest.global_position = (plain.global_position + sport.global_position) * 0.5
+		for patch: StickySundew in order:
+			patch.apply_patch([pest] as Array[Pest])
+		err = _T.assert_float_eq(pest.speed, base * sport.slow_factor(), 0.01,
+			("caught by %s first, the pest walks at %.2f. The hardest patch holding it "
+				+ "sets the speed, so both orders must agree")
+				% [order[0].display_name(), pest.speed])
+		if err == "":
+			err = _T.assert_float_eq(StickySundew.strongest_factor_for(pest),
+				sport.slow_factor(), 0.0001,
+				"and the rule says so directly, not only through the pest's speed")
+		if err == "":
+			# The non-stacking rule, which the minimum is now what enforces.
+			err = _T.assert_true(pest.speed > base * plain.slow_factor()
+					* sport.slow_factor(),
+				("two patches do not multiply -- a stacking slow is a stun as soon as "
+					+ "you can afford three, which is the Chomp Flower's whole reason "
+					+ "to exist"))
+		for patch: StickySundew in order:
+			patch.release_all()
+		if err == "":
+			err = _T.assert_float_eq(pest.speed, base, 0.01,
+				"and walking out of every patch hands the whole speed back")
+		pest.queue_free()
+		if err != "":
+			break
+	_T.free_ui(game)
+	return err
+
+
+## A sport is never planted in the lane the pests walk down.
+##
+## FOUND LIVE, not reasoned about. The roll cannot produce an illegal cell --
+## `CrossBreeder.open_cells` filters to `board.is_buildable_for` and
+## `test_a_sport_only_lands_where_that_kind_could_have_been_planted` pins that -- but
+## `Game._sprout_sport` is the sprout's only entry point and it is reachable from the
+## devtools bridge and from a test with ANY cell. Driven that way during verification
+## it planted cobs down the middle of the road, which looked exactly like the mechanic
+## misbehaving.
+##
+## So the guard is on the ENTRY POINT rather than only in the rule, and this is the
+## test that says so. Both directions matter: an ordinary plant is refused the road,
+## and a Barrier Bramble is refused the grass -- the wall is the one plant that
+## BELONGS in the lane (`PlantCatalog.on_road`), and a guard asking `is_buildable`
+## instead of `is_buildable_for` would refuse every Bramble sport there is.
+func test_a_sport_is_refused_the_road_unless_it_is_the_plant_that_belongs_there() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var board: Board = game.board
+	var road: Vector2i = Vector2i(-1, -1)
+	var grass: Vector2i = Vector2i(-1, -1)
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if road.x < 0 and board.is_path(cell):
+				road = cell
+			if grass.x < 0 and board.is_buildable_for(cell, PlantCatalog.CORN):
+				grass = cell
+	var err: String = _T.assert_gte(road.x, 0, "the shipped board has a road")
+	if err == "":
+		err = _T.assert_gte(grass.x, 0, "and grass beside it")
+	if err == "":
+		err = _T.assert_eq(game._sprout_sport(PlantCatalog.CORN, road),
+			Game.REFUSAL_ON_GRASS,
+			("a cob sport is refused the road at %s. Before the guard this planted one "
+				+ "there, standing in the lane") % road)
+	if err == "":
+		err = _T.assert_false(game._plants.has(road),
+			"and nothing is left standing on the road afterwards")
+	if err == "":
+		err = _T.assert_eq(game._sprout_sport(PlantCatalog.BRAMBLE, grass),
+			Game.REFUSAL_ON_ROAD,
+			("and a Bramble sport is refused the GRASS -- the wall is the one plant "
+				+ "that belongs in the lane, so the guard has to ask is_buildable_for "
+				+ "rather than is_buildable"))
+	if err == "":
+		err = _T.assert_eq(game._sprout_sport(PlantCatalog.BRAMBLE, road), "",
+			"while a Bramble sport onto the road is accepted, which is the half a "
+				+ "blanket road ban would have broken")
+	if err == "":
+		err = _T.assert_true(game._plants.has(road), "and the wall really is standing there")
+	if err == "":
+		err = _T.assert_eq(game._sprout_sport(PlantCatalog.BRAMBLE, road),
+			"something is already growing there",
+			"and a second sport never lands on top of the first")
+	if err == "":
+		err = _T.assert_true(game._sprout_sport(&"no_such_plant", grass).contains("no such"),
+			"a kind the catalogue does not have is refused rather than crashing on a "
+				+ "missing texture")
+	_T.free_ui(game)
 	return err

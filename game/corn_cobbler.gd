@@ -636,7 +636,7 @@ func kernel_damage() -> float:
 ## place any of them asks.
 func fire_interval() -> float:
 	return composed_interval(float(level_row()["interval"]), fire_interval_scale,
-		neighbour_interval_scale)
+		neighbour_interval_scale, sport_rate_scale())
 
 
 ## Fraction of the reload elapsed: 0.0 the instant a volley fires, 1.0 once the
