@@ -521,6 +521,100 @@ func is_road_adjacent(cell: Vector2i) -> bool:
 	return false
 
 
+# =============================================================================
+# BEGIN plant-tower-defense-zg6l: a road can make a plant unplayable and
+# nothing in the game would notice.
+#
+# set_road() ABOVE VALIDATES STRUCTURE ONLY -- bounds, corner count, zero-length
+# segments, the diagonal segment that would hang the walker. None of that says
+# whether the road it accepts is worth playing: a Sundew (or any other plant
+# with a road-relevant reach) can have nowhere on the whole board that its reach
+# touches a single road cell, and set_road would take that road exactly as
+# happily as it takes the default one.
+#
+# THE RECORDED DECISION (the bead asks for one): playability_gaps() stays a
+# QUERY, and set_road() stays structure-only -- it neither refuses nor warns
+# about a road a gap is found on. Three reasons, read off this file's own
+# house style rather than decided fresh:
+#
+#   1. set_road()'s own header already draws this line. Its three ordinary
+#      refusals are "bounds-checking"; the fourth is called out BY NAME as
+#      "not politeness" because it prevents an actual hang. A dead-weight
+#      plant does not hang anything -- the board still builds, still plays,
+#      still defends itself with every OTHER plant in the catalogue. That is
+#      a different class of problem from the one this function exists to
+#      police, and folding it in would blur the one refusal that matters.
+#   2. Cycle 170 already chose this shape for exactly this question, for the
+#      Sundew specifically: the property lives in a corpus test
+#      (test_a_sundews_best_patch_is_worth_laying_on_every_road_and_not_the_same_size,
+#      test/unit/test_board.gd), not in a set_road refusal or a runtime
+#      warning. This block generalises that test's question across every
+#      reaching plant; it does not relitigate where the answer belongs.
+#   3. A "gap" here is a property of a (road, catalogue) PAIR, not of the road
+#      alone -- add a plant with a short road-relevant reach to PLANTS and a
+#      road that was gap-free yesterday can gain one today with no change to
+#      the road at all. set_road() validates the road once, at the moment it
+#      is handed in; a check whose answer can change out from under a board
+#      that never touched set_road() again has no business living in a method
+#      that runs once.
+#
+# So this is a query a corpus gate (or any future board-picker UI) calls
+# AFTER set_road() succeeds, exactly the way the existing Sundew test already
+# calls Board + PlacementPreview statics after set_road() -- never a thing
+# set_road() itself consults.
+# =============================================================================
+
+## Every catalogue plant with a road-relevant reach that this board's own
+## buildable ground gives it nothing to do -- no buildable cell has a single
+## road cell within that plant's reach. A player who spends seeds on one of
+## these ids on THIS board gets nothing back anywhere on the board.
+##
+## DERIVED from PlantCatalog.reach() / PlantCatalog.reaches_over_road(), not a
+## hand-listed set of ids -- see reaches_over_road()'s own header for exactly
+## which plants that walks and why Mint and Aloe (reach over PLANTS, not the
+## road) and Bramble and Sunflower (reach() is 0.0, meaning "no radius", not
+## "unplayable") are never asked. A plant added later to PLANTS with a nonzero
+## road-relevant reach is picked up here automatically; nothing has to name it.
+##
+## Builds the path first, the same guard every other spatial query on this
+## class takes, for the same reason: a Board that has not entered the tree
+## would otherwise report every reaching plant unplayable, which is a
+## confident wrong answer about a board that was simply never asked to build.
+func playability_gaps() -> Array[StringName]:
+	_build_path()
+	var road: Array[Vector2i] = road_cells()
+	var out: Array[StringName] = []
+	for id: StringName in PlantCatalog.ids():
+		if not PlantCatalog.reaches_over_road(id):
+			continue
+		if not _reach_covers_any_road(PlantCatalog.reach(id), road):
+			out.append(id)
+	return out
+
+
+## Is there ANY buildable cell within `reach_px` of ANY cell in `road`? Row-major
+## over the whole board, the same order dead_ground_marked() enumerates in --
+## deterministic without a sort, and cheap: COLS * ROWS buildable cells times a
+## few dozen road cells is a few thousand distance checks, once per plant, only
+## ever run by a corpus gate rather than every frame.
+func _reach_covers_any_road(reach_px: float, road: Array[Vector2i]) -> bool:
+	if reach_px <= 0.0 or road.is_empty():
+		return false
+	for y: int in range(ROWS):
+		for x: int in range(COLS):
+			var cell := Vector2i(x, y)
+			if not is_buildable(cell):
+				continue
+			var origin: Vector2 = cell_to_world(cell)
+			for at: Vector2i in road:
+				if origin.distance_to(cell_to_world(at)) <= reach_px:
+					return true
+	return false
+
+# END plant-tower-defense-zg6l
+# =============================================================================
+
+
 func cell_to_world(cell: Vector2i) -> Vector2:
 	return Vector2(cell.x * CELL + CELL * 0.5, cell.y * CELL + CELL * 0.5)
 

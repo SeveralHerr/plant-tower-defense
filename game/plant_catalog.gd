@@ -348,6 +348,32 @@ static func reach(id: StringName) -> float:
 			return 0.0
 
 
+## Plants whose reach() is real and positive but measured over PLANTS rather
+## than over the road — see the MINT and ALOE arms of reach() above, which
+## already say so at length. Kept here, beside them, rather than as a hand-list
+## somewhere a playability check lives, so the exception is defined next to the
+## comment that explains it.
+##
+## THE ONLY PLACE this exception has to be written down. Anything with reach() >
+## 0.0 that is not named here is assumed to reach over the road — true of every
+## weapon in the catalogue today (Corn, Chomp, Sundew, Dandelion, Nettle) — so a
+## new plant added to PLANTS with a road-relevant reach needs nothing here to be
+## picked up automatically by reaches_over_road() below. Only a plant shaped like
+## Mint or Aloe, whose ring measures distance to other plants, needs an entry.
+const REACHES_OVER_PLANTS: Array[StringName] = [MINT, ALOE]
+
+
+## Does a plant of `id` reach over the ROAD — the question a playability check
+## (Board.playability_gaps) may ask and get a meaningful answer to?
+##
+## False for a plant with no reach at all (Sunflower, Bramble — reach() is 0.0,
+## meaning "no radius", not "unplayable"), and false for Mint and Aloe even
+## though their reach() is a real positive number: asking "does this reach cover
+## any road" of either would report them unplayable on every board, which is not
+## what their zero-road-coverage means. See REACHES_OVER_PLANTS just above.
+static func reaches_over_road(id: StringName) -> bool:
+	return reach(id) > 0.0 and not REACHES_OVER_PLANTS.has(id)
+
 
 ## Can a plant of `id` actually touch a pest?
 ##
