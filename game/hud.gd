@@ -580,6 +580,75 @@ const PLANT_BUTTON_DIM: Color = Color(1, 1, 1, 0.55)
 ## nothing here is a warning.
 const PACKET_HINT_TINT: Color = Color(1.0, 0.94, 0.62, 1.0)
 
+## The armed plant's outline (plant-tower-defense-vvmy).
+##
+## THE BAR HAD NO ARMED CUE AT ALL, and the line that was supposed to be one was dead:
+## `refresh()` did `button.button_pressed = unlocked and id == selected` on Buttons that
+## never had `toggle_mode` set, and Godot 4's `BaseButton::set_pressed()` returns
+## immediately when `toggle_mode` is false. Confirmed on the running game rather than
+## reasoned about — `find-nodes --class Button --where name=Button_corn_cobbler` reported
+## `button_pressed=false toggle_mode=false` while corn WAS the armed plant. So this is
+## not a stronger version of an existing cue; it is the first one.
+##
+## AND NOT `toggle_mode = true`, which is the one-word fix and the wrong one. It would
+## hand the cue to whatever `pressed` StyleBox the theme happens to carry — and this HUD
+## deliberately refuses `GardenTheme.build()`, so that is the DEFAULT theme's grey, chosen
+## by nobody and matching nothing else on this panel. It would also change what a click
+## MEANS: a toggle button un-presses on a second press, so pressing the armed plant again
+## would emit `pressed` with `button_pressed` false and the bar would disagree with
+## `selected_plant` until the next `refresh()` overwrote it.
+##
+## NOR `modulate`, which is the other obvious channel and is already spoken for twice —
+## `PLANT_BUTTON_DIM` says "you cannot buy this" and `PACKET_HINT_TINT` says "this packet
+## holds it". An affordable, unhinted button is already `Color.WHITE`, so there is no
+## brighter to go; arming would have to DIM the chosen plant, which reads as the opposite.
+##
+## LEAF, and the other four candidates were each ruled out by something already using
+## them — the palette is small and every colour in it is spoken for:
+##
+##   * `AMBER` is the midpoint of the LEAF -> AMBER -> DANGER warning ramp and is already
+##     `THREAT_WARM` on this very HUD. An amber ring would say the armed plant is becoming
+##     dangerous.
+##   * `GOLD` is what this game "spends on something earned" — `COMPOST`, `SeedGlyph`,
+##     the run summary's ribbon. Arming is not an award.
+##   * `DANGER` is the one warning red in the game, reserved for an armed Uproot and a
+##     dying plant.
+##   * `SelectionMarker.MARKER_COLOR` is the BOARD's "this one is selected" yellow and it
+##     belongs to a PLACED plant. Reusing it here would make one colour answer two
+##     different questions on two surfaces, which is the failure `OVERLAY_GRAMMAR.md` is
+##     about.
+##
+## LEAF is not a collision with the board's grass, and it is the same MEANING the board
+## already gives green: `PlacementPreview.OK_COLOR` is a lightened LEAF and it means "this
+## plant may go here". "This plant is the one a click will place" is that sentence read on
+## the other surface, so the grammar carries rather than breaks.
+##
+## MEASURED, not assumed (see the palette-against-the-background rule). Sampled off the
+## running game — `sample-pixels --rect 909,117,112,4` over a real plant button reported a
+## uniform `#665f52`, luminance 0.375, which is the surface this ring is actually drawn on
+## and is nothing like the `PAPER_DARK` panel behind it. LEAF is 0.642, a separation of
+## 0.267 against `GardenTheme.GROUND_SEPARATION_MIN`'s floor of 0.12. It survives the
+## dimmed case too, which is the one worth checking because an armed plant can still be
+## unaffordable: `modulate` reaches children, so at `PLANT_BUTTON_DIM`'s 0.55 alpha the
+## ring composites to 0.522 and the separation is still 0.147.
+##
+## `:=` AND NOT `: Color =`, matching `COMPOST` and `THREAT_WARM` above rather than the
+## typed form the rest of this block uses, and it is not a style preference:
+## `test_no_colour_value_is_declared_twice_across_the_palettes` decides alias-from-copy
+## by reading this line's TEXT, through a helper that matches `const NAME ` with a
+## trailing space. A typed declaration puts a colon there instead and the helper returns
+## "" — which reads to the assertion as "this line does not name GardenTheme".
+const PLANT_ARMED_COLOR := GardenTheme.LEAF
+## Thick enough to read at the 40px icon scale the bar draws at, and drawn as a border on
+## a transparent fill so the plant's own art is never tinted by the cue — the icon is what
+## the player is picking between, and a wash over it would be a third writer of the
+## button's colour.
+const PLANT_ARMED_BORDER: int = 3
+const PLANT_ARMED_RADIUS: int = 4
+## The node name the armed outline wears inside its button, so a test and `scene-tree` on
+## a running game find it by name rather than by index among the button's children.
+const PLANT_ARMED_NODE_NAME := "ArmedRing"
+
 
 ## Where the packet button for the `index`th tier sits, in the side panel's own
 ## space. Pure, so the rack's fit is arithmetic rather than a rendering check.
@@ -1580,6 +1649,40 @@ func _build_top_bar(root: Control) -> void:
 	bar.add_child(_prep_bar)
 
 
+## The armed-plant outline that lives inside one plant button. See PLANT_ARMED_COLOR for
+## why this is a node of our own rather than `toggle_mode` or a `modulate`.
+##
+## A `Panel` with a bordered, UNFILLED StyleBoxFlat: the icon is what the player is
+## choosing between, so the cue goes around the art and never over it.
+##
+## MOUSE_FILTER_IGNORE, and this is the line that decides whether the button still works.
+## A Control child of a Button that answers mouse events eats every press aimed at the
+## button underneath it -- the cue would arm the plant it is drawn on and then make it
+## unpressable, which is a worse bug than the one it fixes.
+func _make_armed_ring() -> Panel:
+	var ring := Panel.new()
+	ring.name = PLANT_ARMED_NODE_NAME
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ring.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ring.visible = false
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0, 0, 0, 0)
+	box.border_color = PLANT_ARMED_COLOR
+	box.set_border_width_all(PLANT_ARMED_BORDER)
+	box.set_corner_radius_all(PLANT_ARMED_RADIUS)
+	ring.add_theme_stylebox_override("panel", box)
+	return ring
+
+
+## The armed outline inside `id`'s button, or null for a plant with no button. For tests
+## and for anything that would otherwise reach in by child index.
+func armed_ring(id: StringName) -> Panel:
+	var button := _plant_buttons.get(id) as Button
+	if button == null:
+		return null
+	return button.get_node_or_null(NodePath(PLANT_ARMED_NODE_NAME)) as Panel
+
+
 func _build_side_panel(root: Control) -> void:
 	var panel := ColorRect.new()
 	panel.name = "SidePanel"
@@ -1625,6 +1728,13 @@ func _build_side_panel(root: Control) -> void:
 		button.mouse_exited.connect(_on_plant_hover.bind(id, true))
 		_plant_bar.add_child(button)
 		_plant_buttons[id] = button
+		# AFTER add_child, not before. `set_anchors_preset` resolves against the parent's
+		# CURRENT rect, and a Button not yet in the GridContainer has none -- the ring
+		# would anchor to a zero rect and stay a point. Adding the button first lets the
+		# container hand it a size, and PRESET_FULL_RECT then tracks every later resize on
+		# its own, which is the whole reason this is a child rather than a rect this file
+		# computes and has to keep recomputing.
+		button.add_child(_make_armed_ring())
 
 	# Stacked full-width, not side-by-side: two 112px-wide buttons with an icon
 	# plus "Common (20)" had no room left for the text (findings caught this —
@@ -2445,7 +2555,14 @@ func refresh(state: Dictionary) -> void:
 		# `modulate` here, so a live packet-hover cue survives this refresh instead
 		# of being erased by the next seed the player earns.
 		_plant_rest_tint[id] = plant_button_tint(unlocked, bank.can_afford(id), false)
-		button.button_pressed = unlocked and id == selected
+		# WAS `button.button_pressed = unlocked and id == selected`, which set nothing at
+		# all -- Godot's BaseButton::set_pressed() returns immediately without
+		# `toggle_mode`, and nothing in this project has ever set it. See
+		# PLANT_ARMED_COLOR. `unlocked and` is kept: a locked plant is not armable, so its
+		# ring must stay dark even if `selected_plant` somehow names it.
+		var ring := armed_ring(id)
+		if ring != null:
+			ring.visible = unlocked and id == selected
 	_apply_plant_hints()
 
 	# Per tier, not just "is anything locked". A common packet caps at tier 1, so

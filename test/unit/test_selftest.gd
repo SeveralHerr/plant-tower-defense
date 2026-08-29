@@ -6502,10 +6502,24 @@ func _colour_constants(script_path: String) -> Dictionary:
 
 ## The line a constant is declared on, so a check can tell an alias
 ## (`const X := GardenTheme.Y`) from a second copy (`const X := Color(...)`).
+## MATCHES THE TYPED FORM TOO (plant-tower-defense-vvmy). This took only
+## `const NAME ` — with a trailing space — so every `const NAME: Color = ...` in the file
+## returned "", and "" reads to the caller as "this line does not name GardenTheme". The
+## HUD's typed colour constants were all second copies rather than aliases, so nothing
+## noticed until the first typed one whose value DID match the palette; that one failed
+## while correctly naming `GardenTheme.LEAF` on its own declaration line.
+##
+## The bug is the shape this repo keeps finding: a check that cannot see a case reports
+## the same clean result as a check that saw it and approved. Returning "" for "no such
+## constant" and for "declared in a form I do not parse" is what made the two
+## indistinguishable, so the two prefixes are both matched here rather than the caller
+## being asked to tell them apart.
 func _declaration_line(source: String, const_name: String) -> String:
 	for line: String in source.split("\n"):
-		if line.strip_edges().begins_with("const %s " % const_name):
-			return line.strip_edges()
+		var trimmed: String = line.strip_edges()
+		if trimmed.begins_with("const %s " % const_name) \
+				or trimmed.begins_with("const %s:" % const_name):
+			return trimmed
 	return ""
 
 
@@ -19523,6 +19537,17 @@ func test_the_drag_cue_and_the_drag_commit_choose_the_same_cell() -> String:
 			var raw: Vector2i = game.board.world_to_cell(local)
 			if not game.board.is_inside(raw):
 				continue
+			# RE-ARMED EVERY POINT (plant-tower-defense-vvmy), because a placement now
+			# disarms and this sweep places on almost every iteration. Arming once at the
+			# top -- which is what this did -- left `selected_plant` empty from the first
+			# success onward, `would_plant_at` false on every cell after it, and
+			# `snapped_placement_cell` with nothing to snap TO: the sweep still ran its 294
+			# points and still agreed at all of them, and the `snapped > 0` denominator
+			# below is the only thing that noticed. That is the vacuity guard doing exactly
+			# the job it was written for.
+			#
+			# This is also what a player does now: pick, place, pick again.
+			game.selected_plant = PlantCatalog.CORN
 			var expected: Vector2i = game.snapped_placement_cell(local)
 			var was_placeable: bool = game.would_plant_at(expected)
 			var screen: Vector2 = local + game._entities.position
@@ -23555,3 +23580,390 @@ func test_only_the_two_documented_buses_are_created_at_runtime() -> String:
 				% bus_name + " send as an edge in the wrong direction, and a send"
 				+ " pointing at another non-Master bus is what closed the loop")
 	return err
+
+
+# -- Arming a plant: the cue, the escape, and the ghost under the finger
+#    (plant-tower-defense-vvmy) -----------------------------------------------
+
+
+## Exactly one plant button wears the armed ring, and NONE do when nothing is armed.
+##
+## THE LINE THIS REPLACES SET NOTHING AT ALL, which is why this test is a sweep rather
+## than a spot check on one button. `Hud.refresh()` did
+## `button.button_pressed = unlocked and id == selected` on Buttons that never had
+## `toggle_mode` set, and Godot's `BaseButton::set_pressed()` returns immediately without
+## it -- so the assignment compiled, read correctly, ran on every refresh and changed
+## nothing. Confirmed on the running game before it was touched: `find-nodes --class
+## Button --where name=Button_corn_cobbler --property button_pressed --property
+## toggle_mode` reported `button_pressed=false toggle_mode=false` while corn WAS
+## `selected_plant`.
+##
+## A test that read `button_pressed` back would have passed against that bug in one
+## direction and failed for the wrong reason in the other. This reads what a player sees
+## -- a visible node -- and it counts ALL the rings on every pass, because "the right one
+## is lit" and "only the right one is lit" are two different claims and the second is the
+## one a stale cue breaks.
+##
+## SWEPT OVER `PlantCatalog.ids()` rather than over a list written here, so a plant added
+## to the catalogue is armed and checked on the day it is added rather than on the day
+## someone remembers to extend an array.
+func test_only_the_armed_plant_wears_the_bar_ring() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.unlocked = PlantCatalog.ids()
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_true(ids.size() > 1,
+		"the sweep needs more than one plant, or 'only this one' is not a claim")
+	for id: StringName in ids:
+		if err != "":
+			break
+		game.selected_plant = id
+		game._refresh()
+		var lit: Array[StringName] = []
+		for other: StringName in ids:
+			var ring: Panel = game.hud.armed_ring(other)
+			if ring == null:
+				err = _T.assert_true(false, "%s has no armed ring node at all" % other)
+				break
+			if ring.visible:
+				lit.append(other)
+		if err == "":
+			err = _T.assert_eq(lit, [id] as Array[StringName],
+				("arming %s lights %s's ring and no other -- a second lit ring points at "
+					+ "a plant the click will not buy") % [id, id])
+	# AND THE EMPTY ARM, which is the state this bead added and the one a cue is most
+	# likely to be left stale by: nothing is selected, so nothing may be lit.
+	if err == "":
+		game.selected_plant = &""
+		game._refresh()
+		var still_lit: Array[StringName] = []
+		for other: StringName in ids:
+			var ring: Panel = game.hud.armed_ring(other)
+			if ring != null and ring.visible:
+				still_lit.append(other)
+		err = _T.assert_eq(still_lit, [] as Array[StringName],
+			"with nothing armed the bar shows nothing armed -- a ring left over from the "
+				+ "last pick promises that a click on grass will buy it, and it will not")
+	_T.free_ui(game)
+	return err
+
+
+## The armed ring cannot eat the press that arms the next plant.
+##
+## THE FAILURE THIS RULES OUT IS THE CUE DISABLING THE THING IT DECORATES. The ring is a
+## Control laid over its whole Button with `PRESET_FULL_RECT`; a Control that answers
+## mouse events swallows every press aimed at what is underneath it, so a bar with this
+## cue on it would arm one plant and then be unable to arm any other. That is strictly
+## worse than the missing cue it fixes, and it is invisible to every layout assertion --
+## the ring is exactly where it should be, the right size, the right colour.
+func test_the_armed_ring_does_not_swallow_the_button_underneath_it() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.unlocked = PlantCatalog.ids()
+	var err: String = ""
+	var checked: int = 0
+	for id: StringName in PlantCatalog.ids():
+		if err != "":
+			break
+		var ring: Panel = game.hud.armed_ring(id)
+		if ring == null:
+			err = _T.assert_true(false, "%s has no armed ring node" % id)
+			break
+		checked += 1
+		err = _T.assert_eq(ring.mouse_filter, Control.MOUSE_FILTER_IGNORE,
+			("%s's ring passes the mouse through. Anything but IGNORE and the ring covers "
+				+ "its own button -- PRESET_FULL_RECT means it covers ALL of it") % id)
+	if err == "":
+		err = _T.assert_true(checked > 0,
+			"the sweep found rings to check, rather than passing over an empty bar")
+	_T.free_ui(game)
+	return err
+
+
+## The ghost gets out from under the finger, and only when there IS a finger.
+##
+## THE CUE SHIPPED AND WAS STILL REPORTED MISSING, which is the whole point of this test
+## and the reason it is about geometry rather than existence.
+## `test_the_placement_ghost_wears_the_selected_plants_own_art` already held every claim
+## the ghost could make about itself -- right texture, right alpha, behind the brackets,
+## on the preview's origin -- and every one of them was true on the running game. Measured
+## there with `node-bounds`, the ghost was `64x64` at the previewed cell's origin: exactly
+## the square the finger rests on. All the assertions passed and the player could not see
+## it. What nothing asked was where the ghost sits RELATIVE TO THE THING COVERING IT.
+##
+## PURE, over the static resolver rather than through a node, so the row-0 flip is
+## checkable with no board, no viewport and no frame -- and so both directions are held as
+## arithmetic rather than as a screenshot nobody will re-take.
+func test_the_ghost_lifts_clear_of_a_finger_and_never_of_a_cursor() -> String:
+	var err: String = _T.assert_eq(
+		PlacementPreview.ghost_lift_offset(false, 4), Vector2.ZERO,
+		"no finger, no lift: a mouse cursor is one pixel and occludes nothing, so moving "
+			+ "the ghost off its own cell there would cost accuracy and buy nothing")
+	if err == "":
+		err = _T.assert_eq(PlacementPreview.ghost_lift_offset(true, 4),
+			Vector2(0.0, -PlacementPreview.GHOST_LIFT),
+			"a finger on row 4 lifts the ghost UP, toward the empty board and away from "
+				+ "the hand, which comes from below on a held phone")
+	# THE FLIP, which is the branch a lift written as one constant would not have.
+	if err == "":
+		err = _T.assert_eq(PlacementPreview.ghost_lift_offset(true, 0),
+			Vector2(0.0, PlacementPreview.GHOST_LIFT),
+			"on the TOP row it lifts down instead -- up from row 0 draws the sprite off "
+				+ "the board and under the HUD's top bar, which is a cue nowhere useful")
+	# AND IT IS A WHOLE CELL, not a nudge. Half a cell leaves the sprite's lower half
+	# under the contact patch, which is the state that was reported as no cue at all.
+	if err == "":
+		err = _T.assert_float_eq(PlacementPreview.GHOST_LIFT, float(Board.CELL), 0.001,
+			"one full cell, read from Board.CELL -- a lift that does not clear the square "
+				+ "the finger is in has not cleared the finger")
+	return err
+
+
+## Lifting the ghost must not move the cell the release commits to.
+##
+## THE INVARIANT THIS PROTECTS IS THE ONE THE LIFT IS MOST LIKELY TO BREAK.
+## `test_the_drag_cue_and_the_drag_commit_choose_the_same_cell` exists because two
+## implementations of "the nearest cell that would take this" drift apart, and its stated
+## symptom is "a ghost drawn on one cell and a plant appearing on another". A lift IS that
+## symptom, introduced deliberately -- so what makes it honest rather than a regression is
+## that ONLY the sprite moves. The preview node, the brackets around it and the cell
+## `_hover_cell` names all stay exactly where they were.
+func test_a_lifted_ghost_still_promises_the_cell_the_brackets_are_on() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var cell: Vector2i = _grass(game)
+	var screen: Vector2 = game.board.cell_to_world(cell) + game._entities.position
+	var preview: PlacementPreview = game._preview
+	var ghost: Sprite2D = preview.ghost()
+	game._update_cursor(screen)
+	var resting: Vector2 = preview.position
+	var err: String = _T.assert_eq(ghost.position, Vector2.ZERO,
+		"with no finger down the ghost sits on the preview's own origin")
+	# THE FINGER GOES DOWN. `_touch_index` is what `_update_cursor` reads, so this is the
+	# same state a real press leaves behind rather than a flag invented for the test.
+	if err == "":
+		game._touch_index = 0
+		game._update_cursor(screen)
+		err = _T.assert_true(ghost.position != Vector2.ZERO,
+			"a finger on the cell lifts the sprite off it -- at 64x64 on a 64px cell an "
+				+ "unlifted ghost is entirely under the fingertip that is asking about it")
+	if err == "":
+		err = _T.assert_eq(preview.position, resting,
+			"and the PREVIEW has not moved: the brackets, the range ring and the cell the "
+				+ "release buys are all exactly where the cursor left them")
+	if err == "":
+		err = _T.assert_eq(game._hover_cell, cell,
+			"nor has the cell the commit will use -- the lift is a drawing offset, and a "
+				+ "lift that moved this would be the cue promising a cell it cannot deliver")
+	# AND IT COMES BACK DOWN. A lift latched on after the finger left would be a ghost
+	# hovering a cell above the cursor for the rest of the session.
+	if err == "":
+		game._touch_index = -1
+		game._update_cursor(screen)
+		err = _T.assert_eq(ghost.position, Vector2.ZERO,
+			"the finger lifts and so does the exception -- back on its own origin")
+	_T.free_ui(game)
+	return err
+
+
+## With nothing armed, a click on empty ground buys nothing and promises nothing.
+##
+## `&""` WAS AN UNREACHABLE STATE, so this is the first test that can ask what the game
+## does in it. `selected_plant` was born holding CORN and every assignment named another
+## plant, which is the mechanical reason a stray tap always cost seeds.
+##
+## Asserts both halves, because either alone is a half-fix: the purchase is refused (the
+## money) and the brackets come down (the promise). A game that refused the click while
+## still drawing an encouraging green preview over the cell would be telling the player
+## the opposite of what it was about to do.
+func test_nothing_armed_buys_nothing_and_shows_no_promise() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = &""
+	var cell: Vector2i = _grass(game)
+	var screen: Vector2 = game.board.cell_to_world(cell) + game._entities.position
+	var seeds_before: int = game.bank.seeds
+	game._update_cursor(screen)
+	var err: String = _T.assert_true(not game._preview.visible,
+		"no brackets over a cell nothing is going to be placed on -- the preview's whole "
+			+ "sentence is 'a click here buys this', and there is no this")
+	if err == "":
+		err = _T.assert_true(not game.would_plant_at(cell),
+			"and the predicate the click consults agrees, rather than the cue and the "
+				+ "commit reaching the same answer by two routes")
+	if err == "":
+		game._click_at(screen)
+		err = _T.assert_true(game.plant_at(cell) == null,
+			"clicking plants nothing on %s" % cell)
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before,
+			"and costs nothing -- the reported defect is that the board is the biggest "
+				+ "target on screen and every stray tap on it used to spend")
+	# THE CURSOR TINT STAYS, deliberately. A click with nothing armed still selects a
+	# plant already there and still sweeps a husk, so the square under the pointer is
+	# still worth marking; it is only the PURCHASE promise that comes down.
+	if err == "":
+		err = _T.assert_true(game._cursor.visible,
+			"the cell marker is still up: an empty arm silences the promise, not the cue "
+				+ "that says which square a click lands on")
+	_T.free_ui(game)
+	return err
+
+
+## Planting disarms; being refused does not.
+##
+## THE ASYMMETRY IS THE DESIGN, and stating it as one test is what stops the next reader
+## "fixing" the second half into the first. A placement that SUCCEEDED has consumed the
+## intent the pick expressed, so leaving it armed is what made every following stray tap
+## buy a second one. A placement that was REFUSED has not: the player still wants that
+## plant, they were five seeds short or aimed at the road, and taking the pick away would
+## punish one mistake twice and send them back to the bar to re-arm.
+func test_planting_disarms_and_a_refusal_leaves_the_pick_alone() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var cell: Vector2i = _grass(game)
+	game._commit_placement(cell)
+	var err: String = _T.assert_true(game.plant_at(cell) != null,
+		("the cob is planted on %s, so the disarm below is about a placement that "
+			+ "actually happened") % cell)
+	if err == "":
+		err = _T.assert_eq(game.selected_plant, &"",
+			"and nothing is armed afterwards -- 'lift to plant, then nothing is armed', "
+				+ "which is what stops the next tap on grass buying a second cob")
+	if err == "":
+		var ring: Panel = game.hud.armed_ring(PlantCatalog.CORN)
+		err = _T.assert_true(ring != null and not ring.visible,
+			"the bar says so too. place_plant() refreshes the HUD BEFORE it returns, so a "
+				+ "disarm that skipped its own refresh would leave this ring lit")
+	# THE REFUSAL, on the same game: aim at the cell the cob now occupies.
+	if err == "":
+		game.selected_plant = PlantCatalog.CORN
+		game._commit_placement(cell)
+		err = _T.assert_eq(game.selected_plant, PlantCatalog.CORN,
+			"a refused placement keeps the pick. The player's next move is to aim "
+				+ "somewhere else, not to walk back to the bar for the plant they chose")
+	_T.free_ui(game)
+	return err
+
+
+## Right-click clears BOTH halves of the selection, and reports having cleared nothing
+## when there was nothing to clear.
+##
+## IT USED TO CLEAR HALF. The branch returned early unless a plant on the BOARD was
+## selected, and it never touched `selected_plant` at all -- so "never mind" put the
+## board's rings away and left a live purchase armed on the bar, which is the half the
+## player was more likely to mean.
+func test_right_click_clears_the_whole_selection() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var cell: Vector2i = _grass(game)
+	game.place_plant(PlantCatalog.CORN, cell)
+	game._select(game.plant_at(cell))
+	game.selected_plant = PlantCatalog.SUNFLOWER
+	var err: String = _T.assert_true(game.selected_placed != null,
+		"a plant on the board is selected AND a different plant is armed in the bar -- "
+			+ "the two-selection state the old branch only knew how to half-clear")
+	if err == "":
+		game._unhandled_input(_right_press())
+		err = _T.assert_true(game.selected_placed == null,
+			"the board's selection is gone, which is what this gesture already did")
+	if err == "":
+		err = _T.assert_eq(game.selected_plant, &"",
+			"and so is the bar's, which is what it did not -- one gesture, one rule")
+	# NOTHING LEFT TO CLEAR. `disarm_plant()`'s bool is what the input branch consumes the
+	# event on, so asking it directly is asking the same question the branch asks -- and a
+	# gesture that consumed a press it did nothing about would quietly reserve the right
+	# button against whatever is bound to it next.
+	if err == "":
+		err = _T.assert_true(not game.disarm_plant(),
+			"a second right press finds nothing to clear and says so, rather than "
+				+ "swallowing the press anyway")
+	_T.free_ui(game)
+	return err
+
+
+func _right_press() -> InputEventMouseButton:
+	var event := InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_RIGHT
+	event.pressed = true
+	event.position = Vector2.ZERO
+	return event
+
+
+## A finger that leaves the board disarms, because a phone has no right button.
+##
+## THIS IS THE WHOLE ESCAPE ON TOUCH. The right-click above is unreachable on the device
+## this gesture was built for, so without this a touch player who armed a plant and
+## changed their mind has no way out that does not spend seeds. Sliding off the board was
+## ALREADY the abort and already threw the placement away; this is that same gesture also
+## throwing away the arm behind it.
+##
+## Drives the real events -- press, drag, release -- through the same handlers a finger
+## reaches, rather than setting `_hover_cell` and calling the branch. The drag goes
+## through `_unhandled_input` because that is where the `InputEventScreenDrag` branch
+## lives, and it is the branch that moves `_hover_cell` off the board.
+func test_a_finger_leaving_the_board_disarms_the_pick() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var cell: Vector2i = _grass(game)
+	var on_board: Vector2 = game.board.cell_to_world(cell) + game._entities.position
+	game._unhandled_input(_touch_event(true, on_board))
+	var err: String = _T.assert_true(game._hover_cell.x >= 0,
+		"the press landed on the board, so the abort below is a finger LEAVING it rather "
+			+ "than one that was never on it")
+	# OFF THE BOARD, past `board.board_size().x`, and the release is delivered with NO
+	# intervening drag event at all. That omission is the point of the test rather than a
+	# shortcut in it.
+	#
+	# THE FIRST VERSION OF THIS TEST DELIVERED THE DRAG AND PASSED, AND THE GAME DID NOT.
+	# The abort used to read `_hover_cell`, on the reasoning that the cue's own leftover
+	# state could not disagree with the cue -- and a synthetic drag straight to the far
+	# side dutifully set it to `(-1, -1)`. On the running game a real finger crossing the
+	# right-hand edge walks onto the SIDE PANEL, which is a Control that answers input and
+	# swallows every remaining `InputEventScreenDrag`, so `_hover_cell` was left holding
+	# the last cell it had been told about: measured live, `_hover_cell=(13, 8)`, column 13
+	# of 14. The abort never fired and the plant stayed armed.
+	#
+	# Withholding the drag reproduces exactly that -- a release whose position is off the
+	# board while the cue still believes the finger is on it -- so this test now fails
+	# against the implementation that shipped past it.
+	var off: Vector2 = Vector2(game.board.board_size().x + 40.0, on_board.y)
+	if err == "":
+		err = _T.assert_true(game._hover_cell.x >= 0,
+			"the cue is still pointing at a cell, because nothing told it otherwise -- "
+				+ "this is the swallowed-drag state, and it is the state that broke")
+	if err == "":
+		game._unhandled_input(_touch_event(false, off))
+		err = _T.assert_eq(game.selected_plant, &"",
+			"lifting off the board un-arms the plant anyway -- the release asks where the "
+				+ "FINGER was, not where the cue last thought it was")
+	if err == "":
+		err = _T.assert_true(game.plant_at(cell) == null,
+			"and nothing was planted on the way out, which the abort already guaranteed")
+	# AND THE PLAIN CASE STILL WORKS, so the fix is not "always abort".
+	if err == "":
+		err = _T.assert_true(not game.off_board(on_board),
+			"a point on the board reads as on the board")
+	if err == "":
+		err = _T.assert_true(game.off_board(off),
+			"and one past the board's right edge reads as off it, which is the strip "
+				+ "between the playfield and the side panel that `is_inside` alone misses")
+	_T.free_ui(game)
+	return err
+
+
+func _touch_event(pressed: bool, at: Vector2) -> InputEventScreenTouch:
+	var event := InputEventScreenTouch.new()
+	event.index = 0
+	event.pressed = pressed
+	event.position = at
+	return event
+
+
