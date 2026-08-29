@@ -11124,3 +11124,37 @@ letting both stand as open.
   project verbs written for this feature were themselves the source of a false pass — a
   status field that cannot distinguish two causes of the same number is the same defect
   class the harness's own `findings` denominator exists to prevent, one level down.
+
+## 2026-08-29 — web audio buffer sized for a phone's frame time (plant-tower-defense-t416)
+
+- Value: **warranted** — but not from the bridge. The runtime that mattered was the headless
+  suite, and it fired on a number I had already written into `project.godot`.
+  - Expected: a one-line project-setting change with a test wrapped around it, both green
+    first try. The bug is a Web-on-mobile symptom that nothing on this machine can reproduce,
+    so I expected the test to be a bookmark rather than a check.
+  - Got: `[FAIL] test_web_audio_output_latency_has_mobile_headroom` — "web audio buffer is
+    120ms, at least 134ms (four 33.3ms frames at the gated 30 fps)". The floor is derived
+    from `fps_min` in `devtools_config.json` rather than typed, so the test knew the budget
+    and I did not.
+  - Found: **the shipped constant was too small by a frame.** 120ms was chosen by eye as
+    "roughly four slow frames"; four frames at the fps this project actually gates on is
+    134, and the setting is now 140. That is the whole point of the change — a buffer that
+    does not cover a burst of long frames is the defect, so being 14ms short of the floor is
+    being wrong in exactly the direction the bug is in. Reading the diff would have shown a
+    plausible round number.
+  - Cheaper: nothing cheaper would have caught it. The alternative was `1000/30*4` on a
+    calculator, which is the same arithmetic without the gate that keeps it true when
+    `fps_min` moves.
+
+- Gap: **`property_get_revert` is the only way to read an engine default, and no verb exposes
+  it.** The whole diagnosis turned on "what is `audio/driver/output_latency.web` when nobody
+  sets it" — 50, not the 15 the base key shows. `project-settings --name` reports what the
+  RUNNING game resolved, which for a `.web` suffix on desktop is nothing at all, and there is
+  no `--default` / `--revert` column anywhere. Workaround: a throwaway `SceneTree` script
+  looping `ProjectSettings.get_property_list()` and printing
+  `property_get_revert(name)` beside `get_setting(name)`.
+  - [G-159] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: have `project-settings` print `default:` alongside each value (it is one
+    `property_get_revert` call per row), and flag the rows where the two differ. That turns
+    "which settings does this project actually override, and from what" — the first question
+    anyone asks of a `project.godot` — into one call instead of a scratch script.
