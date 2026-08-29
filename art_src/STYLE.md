@@ -98,63 +98,103 @@ block, and a bare run of that tool fails if the two disagree. This table is the 
 reader and the only one a person reads, so it is checked too: `tools/svg_style_check.py`
 reports any shade one carries and another does not.
 
-## The skin ramps — bought skins only
+## The three skin styles — bought skins only
 
 A **skin** is what a plant wears when the player has bought one in the Petal shop, and it
-is not a tint. `<plant>_skin_<family>.svg` is generated from the parent by
-`tools/gen_skin_svg.py`, which makes **two** changes where a sport makes one:
+is not a tint and not a recolour. `<plant>_skin_<family>.svg` is generated from the parent
+by `tools/gen_skin_svg.py`, which RE-DRAWS it: the parent's geometry and the *value* of its
+paint survive, and everything about how a shape is painted is the family's own.
 
-1. **Paint** is remapped onto the family's eight-rung ramp by the same luminance-nearest,
-   order-preserving, nothing-collapses rule the mutant ramps use. Achromatic paint is left
-   alone, so the Chomp Flower's teeth are bone under every skin.
-2. **Geometry** is appended — a family motif, drawn in that family's own anchors, as a
-   single `<g>` before `</svg>`. That is the point of the feature: a skin the player paid
-   for has to change the silhouette, not just the hue. `golden` wears a wheat-and-laurel
-   crown over the top of the tile and a narrow band at the base; `frost` stands three ice
-   shards at the base under one hexagonal crystal; `ember` burns a scorch crescent at the
-   base with three flecks rising off it.
+One family is one STYLE, not one palette. A player who owns all three owns three visibly
+unrelated renderings of the same plant.
 
-   Every motif is mirror-symmetric about **x = 32** and lives inside **x, y ∈ [3, 61]**.
-   Neither is taste: `test_content_is_bilaterally_centred` allows 1.0 px of midline error
-   and `test_content_stays_inside_the_canvas` wants a 1 px transparent margin on all four
-   sides, and mirroring about x = 32 makes the first hold by construction whatever the
-   parent's bounds are. The motifs sit in tile margins measured from the union of all
-   seventeen rendered parents (free at y ≤ 5, y ≥ 58, x ≤ 5, x ≥ 58, plus both top
-   corners) — a motif that ignored that map would bury the plant it decorates.
+| Family | Style | What it does to every shape |
+|---|---|---|
+| `plate` | Ink botanical plate | The fill becomes tinted paper, the shape gains an inked rim, and hatching clipped to the shape carries the value — tight where the parent's colour was dark, sparse where it was light, absent above luminance 210, cross-hatched below 72. A Victorian seed-catalogue engraving. |
+| `cutpaper` | Cut paper collage | The shape becomes a stack of three: a pale cut edge offset up-left, a shadow ply offset down-right, and a saturated construction-paper face over both. Every layer is jittered by a deterministic hand so no two pieces are cut alike. |
+| `sampler` | Embroidery on linen | The fill becomes a linen ground, the rim becomes a round-capped running stitch, and stitch rows clipped to the shape carry the texture. Shapes read apart by GRAIN — each shape's row angle is 31° from its neighbour's — and not by hue. |
 
-These twenty-four shades are legal in a `_skin_*` sprite and **nowhere else**, and each
-ramp is legal only in **its own family's** sprites: `test_sprite_style.gd`'s `_palette_rgb`
-hands a `_skin_frost` stem the frost anchors and no others, so an ember shade that leaked
-into a frost sprite is still a finding. The thirty-four hand-drawn sprites stay held to
-exactly the kit palette above, unwidened.
+The motif system these replaced is gone. It existed to make a recolour into more than a
+recolour, and three real styles do that work.
 
-| Ramp | 1 (deepest) | 2 | 3 | 4 | 5 | 6 | 7 | 8 (palest) |
-|---|---|---|---|---|---|---|---|---|
-| Golden (45°) | `#463604` | `#695006` | `#8C6B09` | `#AF870E` | `#D0A218` | `#E8BC37` | `#F5D36E` | `#FCE8AA` |
+### The canvas clauses, and how a re-drawing earns them
 
-| Ramp | 1 (deepest) | 2 | 3 | 4 | 5 | 6 | 7 | 8 (palest) |
-|---|---|---|---|---|---|---|---|---|
-| Frost (200°) | `#053046` | `#084969` | `#0C618C` | `#147BAF` | `#2896CD` | `#50B3E4` | `#87CEF2` | `#B9E4FA` |
+A sport copies its parent's geometry byte for byte, so canvas size, retina doubling,
+bilateral centring and in-canvas bounds all hold for free. A skin does not: hatching,
+stitch rims and paper plies all add geometry. So the generator **measures and corrects**.
+Every skin is drawn once with no correction, walked with `tools/svg_style_check.py`'s own
+affine/bezier arithmetic to get its exact stroke-expanded content box, and drawn again with
+a single `p -> s*p + T` baked into every element (clip-path children included) that pins the
+content midline to x = 32 exactly and keeps 1.25 px on every side. It is then walked a
+third time and **refuses to write a drawing that still fails**. `test_content_is_bilaterally_centred`
+and `test_content_stays_inside_the_canvas` re-check the raster.
 
-| Ramp | 1 (deepest) | 2 | 3 | 4 | 5 | 6 | 7 | 8 (palest) |
-|---|---|---|---|---|---|---|---|---|
-| Ember (15°) | `#481504` | `#6C2108` | `#902D0C` | `#B43910` | `#D6491A` | `#EC6B40` | `#F89B7C` | `#FDC7B5` |
+### The palettes
 
-Eight rungs, again, and this time it is the tighter constraint: a sport splits its colours
-across two ramps by hue, a skin puts **all** of them on one, and the widest parents (Corn
-Cobbler, Sunflower, the Chomp's late eating frame) carry eight distinct chromatic shades.
-Nothing may collapse, so eight is the floor and the generator fails loudly rather than
-flattening a sprite that outgrows it.
+Each family has its own, and the gate hands a `_skin_<family>` stem **only its own
+family's** entries: `test_sprite_style.gd`'s `_palette_rgb` gives a `_skin_plate` stem the
+plate tones and no others, so a sampler shade that leaked into a plate sprite is still a
+finding. The thirty-four hand-drawn sprites stay held to exactly the kit palette above,
+unwidened. A bare run of `gen_skin_svg.py` also fails on an entry **no drawing emits** —
+conformance is "near the segment between two palette entries", so an unused entry legalises
+a whole line through the colour space for free.
 
-Each anchor derives its **third channel** from the other two, the same trick the mutant
-ramps use, so all eight of a ramp sit within half a degree of one hue and the outline rule
-("the rim is a darker shade of the fill's own hue") survives a recolour that knows nothing
-about it. Both end rungs stop short of white and black for the reason recorded above about
-rung 8 and the Aloe: below saturation 0.12 the outline check reads a fill as grey and warns
-that a coloured rim is circling bare paper. Every palest anchor here sits at 0.26 or above.
+**Plate** — four tones, all derived at hue 32° by the same third-channel trick the mutant
+ramps use, which is what lets the outline rule ("the rim is a darker shade of the fill's own
+hue") pass for ink on paper with no exception at all.
+
+| Ink | Light ink | Shaded paper | Paper |
+|---|---|---|---|
+| `#2A1F12` | `#604628` | `#C8B196` | `#EEDAC4` |
+
+**Cut paper** — five stocks, chosen by the source colour's hue family (moss 60–170°, slate
+170–280°, straw 20–60°, brick otherwise, oat for anything under saturation 0.12). Each is a
+ply, one or two faces, and a cut-edge core. A stock declares as many faces as the corpus
+actually asks it for: every red a plant is drawn in is a midtone or darker, every blue-grey
+used as a *fill* is light, and the only achromatic plant fill is the Chomp's teeth.
+
+| Stock | Ply | Face (dark) | Face (light) | Cut edge |
+|---|---|---|---|---|
+| Moss | `#244A22` | `#3F7A3A` | `#6FB24A` | `#A6D585` |
+| Straw | `#7A4A0F` | `#C8871F` | `#F0B93A` | `#F9DC93` |
+| Brick | `#6B1E13` | `#B03A28` | — | `#E28C70` |
+| Slate | `#2C4E68` | `#5A93B8` | — | `#A6CBE2` |
+| Oat | `#9A9086` | `#E7DECC` | — | `#F8F4EA` |
+
+**Sampler** — flax linen and indigo floss. Two ground values and two thread values, and no
+more: this style separates shapes by grain, so a tone per material would undo it.
+
+| Thread | Light thread | Shaded linen | Linen |
+|---|---|---|---|
+| `#2E4258` | `#5C7B99` | `#CDBF9C` | `#E6DCC0` |
+
+### Which contract rules each style breaks, and where the exception lives
+
+Scoped to `_skin_` stems in `tools/svg_style_check.py`, so nothing here loosens the
+contract the hand-drawn sprites are held to.
+
+- **`outline`, the hue and grey clauses** — broken by `sampler` alone. An indigo running
+  stitch on flax linen is a rim in a different MEDIUM, not a darkening of the ground, and
+  the 167° between them is the whole read of the style. `check_outline` exempts a `_skin_`
+  stem from those two clauses and from nothing else: a skin's rim is still checked for
+  being darker than its fill and for not being black. `plate` does not need the exception
+  (its tones are one hue by construction) and `cutpaper` never reaches it (a paper face
+  carries no stroke at all).
+- **`outline_width`** — not broken. Every rim any style emits is under 1.5 px.
+- **`black_fill`** — not broken. Every generated element names its own fill, `none`
+  included, and the generator refuses a parent shape that does not.
+- **`flat_paint`** — not broken and not negotiable. No gradient, no pattern, no sub-1
+  opacity anywhere; hatching and stitching are geometry. (A `<pattern>` fill would have
+  been the obvious way to hatch and it renders as nothing at all in this rasteriser.)
+
+One thing worth knowing before editing the cut-paper style: its pale cut edge is an offset
+*filled layer*, never a stroke. A pale rim written as `stroke` would be a lighter outline
+around a fill, which `check_outline` calls an error in the words "a lighter rim reads as a
+glow" — and it would be right, because a rim runs all the way round and a cut edge only
+shows on the side the light is on.
 
 Do not hand-pick a shade from these tables, and do not edit a `_skin_*` file: a skin is a
-function of its parent and its ramp, and `python tools/gen_skin_svg.py` fails on any edit
+function of its parent and its style, and `python tools/gen_skin_svg.py` fails on any edit
 the two do not explain — including a fifty-second file for a family that does not exist.
 `--palette` prints these as the gate's `SKIN_PALETTES` block, and `tools/svg_style_check.py`
 reports any shade this page carries and the gate does not, or the reverse.

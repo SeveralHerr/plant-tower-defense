@@ -136,25 +136,27 @@ const MUTANT_PALETTE: PackedStringArray = [
 ## looks for it; a bare run of that tool fails if this spelling and its own disagree.
 const SKIN_SUFFIX := "_skin_"
 
-## The three skin ramps and the ONLY sprites each is legal in. A plant wearing a bought
-## skin wears a generated DRAWING (`tools/gen_skin_svg.py`), not a tint, and every shade in
-## it comes off its own family's ramp.
+## The three skin palettes and the ONLY sprites each is legal in. A plant wearing a bought
+## skin wears a generated DRAWING (`tools/gen_skin_svg.py`), not a tint and not a recolour:
+## one family is one STYLE (an ink botanical plate, a cut paper collage, a linen sampler)
+## and every tone in it belongs to that style.
 ##
-## Scoped per family, not pooled: `_palette_rgb` hands a `_skin_frost` stem the frost ramp
-## and nothing else, so an ember shade that leaked into a frost sprite is still a finding.
-## Pooling all twenty-four would have been one line and would have made the three families
-## one 24-colour palette with every pair-segment between them legal, which is the same
-## mistake in miniature that widening PALETTE itself would have been for the mutants.
+## Scoped per family, not pooled: `_palette_rgb` hands a `_skin_plate` stem the four plate
+## tones and nothing else, so a sampler shade that leaked into a plate sprite is still a
+## finding. Pooling all twenty would have been one line and would have made the three
+## families one 20-colour palette with every pair-segment between them legal, which is the
+## same mistake in miniature that widening PALETTE itself would have been for the mutants.
 ##
-## Eight anchors each, constant-hue by construction and monotone in luminance -- derived,
-## not chosen. `python tools/gen_skin_svg.py --palette` prints this block, and a bare run
-## of that tool fails when this copy and its RAMPS disagree in either direction. The
-## derivation, the hues and why both end rungs stop short of white and black are in that
-## file's docstring and in art_src/STYLE.md.
+## The lengths differ because the STYLES differ, not because anyone chose a number: plate
+## and sampler are four tones apiece and cut paper is twelve (five paper stocks, each a
+## ply, one or two faces and a cut edge). `python tools/gen_skin_svg.py --palette` prints
+## this block; a bare run of that tool fails when this copy and its PALETTES disagree in
+## either direction, AND when this block carries an entry no drawing emits. The styles and
+## the tones are in that file's docstring and in art_src/STYLE.md.
 const SKIN_PALETTES := {
-	"golden": ["463604", "695006", "8C6B09", "AF870E", "D0A218", "E8BC37", "F5D36E", "FCE8AA"],
-	"frost": ["053046", "084969", "0C618C", "147BAF", "2896CD", "50B3E4", "87CEF2", "B9E4FA"],
-	"ember": ["481504", "6C2108", "902D0C", "B43910", "D6491A", "EC6B40", "F89B7C", "FDC7B5"],
+	"plate": ["2A1F12", "604628", "C8B196", "EEDAC4"],
+	"cutpaper": ["244A22", "3F7A3A", "6FB24A", "A6D585", "7A4A0F", "C8871F", "F0B93A", "F9DC93", "6B1E13", "B03A28", "E28C70", "2C4E68", "5A93B8", "A6CBE2", "9A9086", "E7DECC", "F8F4EA"],
+	"sampler": ["2E4258", "5C7B99", "CDBF9C", "E6DCC0"],
 }
 
 ## An anti-aliased edge between two flat fills lands *on the line between them*
@@ -357,19 +359,36 @@ func test_no_rendered_png_is_an_orphan() -> String:
 	return ""
 
 
-func test_a_skin_carries_more_ink_than_the_plant_it_dresses() -> String:
-	# The one claim about a skin that no other test in this file can make, and the one
-	# the FEATURE is about: a skin is not a recolour. `tools/gen_skin_svg.py` appends a
-	# family motif as real geometry, so a skin's silhouette is strictly bigger than its
-	# parent's — the crown, the shards, the scorch all paint where the plant does not.
+func test_a_skin_is_not_its_parent_recoloured() -> String:
+	# The one claim about a skin that no other test in this file can make, and the one the
+	# FEATURE is about. A skin is a plant RE-DRAWN in one of three styles
+	# (`tools/gen_skin_svg.py`): an ink botanical plate, a cut paper collage, a linen
+	# sampler. Every other gate here is satisfied by a pure recolour — the palette test
+	# passes on one, so do size, centring and margin, and the generator's own check
+	# compares TEXT and would happily agree with a hatch whose `d` Godot silently refuses
+	# to draw.
 	#
-	# Every other gate here is satisfied by a pure recolour. The palette test passes on
-	# one, the size and centring and margin tests pass on one, and the generator's own
-	# check compares text and would happily agree with a motif whose `d` Godot silently
-	# refuses to draw. Opaque pixel COUNT is the property that separates "the motif is in
-	# the file" from "the motif reached the raster", and it is measured against the
-	# parent rather than against a number, so a redrawn motif does not need a new
-	# constant here.
+	# WHY THIS PROPERTY AND NOT ANOTHER. A recolour is a per-pixel map from colour to
+	# colour — `modulate` multiplies each channel and the result is quantised — so two
+	# pixels that were equal in the parent are equal in the recolour. That makes the
+	# number of DISTINCT opaque colours something a recolour can only hold or reduce,
+	# never raise. Every one of these skins raises it, because hatching, stitch rows and
+	# stacked paper plies put boundaries inside shapes the parent drew flat, and every
+	# boundary is anti-aliased into colours neither side had. Measured against the parent
+	# rather than against a constant, so a restyled family needs no new number here.
+	#
+	# Two shapes of claim were tried first and are recorded because they LOOK right:
+	# opaque pixel COUNT (the old motif-era assertion — these styles redraw inside the
+	# silhouette rather than outside it, so two of the three paint slightly FEWER pixels
+	# than their parent), and the fraction of pixels whose four neighbours match exactly
+	# (cut paper is flat construction paper and measures FLATTER than the parent on eleven
+	# of seventeen stems). Both would have failed on correct art.
+	#
+	# WHAT IT MISSES, and it is a lot: it cannot tell one style from another, so a plate
+	# drawing emitted under the sampler's name passes; it cannot tell structure from
+	# noise, so the parent plus a scatter of stray dots passes; and it says nothing about
+	# whether a person can name the style from a 64px tile, which is the actual bar and is
+	# answered by looking at the sprites and by nothing else.
 	var stems := _svg_stems()
 	var checked := 0
 	for stem: String in _declared():
@@ -384,14 +403,51 @@ func test_a_skin_carries_more_ink_than_the_plant_it_dresses() -> String:
 		if skin == null or plain == null:
 			return "%s.png or its parent %s.png did not load" % [stem, parent]
 		checked += 1
-		var err: String = _T.assert_gt(_opaque_pixel_count(skin), _opaque_pixel_count(plain),
-			"%s paints more than %s (a skin appends a motif; equal ink means the motif did not render)"
-				% [stem, parent])
+		var rich := _distinct_opaque_colours(skin)
+		var flat := _distinct_opaque_colours(plain)
+		var err: String = _T.assert_gt(rich, flat,
+			("%s carries more distinct colours than %s (%d against %d). A recolour cannot "
+				+ "raise that number, so equal or fewer means the re-drawing did not reach "
+				+ "the raster")
+				% [stem, parent, rich, flat])
 		if err != "":
 			return err
 	# A loop over an empty set returns pass having asserted nothing, which is the
 	# [VACUOUS] failure this suite prints for exactly this shape. Say the number.
 	return _T.assert_gt(checked, 0, "art_src/ carries skin drawings to compare against their parents")
+
+
+func test_the_skins_of_one_plant_are_three_different_drawings() -> String:
+	# The other half of the claim above, and the half it structurally cannot make: each of
+	# the three families is a different STYLE, so the three skins of one plant differ from
+	# each other in SHAPE and not only in paint. Compared as opaque MASKS rather than as
+	# images, deliberately — two drawings in different palettes differ as images no matter
+	# what, and that would be a test that cannot fail.
+	#
+	# The failure this is written against is concrete: the three styles share one shape
+	# walker in `tools/gen_skin_svg.py`, and a dispatch that handed two families the same
+	# renderer would produce two files that pass every other test in this suite, palette
+	# scoping included, because each would still be painted in its own family's tones.
+	var stems := _svg_stems()
+	var families := SKIN_PALETTES.keys()
+	var compared := 0
+	for stem: String in EXPECTED_SIZE:
+		for i in families.size():
+			for j in range(i + 1, families.size()):
+				var a: String = "%s%s%s" % [stem, SKIN_SUFFIX, families[i]]
+				var b: String = "%s%s%s" % [stem, SKIN_SUFFIX, families[j]]
+				if not stems.has(a) or not stems.has(b):
+					continue
+				var ia := _load(a)
+				var ib := _load(b)
+				if ia == null or ib == null:
+					return "%s.png or %s.png did not load" % [a, b]
+				compared += 1
+				var err: String = _T.assert_true(_opaque_masks_differ(ia, ib),
+					"%s and %s are different drawings and not one drawing in two palettes" % [a, b])
+				if err != "":
+					return err
+	return _T.assert_gt(compared, 0, "there are pairs of skins to compare")
 
 
 func test_every_colour_is_kit_palette_or_a_blend_of_two() -> String:
@@ -520,6 +576,34 @@ func _opaque_pixel_count(img: Image) -> int:
 	return n
 
 
+## How many distinct colours the opaque pixels of `img` carry.
+##
+## The quantity a recolour cannot raise: `modulate` maps colour to colour, so two equal
+## pixels stay equal and the image of a set of n colours has at most n members. See
+## test_a_skin_is_not_its_parent_recoloured for why that is the property worth measuring.
+func _distinct_opaque_colours(img: Image) -> int:
+	var seen := {}
+	for y in img.get_height():
+		for x in img.get_width():
+			var c := img.get_pixel(x, y)
+			if c.a * 255.0 > OPAQUE:
+				seen[c.to_rgba32()] = true
+	return seen.size()
+
+
+## Whether two same-sized images paint DIFFERENT sets of pixels — shape, not colour.
+## Returns true the moment one is opaque where the other is not; two images of different
+## sizes are trivially different drawings and are reported as such rather than compared.
+func _opaque_masks_differ(a: Image, b: Image) -> bool:
+	if a.get_width() != b.get_width() or a.get_height() != b.get_height():
+		return true
+	for y in a.get_height():
+		for x in a.get_width():
+			if (a.get_pixel(x, y).a * 255.0 > OPAQUE) != (b.get_pixel(x, y).a * 255.0 > OPAQUE):
+				return true
+	return false
+
+
 ## Inclusive-exclusive bounds of the opaque content, in pixels.
 func _opaque_bounds(img: Image) -> Rect2i:
 	var min_x := img.get_width()
@@ -593,12 +677,12 @@ func _declared() -> Dictionary:
 ## Scoping by stem leaves the nine plants, five pests and two projectiles held to exactly
 ## the contract they were held to before the mutants existed.
 ##
-## A skin stem gets ITS OWN FAMILY's eight anchors and no others — not the pooled
-## twenty-four. That is the same argument one level down: three ramps handed out together
-## are one 24-entry palette, and because conformance is "near the segment between two
-## entries" it would legalise every blend between an ember shade and a frost one. A frost
-## anchor appearing in an ember sprite is a real defect (a motif written with the wrong
-## index, a family renamed in one file and not the other) and it stays a finding.
+## A skin stem gets ITS OWN FAMILY's tones and no others — not the pooled twenty. That is
+## the same argument one level down: three palettes handed out together are one 20-entry
+## palette, and because conformance is "near the segment between two entries" it would
+## legalise every blend between a sampler shade and a plate one. A cut-paper tone appearing
+## in a plate sprite is a real defect (a style dispatched to the wrong family, a family
+## renamed in one file and not the other) and it stays a finding.
 func _palette_rgb(stem: String) -> Array[Vector3]:
 	var out: Array[Vector3] = []
 	for hex in PALETTE:

@@ -156,8 +156,8 @@ func test_texture_path_derives_a_drawing_only_where_there_is_one() -> String:
 		err = _T.assert_eq(Skins.texture_path(base, &"not_a_real_skin"), base,
 			"and so is a family this build does not know")
 	if err == "":
-		err = _T.assert_eq(Skins.texture_path("", &"golden"), "",
-			"and the empty path stays empty rather than becoming _skin_golden.")
+		err = _T.assert_eq(Skins.texture_path("", &"plate"), "",
+			"and the empty path stays empty rather than becoming _skin_plate.")
 	for row: Dictionary in Skins.buyable_families():
 		if err != "":
 			break
@@ -167,13 +167,13 @@ func test_texture_path_derives_a_drawing_only_where_there_is_one() -> String:
 			"%s derives its own drawing beside the parent" % id)
 		if err == "":
 			# Idempotent: the funnel is reached once per frame per plant, and a second
-			# pass must not produce sunflower_skin_golden_skin_golden.png.
+			# pass must not produce sunflower_skin_plate_skin_plate.png.
 			err = _T.assert_eq(Skins.texture_path(once, id), once,
 				"%s applied twice is %s applied once" % [id, id])
 		if err == "":
 			# And a path already wearing ANOTHER family's suffix is left alone too --
 			# the guard is "does this carry a skin suffix", not "does it carry MINE".
-			var other: StringName = &"frost" if id != &"frost" else &"ember"
+			var other: StringName = &"cutpaper" if id != &"cutpaper" else &"sampler"
 			err = _T.assert_eq(Skins.texture_path(once, other), once,
 				"%s is not restacked under a second family" % once)
 	if err == "":
@@ -386,7 +386,7 @@ func test_buy_skin_refuses_unknown_unaffordable_and_already_owned() -> String:
 	_stage_shop("user://test_skins_buy_refusals.save", Skins.PLANT_SKIN_COST)
 	var plant: StringName = PlantCatalog.ids()[0]
 
-	var err: String = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PLANT, &"not_a_plant", &"golden"),
+	var err: String = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PLANT, &"not_a_plant", &"plate"),
 		"an unknown target is refused")
 	if err == "":
 		err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"not_a_real_skin"),
@@ -400,12 +400,12 @@ func test_buy_skin_refuses_unknown_unaffordable_and_already_owned() -> String:
 	if err == "":
 		err = _T.assert_eq(RunConfig.purchased_skins, {}, "and nothing was recorded")
 	if err == "":
-		err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"golden"),
+		err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"the affordable purchase goes through")
 	if err == "":
 		err = _T.assert_eq(RunConfig.petals, 0, "and costs exactly its price")
 	if err == "":
-		err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"golden"),
+		err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"buying it again is refused rather than silently charged")
 	if err == "":
 		err = _T.assert_eq(RunConfig.petals, 0, "so the balance is still zero, not negative")
@@ -415,14 +415,14 @@ func test_buy_skin_refuses_unknown_unaffordable_and_already_owned() -> String:
 		# there.
 		RunConfig.petals = Skins.PEST_SKIN_COST - 1
 		var pest: StringName = StringName(Pest.SPECIES.keys()[0])
-		err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PEST, pest, &"frost"),
+		err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PEST, pest, &"cutpaper"),
 			"one petal short is refused")
 		if err == "":
 			err = _T.assert_eq(RunConfig.petals, Skins.PEST_SKIN_COST - 1,
 				"and the petal it did have is still there")
 		if err == "":
 			RunConfig.petals = Skins.PEST_SKIN_COST
-			err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PEST, pest, &"frost"),
+			err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PEST, pest, &"cutpaper"),
 				"exactly the price is enough")
 	_restore_shop_state(stashed)
 	return err
@@ -430,7 +430,7 @@ func test_buy_skin_refuses_unknown_unaffordable_and_already_owned() -> String:
 
 ## A purchase dresses ONE row. The unit-level version of this is the ownership matrix
 ## above; this is the same claim through the real writer, because `buy_skin` is where a
-## key could be built wrong and hand golden to every plant at once.
+## key could be built wrong and hand plate to every plant at once.
 func test_buying_a_skin_for_one_target_does_not_give_it_to_another() -> String:
 	var stashed: Dictionary = _stash_shop_state()
 	_stage_shop("user://test_skins_per_target.save", Skins.PLANT_SKIN_COST * 2)
@@ -438,20 +438,20 @@ func test_buying_a_skin_for_one_target_does_not_give_it_to_another() -> String:
 	var err: String = _T.assert_gt(ids.size(), 1,
 		"more than one plant, or this test cannot tell a leak from a hit")
 	if err == "":
-		err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, ids[0], &"golden"),
-			"golden is bought for the first plant")
+		err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, ids[0], &"plate"),
+			"plate is bought for the first plant")
 	if err == "":
-		err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, ids[0], &"golden"),
+		err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, ids[0], &"plate"),
 			"the row it was bought on owns it")
 	if err == "":
-		err = _T.assert_false(RunConfig.owns_skin(Skins.KIND_PLANT, ids[1], &"golden"),
+		err = _T.assert_false(RunConfig.owns_skin(Skins.KIND_PLANT, ids[1], &"plate"),
 			"the next plant does not")
 	if err == "":
 		var pest: StringName = StringName(Pest.SPECIES.keys()[0])
-		err = _T.assert_false(RunConfig.owns_skin(Skins.KIND_PEST, pest, &"golden"),
+		err = _T.assert_false(RunConfig.owns_skin(Skins.KIND_PEST, pest, &"plate"),
 			"and neither does a pest -- the key carries the kind as well as the id")
 	if err == "":
-		err = _T.assert_false(RunConfig.owns_skin(Skins.KIND_PLANT, ids[0], &"frost"),
+		err = _T.assert_false(RunConfig.owns_skin(Skins.KIND_PLANT, ids[0], &"cutpaper"),
 			"and the purchase bought one family, not the row's whole wardrobe")
 	_restore_shop_state(stashed)
 	return err
@@ -476,7 +476,7 @@ func test_petals_never_go_negative() -> String:
 	if err == "":
 		# Spend every petal there is, then try to spend past the floor.
 		var plant: StringName = PlantCatalog.ids()[0]
-		err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"golden"),
+		err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"a purchase dearer than the balance is refused rather than overdrawn")
 		if err == "":
 			err = _T.assert_eq(RunConfig.petals, 3, "and the balance is untouched")
@@ -504,8 +504,8 @@ func test_set_skin_refuses_a_skin_that_was_never_bought() -> String:
 	RunConfig.selected_skins = {}
 	RunConfig.purchased_skins = {}
 	var plant: StringName = PlantCatalog.ids()[0]
-	var ok: bool = RunConfig.set_skin(Skins.KIND_PLANT, plant, &"golden")
-	var err: String = _T.assert_false(ok, "golden is refused with an empty wardrobe")
+	var ok: bool = RunConfig.set_skin(Skins.KIND_PLANT, plant, &"plate")
+	var err: String = _T.assert_false(ok, "plate is refused with an empty wardrobe")
 	if err == "":
 		err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PLANT, plant), Skins.DEFAULT_SKIN,
 			"and the plant reads back as the default, not a half-set choice")
@@ -524,37 +524,37 @@ func test_set_skin_persists_once_the_skin_is_bought() -> String:
 		Skins.PLANT_SKIN_COST + Skins.PEST_SKIN_COST)
 	var plant: StringName = PlantCatalog.ids()[0]
 	var pest: StringName = StringName(Pest.SPECIES.keys()[0])
-	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"golden"),
-		"golden is bought for the plant")
+	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
+		"plate is bought for the plant")
 	if err == "":
-		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PLANT, plant, &"golden"),
+		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"and can then be chosen")
 	if err == "":
-		err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PLANT, plant), &"golden",
+		err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PLANT, plant), &"plate",
 			"and reads back as chosen")
 	if err == "":
 		# The pest side of the same two doors, at the pest price -- so this also proves
 		# the two prices are read off the kind rather than being one number.
-		err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PEST, pest, &"ember"),
-			"ember is bought for the pest with exactly the pest price left")
+		err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PEST, pest, &"sampler"),
+			"sampler is bought for the pest with exactly the pest price left")
 	if err == "":
 		err = _T.assert_eq(RunConfig.petals, 0, "and the balance is spent to the penny")
 	if err == "":
-		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PEST, pest, &"ember"),
+		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PEST, pest, &"sampler"),
 			"the pest can wear what was bought for it")
 	if err == "":
-		err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PEST, pest), &"ember",
+		err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PEST, pest), &"sampler",
 			"and reads back as chosen too")
 	if err == "":
 		# Idempotent, the same contract record_milestones documents for itself.
-		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PLANT, plant, &"golden"),
+		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"choosing the same skin twice still reports success")
 	if err == "":
 		var bytes: String = FileAccess.get_file_as_string(RunConfig.save_path)
-		err = _T.assert_true(bytes.contains(Skins.selection_key(Skins.KIND_PLANT, plant) + "=golden"),
+		err = _T.assert_true(bytes.contains(Skins.selection_key(Skins.KIND_PLANT, plant) + "=plate"),
 			"the choice actually reached disk: %s" % bytes)
 		if err == "":
-			err = _T.assert_true(bytes.contains(Skins.selection_key(Skins.KIND_PEST, pest) + "=ember"),
+			err = _T.assert_true(bytes.contains(Skins.selection_key(Skins.KIND_PEST, pest) + "=sampler"),
 				"and so did the pest's: %s" % bytes)
 		if err == "":
 			err = _T.assert_true(bytes.contains("\nu2 "),
@@ -572,10 +572,10 @@ func test_set_skin_persists_once_the_skin_is_bought() -> String:
 		if err == "":
 			err = _T.assert_eq(RunConfig.petals, 0, "the balance came back")
 		if err == "":
-			err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"golden"),
+			err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"plate"),
 				"and so did the plant's purchase")
 		if err == "":
-			err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PEST, pest), &"ember",
+			err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PEST, pest), &"sampler",
 				"and the pest is still wearing what it was wearing")
 	_restore_shop_state(stashed)
 	return err
@@ -593,27 +593,27 @@ func test_selected_skin_falls_back_to_default_when_the_skin_is_not_owned() -> St
 	var stashed: Dictionary = _stash_shop_state()
 	_stage_shop("user://test_skins_fallback.save", Skins.PLANT_SKIN_COST)
 	var plant: StringName = PlantCatalog.ids()[0]
-	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"golden"),
-		"golden is bought and chosen while it is owned")
+	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
+		"plate is bought and chosen while it is owned")
 	if err == "":
-		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PLANT, plant, &"golden"), "chosen")
+		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PLANT, plant, &"plate"), "chosen")
 	if err == "":
 		# The wardrobe goes, the selection stays -- exactly the shape a v10 save has.
 		RunConfig.purchased_skins = {}
 		err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PLANT, plant), Skins.DEFAULT_SKIN,
-			"and reads back as the default once it is not owned, not as golden")
+			"and reads back as the default once it is not owned, not as plate")
 	if err == "":
 		err = _T.assert_eq(String(RunConfig.selected_skins.get(
-				Skins.selection_key(Skins.KIND_PLANT, plant), "")), "golden",
+				Skins.selection_key(Skins.KIND_PLANT, plant), "")), "plate",
 			"while the CHOICE is still recorded -- the migration keeps it rather than "
 				+ "throwing away a preference the player still holds")
 	if err == "":
 		# And it comes back the moment the family is bought for that row again.
 		RunConfig.petals = Skins.PLANT_SKIN_COST
-		err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"golden"),
+		err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"buying it again is a purchase, not a refusal, since it is no longer owned")
 		if err == "":
-			err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PLANT, plant), &"golden",
+			err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PLANT, plant), &"plate",
 				"and the old choice is worn again with nothing re-picked")
 	_restore_shop_state(stashed)
 	return err
@@ -624,8 +624,8 @@ func test_selected_skin_falls_back_to_default_when_the_skin_is_not_owned() -> St
 
 func test_compose_and_parse_skins_line_round_trip() -> String:
 	var selections: Dictionary = {
-		Skins.selection_key(Skins.KIND_PLANT, PlantCatalog.ids()[0]): "golden",
-		Skins.selection_key(Skins.KIND_PEST, StringName(Pest.SPECIES.keys()[0])): "frost",
+		Skins.selection_key(Skins.KIND_PLANT, PlantCatalog.ids()[0]): "plate",
+		Skins.selection_key(Skins.KIND_PEST, StringName(Pest.SPECIES.keys()[0])): "cutpaper",
 	}
 	var line: String = RunConfig.compose_skins_line(selections)
 	var err: String = _T.assert_true(line.begins_with("s2 "), "two entries, count-prefixed: %s" % line)
@@ -646,15 +646,15 @@ func test_parse_skins_line_refuses_malformed_lines() -> String:
 	var cases: Array[String] = [
 		"d0",                     # a difficulty line, not a skins line -- wrong prefix
 		"s1",                     # count says one, no fields follow
-		"s0 plant:sunflower=golden",  # count says zero, one field follows
-		"splant:sunflower=golden",    # no space, the count is unparsable
+		"s0 plant:sunflower=plate",  # count says zero, one field follows
+		"splant:sunflower=plate",    # no space, the count is unparsable
 		"s1 plant:sunflower",         # no "=" at all
-		"s1 plantsunflower=golden",   # no ":" between kind and id
-		"s1 :sunflower=golden",       # empty kind before the ":"
-		"s1 plant:=golden",           # empty id after the ":"
+		"s1 plantsunflower=plate",   # no ":" between kind and id
+		"s1 :sunflower=plate",       # empty kind before the ":"
+		"s1 plant:=plate",           # empty id after the ":"
 		"s1 plant:sunflower=",        # empty value
-		"s1 PLANT:sunflower=golden",  # uppercase is not in MILESTONE_ID_CHARS
-		"s2 plant:sunflower=golden plant:sunflower=frost",  # the same key twice
+		"s1 PLANT:sunflower=plate",  # uppercase is not in MILESTONE_ID_CHARS
+		"s2 plant:sunflower=plate plant:sunflower=cutpaper",  # the same key twice
 	]
 	for text: String in cases:
 		var parsed: Variant = RunConfig.parse_skins_line(text)
@@ -708,10 +708,14 @@ func test_compose_and_parse_purchase_line_round_trip() -> String:
 		StringName(Pest.SPECIES.keys()[0]))
 	# Deliberately unsorted going in, on both axes: the keys and the family list within
 	# a key are both sorted by the writer, which is what makes two saves holding the same
-	# wardrobe byte-identical whatever order the player bought things in.
+	# wardrobe byte-identical whatever order the player bought things in. Both lists below
+	# are written in the reverse of the order they must come out in -- an input that
+	# happened to arrive sorted would let this pass with the writer's sort deleted, which
+	# is what the v12 rename nearly did to it: `ember,golden` was sorted going in and
+	# `sampler,plate` is not, so the two ends of this test disagreed until both moved.
 	var purchases: Dictionary = {
-		pest_key: ["golden", "ember"],
-		plant_key: ["frost", "golden"],
+		pest_key: ["sampler", "plate"],
+		plant_key: ["plate", "cutpaper"],
 	}
 	var line: String = RunConfig.compose_purchase_line(purchases)
 	# The expected string is ASSEMBLED from the same sort the writer promises rather
@@ -719,8 +723,8 @@ func test_compose_and_parse_purchase_line_round_trip() -> String:
 	# these two ids and not about the rule, and a literal here would be a test that
 	# passes on the catalogue as it stands today.
 	var wardrobes: Dictionary = {
-		plant_key: "frost,golden",
-		pest_key: "ember,golden",
+		plant_key: "cutpaper,plate",
+		pest_key: "plate,sampler",
 	}
 	var sorted_keys: Array = wardrobes.keys()
 	sorted_keys.sort()
@@ -736,11 +740,11 @@ func test_compose_and_parse_purchase_line_round_trip() -> String:
 			var back := parsed as Dictionary
 			err = _T.assert_eq(back.keys().size(), 2, "both keys survived")
 			if err == "":
-				var plant_expected: Array[String] = ["frost", "golden"]
+				var plant_expected: Array[String] = ["cutpaper", "plate"]
 				err = _T.assert_eq(back[plant_key], plant_expected,
 					"the plant's wardrobe came back sorted")
 			if err == "":
-				var pest_expected: Array[String] = ["ember", "golden"]
+				var pest_expected: Array[String] = ["plate", "sampler"]
 				err = _T.assert_eq(back[pest_key], pest_expected,
 					"and so did the pest's")
 	return err
@@ -757,8 +761,8 @@ func test_compose_purchase_line_drops_the_default_and_the_empty() -> String:
 		err = _T.assert_eq(RunConfig.compose_purchase_line({key: []}), "u0",
 			"and a key whose list is empty is dropped rather than written as key=")
 	if err == "":
-		err = _T.assert_eq(RunConfig.compose_purchase_line({key: ["golden", "golden"]}),
-			"u1 %s=golden" % key, "a duplicate within a key is written once")
+		err = _T.assert_eq(RunConfig.compose_purchase_line({key: ["plate", "plate"]}),
+			"u1 %s=plate" % key, "a duplicate within a key is written once")
 	return err
 
 
@@ -766,19 +770,19 @@ func test_parse_purchase_line_refuses_malformed_lines() -> String:
 	var cases: Array[String] = [
 		"s0",                        # a skins line, not a wardrobe line -- wrong prefix
 		"u1",                        # count says one, no fields follow
-		"u0 plant:sunflower=golden",  # count says zero, one field follows
-		"uplant:sunflower=golden",    # no space, the count is unparsable
+		"u0 plant:sunflower=plate",  # count says zero, one field follows
+		"uplant:sunflower=plate",    # no space, the count is unparsable
 		"u1 plant:sunflower",         # no "=" at all
-		"u1 plantsunflower=golden",   # no ":" between kind and id
-		"u1 :sunflower=golden",       # empty kind before the ":"
-		"u1 plant:=golden",           # empty id after the ":"
+		"u1 plantsunflower=plate",   # no ":" between kind and id
+		"u1 :sunflower=plate",       # empty kind before the ":"
+		"u1 plant:=plate",           # empty id after the ":"
 		"u1 plant:sunflower=",        # empty value
-		"u1 plant:sunflower=golden,",  # a trailing comma is an empty family
-		"u1 plant:sunflower=golden,,frost",  # and so is a doubled one
-		"u1 plant:sunflower=GOLDEN",  # uppercase is not in MILESTONE_ID_CHARS
-		"u1 PLANT:sunflower=golden",  # nor in the key half
-		"u1 plant:sunflower=golden,golden",  # the same family twice on one key
-		"u2 plant:sunflower=golden plant:sunflower=frost",  # the same key twice
+		"u1 plant:sunflower=plate,",  # a trailing comma is an empty family
+		"u1 plant:sunflower=plate,,cutpaper",  # and so is a doubled one
+		"u1 plant:sunflower=PLATE",  # uppercase is not in MILESTONE_ID_CHARS
+		"u1 PLANT:sunflower=plate",  # nor in the key half
+		"u1 plant:sunflower=plate,plate",  # the same family twice on one key
+		"u2 plant:sunflower=plate plant:sunflower=cutpaper",  # the same key twice
 	]
 	var err: String = ""
 	for text: String in cases:
@@ -875,7 +879,7 @@ func test_a_v9_save_loads_forward_with_no_skins_selected() -> String:
 				RunConfig.score_key(false, &"harsh"), 0), 99,
 			"and the v9 difficulty-score line survived alongside it")
 	if err == "":
-		# Rewritten forward: the file on disk is now a v11 file with an explicit "s0",
+		# Rewritten forward: the file on disk is now a current-version file with an explicit "s0",
 		# and the two shop lines under it.
 		var rewritten: String = FileAccess.get_file_as_string(path)
 		err = _T.assert_true(rewritten.begins_with("v%d\n" % RunConfig.SAVE_VERSION),
@@ -924,6 +928,12 @@ func test_a_v10_save_loads_forward_with_no_petals_and_no_purchases() -> String:
 	# A hand-typed v10 file: every field v10 ever wrote, INCLUDING a chosen skin, and
 	# nothing past the binding count -- no "p"/"u" lines, because no build before v11
 	# ever wrote one.
+	#
+	# THE SKIN IS SPELLED `golden`, WHICH IS WHAT v10 WROTE, and it is a literal rather
+	# than `Skins.RENAMED_FAMILIES.keys()[0]`: this is a fixture standing in for a file
+	# on a real player's disk, and a fixture derived from the map would rename itself to
+	# match whatever the map said and assert nothing. So a v10 save now crosses TWO
+	# migrations on one load -- the v11 wardrobe it never had, and the v12 rename.
 	var v10_bytes: String = ("v10\n1234\n5678\nm1:campaign_cleared\n"
 		+ "cb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns1 %s=golden\n0\n") % key
 	var f := FileAccess.open(path, FileAccess.WRITE)
@@ -932,7 +942,7 @@ func test_a_v10_save_loads_forward_with_no_petals_and_no_purchases() -> String:
 
 	RunConfig.save_path = path
 	RunConfig.petals = 99
-	RunConfig.purchased_skins = {"plant:leftover": ["ember"]}
+	RunConfig.purchased_skins = {"plant:leftover": ["sampler"]}
 	RunConfig._load()
 	var err: String = _T.assert_eq(RunConfig.load_status, "migrated",
 		"a v10 file loads and is rewritten forward rather than refused, got %s"
@@ -946,8 +956,10 @@ func test_a_v10_save_loads_forward_with_no_petals_and_no_purchases() -> String:
 			"and bought nothing -- the load REPLACED the in-memory wardrobe rather "
 				+ "than merging into it")
 	if err == "":
-		err = _T.assert_eq(String(RunConfig.selected_skins.get(key, "")), "golden",
-			"while the v10 SELECTION survived the parse")
+		err = _T.assert_eq(String(RunConfig.selected_skins.get(key, "")), "plate",
+			("while the v10 SELECTION survived the parse AND was renamed forward -- it "
+				+ "went in as `golden` and a build that kept it verbatim would be holding a "
+				+ "family `Skins.has_family` says does not exist"))
 	if err == "":
 		err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PLANT, plant), Skins.DEFAULT_SKIN,
 			"and is not worn, because nothing is owned yet -- that fallback IS the "
@@ -962,8 +974,9 @@ func test_a_v10_save_loads_forward_with_no_petals_and_no_purchases() -> String:
 		var rewritten: String = FileAccess.get_file_as_string(path)
 		err = _T.assert_eq(rewritten,
 			("v%d\n1234\n5678\nm1:campaign_cleared\ncb0 sfx0 mus0 spd0 svol0 mvol0\n"
-				+ "d0\ns1 %s=golden\np0\nu0\n0\n") % [RunConfig.SAVE_VERSION, key],
-			"and the file on disk is now a v11 file, byte for byte: %s" % rewritten)
+				+ "d0\ns1 %s=plate\np0\nu0\n0\n") % [RunConfig.SAVE_VERSION, key],
+			("and the file on disk is now a current-version file, byte for byte, "
+				+ "with the skin renamed on the way through: %s") % rewritten)
 	if err == "":
 		# It reads back as CURRENT, or the next launch refuses what the migration wrote.
 		RunConfig._load()
@@ -976,6 +989,189 @@ func test_a_v10_save_loads_forward_with_no_petals_and_no_purchases() -> String:
 	for suffix: String in ["", ".tmp", ".bak"]:
 		if FileAccess.file_exists(path + suffix):
 			DirAccess.remove_absolute(path + suffix)
+	return err
+
+
+# -- the v12 family rename (plant-tower-defense-p5ke.2) -----------------------
+#
+# The three families were named for COLOURS -- `golden`, `frost`, `ember` -- while a
+# family WAS a colour. A family is now an art STYLE, so they are `plate`, `cutpaper` and
+# `sampler`. The ids the save carries changed, which makes this a migration and not a
+# rename, and `RunConfig.VERSION_WITH_STYLE_SKINS` is where the save half is asserted
+# (test_economy.gd). What is asserted HERE is the table itself.
+
+
+## The table carries the style ids and no retired one.
+##
+## The failure this is pointed at is a half-done rename: a `FAMILIES` row still spelled
+## `golden` while `Skins.RENAMED_FAMILIES` maps `golden` onto `plate` is a build whose
+## own migration renames an id it still has, which reads as working until a save from
+## before the rename comes back holding two families where the player bought one.
+##
+## THE THREE IDS ARE PINNED AS LITERALS, deliberately, for the reason
+## `test_the_difficulty_score_line_round_trips_and_refuses_a_bad_count` pins `score_key`'s
+## output: these exact strings are what a player's save FILE carries, so changing one
+## orphans every wardrobe on disk. Written as `FAMILIES[1]["id"] == FAMILIES[1]["id"]`
+## this would move with the table and never disagree.
+func test_the_family_table_carries_the_style_ids_and_no_retired_one() -> String:
+	var ids: Array[String] = []
+	for row: Dictionary in Skins.FAMILIES:
+		ids.append(String(row["id"]))
+	var expected: Array[String] = ["default", "plate", "cutpaper", "sampler"]
+	var err: String = _T.assert_eq(ids, expected,
+		"FAMILIES is the default row and the three style families, in that order: %s" % [ids])
+	if err == "":
+		err = _T.assert_gt(Skins.RENAMED_FAMILIES.size(), 0,
+			"there are retired ids to check for, or every sweep below passes over nothing")
+	for old: Variant in Skins.RENAMED_FAMILIES.keys():
+		if err != "":
+			break
+		var new_id: String = String(Skins.RENAMED_FAMILIES[old])
+		err = _T.assert_false(Skins.has_family(StringName(old)),
+			("%s is retired and must not still be in FAMILIES -- a map from an id onto an "
+				+ "id the table also has is a migration that duplicates a wardrobe") % old)
+		if err == "":
+			err = _T.assert_true(Skins.has_family(StringName(new_id)),
+				"%s is what %s became, so the table has to actually carry it" % [new_id, old])
+		if err == "":
+			err = _T.assert_eq(Skins.current_family_id(String(old)), new_id,
+				"current_family_id maps %s forward" % old)
+		if err == "":
+			# IDEMPOTENT, and it has to be: `_save` writes what `_load` produced, and a
+			# map applied twice that moved twice would rename a family every launch.
+			err = _T.assert_eq(Skins.current_family_id(new_id), new_id,
+				"and leaves %s where it is when asked again" % new_id)
+	if err == "":
+		err = _T.assert_eq(Skins.current_family_id("verdigris"), "verdigris",
+			("a family this build has never had comes back unchanged -- a save from a "
+				+ "LATER build names one, and guessing it onto a known family would hand "
+				+ "out a skin nobody bought"))
+	if err == "":
+		# The titles moved with the ids. Asserted through `title_of` rather than by
+		# reading the row, so the lookup a screen actually calls is the one under test.
+		err = _T.assert_eq(Skins.title_of(&"plate"), "Botanical Plate", "the plate's label")
+	if err == "":
+		err = _T.assert_eq(Skins.title_of(&"cutpaper"), "Cut Paper", "cut paper's")
+	if err == "":
+		err = _T.assert_eq(Skins.title_of(&"sampler"), "Linen Sampler", "and the sampler's")
+	return err
+
+
+## The two rename functions, over the two shapes the save actually carries.
+##
+## Static and pure on both sides, so this needs no file, no autoload state and no scene --
+## which is the whole reason they are `static func`s over the parsers' output rather than
+## a rewrite of the line's text.
+func test_the_family_rename_maps_both_save_lines_and_leaves_a_stranger_alone() -> String:
+	var plant_key: String = Skins.selection_key(Skins.KIND_PLANT, PlantCatalog.ids()[0])
+	var pest_key: String = Skins.selection_key(Skins.KIND_PEST,
+		StringName(Pest.SPECIES.keys()[0]))
+
+	# The `s` line: one value per key, and the KEYS must not move -- no target was
+	# renamed, only the family a target wears.
+	var selections: Dictionary = RunConfig.rename_selected_families(
+		{plant_key: "golden", pest_key: "verdigris"})
+	var err: String = _T.assert_eq(String(selections.get(plant_key, "")), "plate",
+		"a worn family is renamed forward")
+	if err == "":
+		err = _T.assert_eq(String(selections.get(pest_key, "")), "verdigris",
+			"and one this build has never heard of is left exactly as it was found")
+	if err == "":
+		err = _T.assert_eq(selections.keys().size(), 2, "with both rows still present")
+
+	# The `u` line: a LIST per key, sorted on the way out. `ember,golden` arrives sorted
+	# and `sampler,plate` is not, so a rename that only mapped would hand the writer a
+	# list in the wrong order and make a migrated save differ from a freshly bought one
+	# over nothing.
+	if err == "":
+		var purchases: Dictionary = RunConfig.rename_purchased_families(
+			{plant_key: ["ember", "golden"]})
+		var want: Array[String] = ["plate", "sampler"]
+		err = _T.assert_eq(purchases.get(plant_key, []), want,
+			"a wardrobe is renamed AND re-sorted: %s" % [purchases])
+	if err == "":
+		# A file carrying both an old id and its new one. No writer produces it and a
+		# text editor can; `parse_purchase_line` refuses a duplicate, so collapsing it
+		# here is what stops `_save`'s readback failing for the rest of the session.
+		var collapsed: Dictionary = RunConfig.rename_purchased_families(
+			{plant_key: ["golden", "plate"]})
+		var one: Array[String] = ["plate"]
+		err = _T.assert_eq(collapsed.get(plant_key, []), one,
+			"an old id beside its own new one collapses to one entry, not two")
+	if err == "":
+		var stranger: Dictionary = RunConfig.rename_purchased_families(
+			{pest_key: ["verdigris"]})
+		var kept: Array[String] = ["verdigris"]
+		err = _T.assert_eq(stranger.get(pest_key, []), kept,
+			"and an unknown family is kept verbatim rather than mapped onto a known one")
+	if err == "":
+		# Whatever the rename produces has to be writable by the line it feeds, or the
+		# migration lands and the save that records it fails silently.
+		var line: String = RunConfig.compose_purchase_line(
+			RunConfig.rename_purchased_families({plant_key: ["ember", "golden"]}))
+		err = _T.assert_eq(line, "u1 %s=plate,sampler" % plant_key,
+			"and the result composes into a wardrobe line: %s" % line)
+		if err == "":
+			err = _T.assert_true(RunConfig.parse_purchase_line(line) != null,
+				"which this build's own reader accepts")
+	return err
+
+
+## Every family title still fits the row button the Skins screen draws it in.
+##
+## THE SHOP ABSORBS A LONGER TITLE AND THIS SCREEN DOES NOT, which is why the rename
+## needed a measurement rather than a look. `ShopScreen` derives every column from
+## `GardenTheme.measure`, so "Botanical Plate" widened its paper with nothing edited.
+## `SkinsScreen`'s row button is the shared `OverlayScreen.ROW_BUTTON_SIZE` -- a flat
+## 150 -- and `Control.set_size` clamps to `get_combined_minimum_size()`, so a title too
+## wide for 150 does not clip: it makes the button WIDER than the slot laid out for it.
+##
+## Measured through the theme rather than counted in characters. "Botanical Plate" is two
+## characters longer than "Heirloom Gold" and only about five pixels wider, because the
+## letters it gained are narrow ones -- a character count cannot tell those apart, and
+## `Label.get_minimum_size()` is no use either on the `clip_text` labels beside it.
+##
+## THE BUDGET IS THE PANEL, not the 150. The 150 is what is reserved; the panel is what
+## is enforced (`_overlay_content_fits_and_stands_clear` asks `panel.encloses`). What
+## this deliberately cannot see is the right margin a slightly-too-wide button eats on
+## its way there -- see `SkinsScreen`'s note on BUTTON_X for why that is a shape change
+## and not a wider constant.
+func test_a_family_title_still_fits_the_row_button_it_is_drawn_in() -> String:
+	# The real Button, wearing the real look, asked for its own minimum -- rather than
+	# the text width plus a hand-copied 14+14 content margin and the focus box's 2+2
+	# expand. A number transcribed out of GardenTheme is a number that stops being true
+	# the day the theme changes and nothing says so.
+	var probe := Button.new()
+	GardenTheme.style_paper_button(probe)
+	var budget: float = SkinsScreen.PANEL.size.x - SkinsScreen.BUTTON_X
+	var err: String = _T.assert_gt(Skins.FAMILIES.size(), 0,
+		"there are titles to measure, or this sweep passes over nothing")
+	var measured: int = 0
+	for row: Dictionary in Skins.FAMILIES:
+		if err != "":
+			break
+		probe.text = String(row["title"])
+		var needed: float = probe.get_combined_minimum_size().x
+		# A zero would mean no font resolved and every assertion below is vacuous --
+		# `GardenTheme.measure` answers 0.0 in exactly that case, deliberately, and the
+		# same hole is open here.
+		err = _T.assert_gt(needed, 0.0,
+			("%s measured to nothing -- a 0 means no font resolved, and every assertion in "
+				+ "this sweep is then vacuous") % row["title"])
+		if err == "":
+			measured += 1
+			err = _T.assert_true(needed <= budget,
+				("\"%s\" needs %.0fpx in a button the Skins screen gives %.0fpx of panel "
+					+ "(BUTTON_X %.0f of a %.0f-wide paper). Every column on ShopScreen is "
+					+ "measured and absorbed this; SkinsScreen's row button is a flat "
+					+ "constant and cannot. The fix is ShopScreen's shape -- derive the "
+					+ "column and the panel width from the corpus -- not a wider number "
+					+ "here.") % [row["title"], needed, budget, SkinsScreen.BUTTON_X,
+						SkinsScreen.PANEL.size.x])
+	probe.free()
+	if err == "":
+		err = _T.assert_eq(measured, Skins.FAMILIES.size(),
+			"every family title was measured, not just the ones before a break")
 	return err
 
 
@@ -1025,7 +1221,7 @@ func test_a_load_with_no_file_on_disk_reads_the_mirror() -> String:
 	RunConfig.campaign_high_score = 4242
 	var plant: StringName = PlantCatalog.ids()[0]
 
-	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"golden"),
+	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
 		"a purchase is made, which writes the save and therefore the mirror")
 	if err == "":
 		err = _T.assert_eq(SaveMirror.read(),
@@ -1045,7 +1241,7 @@ func test_a_load_with_no_file_on_disk_reads_the_mirror() -> String:
 		err = _T.assert_eq(RunConfig.load_status, "mirrored",
 			"the load says where it got the bytes, got %s" % RunConfig.load_status)
 	if err == "":
-		err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"golden"),
+		err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"the purchase came back off the mirror")
 	if err == "":
 		err = _T.assert_eq(RunConfig.petals, 0, "and so did the spent balance")
@@ -1086,10 +1282,10 @@ func test_a_placed_plant_wears_its_chosen_skins_drawing_and_no_tint() -> String:
 	var stashed: Dictionary = _stash_shop_state()
 	_stage_shop("user://test_skins_plant_tint.save", Skins.PLANT_SKIN_COST)
 	var kind: StringName = PlantCatalog.ids()[0]
-	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, kind, &"golden"),
-		"golden is bought for the plant this test places")
+	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, kind, &"plate"),
+		"plate is bought for the plant this test places")
 	if err == "":
-		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PLANT, kind, &"golden"),
+		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PLANT, kind, &"plate"),
 			"and chosen for it")
 	var plant: Plant = null
 	if err == "":
@@ -1100,18 +1296,18 @@ func test_a_placed_plant_wears_its_chosen_skins_drawing_and_no_tint() -> String:
 		# setup() only reaches into it for cell_to_world() when it is not null.
 		plant = Plant.new()
 		plant.setup(kind, Vector2i(1, 1), null)
-		err = _T.assert_eq(plant.skin_id, &"golden", "the plant records the skin it was placed with")
+		err = _T.assert_eq(plant.skin_id, &"plate", "the plant records the skin it was placed with")
 	if err == "":
 		err = _T.assert_true(plant._sprite != null, "the sprite exists to be painted")
 		if err == "":
-			var expected: Color = (Color.WHITE if Skins.has_art(&"golden")
-				else Skins.tint_for(&"golden"))
+			var expected: Color = (Color.WHITE if Skins.has_art(&"plate")
+				else Skins.tint_for(&"plate"))
 			err = _T.assert_eq(plant._sprite.modulate, expected,
 				"a family with a drawing of its own is worn WHITE -- the drawing is "
 					+ "already the colour")
 	if err == "":
 		err = _T.assert_eq(plant.frame_texture_path(PlantCatalog.texture_path(kind)),
-			Skins.texture_path(PlantCatalog.texture_path(kind), &"golden"),
+			Skins.texture_path(PlantCatalog.texture_path(kind), &"plate"),
 			"and the frame funnel hands back the skin's own drawing, not the parent's")
 	if plant != null:
 		plant.free()
@@ -1125,28 +1321,28 @@ func test_a_spawned_pest_wears_its_chosen_skins_tint_until_a_mutation_lands() ->
 	var stashed: Dictionary = _stash_shop_state()
 	_stage_shop("user://test_skins_pest_tint.save", Skins.PEST_SKIN_COST)
 	var species: StringName = Pest.APHID
-	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PEST, species, &"ember"),
-		"ember is bought for the species this test spawns")
+	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PEST, species, &"sampler"),
+		"sampler is bought for the species this test spawns")
 	if err == "":
-		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PEST, species, &"ember"),
+		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PEST, species, &"sampler"),
 			"and chosen for it")
 	var pest: Pest = null
 	if err == "":
 		pest = Pest.new()
 		pest.setup(species, PackedVector2Array([Vector2(0, 0), Vector2(64, 0)]))
-		err = _T.assert_eq(pest.skin_id, &"ember", "the pest records the skin it spawned with")
+		err = _T.assert_eq(pest.skin_id, &"sampler", "the pest records the skin it spawned with")
 	if err == "":
 		err = _T.assert_true(pest._sprite != null, "the sprite exists to be tinted")
 	if err == "":
-		err = _T.assert_eq(pest._sprite.modulate, Skins.tint_for(&"ember"),
-			"and wears exactly the tint Skins.tint_for(ember) declares")
+		err = _T.assert_eq(pest._sprite.modulate, Skins.tint_for(&"sampler"),
+			"and wears exactly the tint Skins.tint_for(sampler) declares")
 	if pest != null:
 		# A mutation still wins outright once it lands -- the same priority
 		# apply_mutation() gives two mutations composing onto one tint.
 		err = _T.assert_true(pest.apply_mutation(Pest.MUTATION_ARMOURED),
 			"the mutation applies cleanly onto a skinned, unmutated pest")
 	if err == "":
-		err = _T.assert_eq(pest.skin_id, &"ember", "the skin is still recorded")
+		err = _T.assert_eq(pest.skin_id, &"sampler", "the skin is still recorded")
 		if err == "":
 			err = _T.assert_eq(pest._sprite.modulate, Pest.tint_for(Pest.MUTATION_ARMOURED),
 				"but the sprite now wears the mutation's colour, not the skin's -- "
@@ -1162,14 +1358,14 @@ func test_a_spawned_pest_wears_its_chosen_skins_tint_until_a_mutation_lands() ->
 func test_set_pest_skin_applies_and_reapplies_the_tint_directly() -> String:
 	var pest := Pest.new()
 	pest.setup(Pest.APHID, PackedVector2Array([Vector2(0, 0), Vector2(64, 0)]))
-	pest.set_pest_skin(&"golden")
-	var err: String = _T.assert_eq(pest.skin_id, &"golden", "the id is recorded")
+	pest.set_pest_skin(&"plate")
+	var err: String = _T.assert_eq(pest.skin_id, &"plate", "the id is recorded")
 	if err == "":
-		err = _T.assert_eq(pest._sprite.modulate, Skins.tint_for(&"golden"), "and the tint applied")
+		err = _T.assert_eq(pest._sprite.modulate, Skins.tint_for(&"plate"), "and the tint applied")
 	if err == "":
 		# Called again with a different id: the sprite follows, not just the field.
-		pest.set_pest_skin(&"frost")
-		err = _T.assert_eq(pest._sprite.modulate, Skins.tint_for(&"frost"),
+		pest.set_pest_skin(&"cutpaper")
+		err = _T.assert_eq(pest._sprite.modulate, Skins.tint_for(&"cutpaper"),
 			"a second call moves the sprite too, not only skin_id")
 	pest.free()
 	return err

@@ -47,7 +47,7 @@ extends OverlayScreen
 ## without repeating the Shop's price list on a paused board.
 ##
 ## The count is now PER TARGET rather than per player, because ownership is: buying
-## Hoarfrost for the Sunflower buys nothing for the Aphid. The old
+## Cut Paper for the Sunflower buys nothing for the Aphid. The old
 ## `Skins.unlocked_families(earned_milestones)` answered the same number for every
 ## row on the page, which was correct while a milestone unlocked a family everywhere
 ## at once and would now be a readout that never changes.
@@ -71,6 +71,23 @@ const ROWS_TOP: float = 136.0
 ## so the Back button lines up under this screen's rows the way it does under
 ## theirs; the other two are this screen's own, since neither of the other screens
 ## has an "N/M owned" column.
+##
+## BUTTON_X IS THE ONE WIDTH HERE THAT IS NOT DERIVED, and the v12 family rename is
+## what makes that worth saying. The button carries `Skins.title_of(...)`, a shared
+## `ROW_BUTTON_SIZE.x` of 150 — and `Control.set_size` clamps to
+## `get_combined_minimum_size()`, so a title wider than 150 minus the theme's 14+14
+## content margins and the focus box's 2+2 expand does not clip, it makes the button
+## WIDER than the slot reserved for it. "Botanical Plate" at BUTTON_FONT_SIZE is the
+## first title in this game's history to reach that, and it still fits: the panel is
+## 700 wide and BUTTON_X leaves 182 for a button that needs about 156, so the button
+## grows into its own right margin rather than off the paper. What it eats is the
+## symmetry with NAME_X, not the enclosure the overlay sweep checks.
+##
+## `test_a_family_title_still_fits_the_row_button_it_is_drawn_in` (test_skins.gd) is
+## the measurement, over every FAMILIES title through `GardenTheme.measure`, so the
+## family that finally does not fit says so instead of drawing over the margin. The
+## fix when it fires is ShopScreen's shape — derive the column and the panel width
+## from the corpus — not a wider constant here.
 const NAME_X: float = 32.0
 const NAME_WIDTH: float = 280.0
 const OWNED_X: float = 328.0
@@ -93,7 +110,8 @@ const PAGER_NEXT_WIDTH: float = 70.0
 ## with `clip_text` and OVERRUN_TRIM_ELLIPSIS, so a sentence over budget is not a
 ## warning, it is a sentence the player never reads the end of. The old text was 107
 ## characters against `OptionsScreen.NOTE_TEXT`'s 78 in a panel of exactly the same
-## width; this is 76. `test_the_skins_screen_note_fits_the_paper_it_is_printed_on`
+## width; this is 74 (76 until v12 took the word "colour" out of it, which is no longer
+## what a family is). `test_the_skins_screen_note_fits_the_paper_it_is_printed_on`
 ## measures the built Label through `_T.text_width` -- its own resolved theme font,
 ## not a character count and not the eye. `get_minimum_size()` is no use here: it
 ## reports the clip stub on exactly the labels that carry `clip_text`.
@@ -101,7 +119,7 @@ const PAGER_NEXT_WIDTH: float = 70.0
 ## It names the Shop because this screen no longer has any way to say "there is more":
 ## the second column counts what is owned, and a player who owns one family sees
 ## "1/4 owned" with nothing telling them where the other three live.
-const NOTE_TEXT := "Pick a colour for each plant and pest you own one for. Buy more in the Shop."
+const NOTE_TEXT := "Pick a look for each plant and pest you own one for. Buy more in the Shop."
 
 var _name_labels: Array[Label] = []
 var _owned_labels: Array[Label] = []

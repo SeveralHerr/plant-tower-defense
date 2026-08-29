@@ -121,12 +121,40 @@ const SAVE_PATH := "user://highscore.save"
 ## still parsed, still kept, and are simply not selectable, because at v11 selecting one
 ## requires OWNING it and a v10 file records no purchases. `selected_skin()`'s existing
 ## fallback to DEFAULT_SKIN is that migration — see its own comment. Nothing is thrown
-## away: a player who later buys golden for the row a v10 save picked it on gets their
-## choice back with no re-picking.
+## away: a player who later buys that family for the row a v10 save picked it on gets
+## their choice back with no re-picking.
 ##
 ## So the v11 line order is: milestones, preferences, difficulty scores, skins, PETALS,
 ## PURCHASES, binding count, bindings.
-const SAVE_VERSION: int = 11
+##
+## Version 12 ADDS NO LINE AND NO FIELD. It is a rename of three VALUES that two existing
+## lines carry: the skin families `golden`, `frost` and `ember` are now `plate`, `cutpaper`
+## and `sampler` (`Skins.RENAMED_FAMILIES`), because a family stopped being a palette and
+## became an art style, and the old ids named a colour. So the line order is v11's,
+## unchanged, and every byte-exact assertion in this project that interpolates
+## SAVE_VERSION keeps passing without being retyped.
+##
+## IT IS STILL A MIGRATION, AND IT IS THE MOST EXPENSIVE ONE THIS FILE HAS DONE. A value
+## this build does not know is a value it cannot select: left alone, a v11 file's `golden`
+## makes `Skins.has_family("golden")` false, so `Skins.is_owned` answers NO on a skin the
+## player paid five petals for and `selected_skin()` falls back to DEFAULT_SKIN. The
+## wardrobe would still be sitting on disk, spelled correctly, and the player would be
+## dressed in nothing with no error anywhere — which is the silent-loss shape this file's
+## whole header is about. Petals are earned by playing, so unlike a high score the loss is
+## re-earnable; unlike a milestone it costs the player the run that paid for it.
+##
+## BOTH LINES, NEVER ONE, and this is the half worth writing down. The `u` line says what
+## is OWNED and the `s` line says what is WORN, and they name families independently.
+## Migrating `u` alone keeps the purchase and silently reverts the row to Default;
+## migrating `s` alone dresses a player in a family they no longer own, which
+## `selected_skin()` then corrects straight back to Default. Either half on its own reads
+## to the player as "my skin came off", and only one of them is even a bug you would find
+## by looking at the file.
+##
+## The rename is applied to what the two parsers RETURN rather than to the text they read,
+## so both lines keep exactly one grammar and one validator — the same reason `_save`
+## reads its own output back through `_parse_save` instead of trusting the writer.
+const SAVE_VERSION: int = 12
 
 ## The version that made the record know which difficulty earned it
 ## (plant-tower-defense-1hgx).
@@ -159,6 +187,18 @@ const VERSION_WITH_SKINS: int = 10
 ## has neither, and reading one anyway would consume the binding count as a petal line
 ## and then refuse a save whose two high scores cannot be re-earned.
 const VERSION_WITH_SHOP: int = 11
+
+## The version that renamed the three skin families (`Skins.RENAMED_FAMILIES`).
+##
+## A CONSTANT OF ITS OWN FOR THE REASON VERSION_WITH_EXTRAS GIVES, and with one
+## difference from the three above worth naming: those gate whether a LINE is read at
+## all, and this gates whether the VALUES on two lines are translated on the way in. Same
+## rule either way — the parser is told which shape it is looking at rather than comparing
+## against whatever SAVE_VERSION happens to be. Written as `version < SAVE_VERSION` this
+## would be correct until the next bump and would then start renaming a v12 file's ids a
+## second time, which is a no-op today only because the map has no key that is also a
+## value, and nothing anywhere says it has to stay that way.
+const VERSION_WITH_STYLE_SKINS: int = 12
 
 ## The petal line's leading character, and it has one for the reason MILESTONE_PREFIX
 ## does: `get_line()` returns "" past the end of a truncated file, `int("")` is 0, and 0
@@ -1085,7 +1125,7 @@ static func parse_petal_line(text: String) -> Variant:
 
 
 ## The v11 wardrobe line. The `s` line's shape with a COMMA LIST for a value:
-## `u2 pest:aphid=ember plant:sunflower=frost,golden`.
+## `u2 pest:aphid=sampler plant:sunflower=cutpaper,plate`.
 ##
 ## Count-prefixed and sorted like every other set line here, and the family list within
 ## each key is sorted too — otherwise two saves holding the same wardrobe differ in
@@ -1184,6 +1224,56 @@ static func _is_id_text(text: String) -> bool:
 		if not MILESTONE_ID_CHARS.contains(text[i]):
 			return false
 	return true
+
+
+## The v11 -> v12 family rename, over the `s` line's values (plant-tower-defense-p5ke.2).
+##
+## Static and pure, over the Dictionary `parse_skins_line` already returned, so the
+## migration is assertable with no file, no autoload and no scene — the same reason every
+## `compose_*`/`parse_*` above it is static. Applied to the PARSED value rather than to
+## the line's text on purpose: a text rewrite would be a second place that knows the
+## line's grammar, and the two would drift the first time the grammar moved.
+##
+## THE KEYS ARE UNTOUCHED. A key is `kind:target`, and no plant, pest or kind was
+## renamed — only the family a target wears. Rewriting keys here would be a second
+## rename nobody asked for, and `Skins.has_target` is already where an unknown target
+## becomes "not selectable".
+##
+## An id `Skins.RENAMED_FAMILIES` does not carry comes through unchanged; see that
+## constant for why an unrecognised family is kept verbatim rather than guessed at.
+static func rename_selected_families(selections: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for key: Variant in selections.keys():
+		out[key] = Skins.current_family_id(String(selections[key]))
+	return out
+
+
+## The same rename over the `u` line's family LISTS — the half that carries the purchase,
+## and therefore the half whose loss costs the player petals rather than a preference.
+##
+## SORTED ON THE WAY OUT, which a straight map would not be. `compose_purchase_line`
+## writes each list sorted and `buy_skin` sorts on the way IN, precisely so the in-memory
+## wardrobe and the bytes are one list rather than two orderings that agree only after a
+## round trip — and the rename breaks that ordering outright, since `ember,golden` maps to
+## `sampler,plate`. Without the sort here, a migrated save's first byte-exact comparison
+## against a freshly bought one would disagree over nothing.
+##
+## DE-DUPLICATED for the file that carries both an old id and its new one. No writer
+## produces that and a hand-edited save can; `parse_purchase_line` refuses a duplicate,
+## so leaving one here would make `_save()`'s readback fail and every save for the rest of
+## the session return false with nothing on screen saying so — the failure
+## `record_milestones` documents at length.
+static func rename_purchased_families(purchases: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for key: Variant in purchases.keys():
+		var families: Array[String] = []
+		for entry: Variant in (purchases[key] as Array):
+			var renamed: String = Skins.current_family_id(String(entry))
+			if not families.has(renamed):
+				families.append(renamed)
+		families.sort()
+		out[key] = families
+	return out
 
 
 ## Has this player ever earned this milestone?
@@ -1986,6 +2076,19 @@ func _parse_save(path: String) -> Dictionary:
 		if parsed_purchases == null:
 			return _parse_failed("its purchase line is not a purchase line")
 		purchases = parsed_purchases as Dictionary
+
+	# The v12 rename, gated on VERSION_WITH_STYLE_SKINS and applied to BOTH lines. It sits
+	# here, after both parses and before the binding block, because it translates VALUES
+	# rather than reading a line: nothing above it moves, and a v12 file passes through it
+	# untouched. See SAVE_VERSION for why doing one line and not the other is the failure.
+	#
+	# `purchases` is empty for anything older than v11, so this costs a v9 or v10 file
+	# nothing — but the `s` line is a half a v10 file DOES carry, and it is renamed too, or
+	# a selection made under the old milestone gate comes back naming a family that no
+	# longer exists and is silently dropped by `selected_skin()` the day it is bought.
+	if version < VERSION_WITH_STYLE_SKINS:
+		skins = rename_selected_families(skins)
+		purchases = rename_purchased_families(purchases)
 
 	# The count is what makes a truncation here detectable at all — without it, a
 	# file cut after the options line is indistinguishable from a player who never

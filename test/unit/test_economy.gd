@@ -827,7 +827,7 @@ func _with_scratch_save(campaign: int, endless_best: int, contents: Variant, bod
 	# The twelfth, and the one this list was missing AGAIN. `selected_skins` joined the
 	# file at v10 and was never added here, so the `s0` in every byte-exact assertion
 	# below held by luck of suite order: any earlier test that had chosen a skin and not
-	# put it back would have turned it into `s1 plant:sunflower=golden` in files no test
+	# put it back would have turned it into `s1 plant:sunflower=<a family>` in files no test
 	# in this script has ever written a skin to. Found while adding the v11 fields
 	# (plant-tower-defense-u82u), which is the same defect `difficulty_high_scores` and
 	# `key_bindings` were added for one cycle earlier and by the same reasoning: EVERY
@@ -1336,12 +1336,12 @@ func test_the_balance_and_the_wardrobe_round_trip_byte_exactly() -> String:
 		var plant: StringName = PlantCatalog.ids()[0]
 		var key: String = Skins.selection_key(Skins.KIND_PLANT, plant)
 		RunConfig.petals = Skins.PLANT_SKIN_COST + 2
-		var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"golden"),
+		var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"a skin is bought, which spends petals and writes the file")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
 				("v%d\n1234\n5678\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\np2\n"
-					+ "u1 %s=golden\n0\n") % [RunConfig.SAVE_VERSION, key],
+					+ "u1 %s=plate\n0\n") % [RunConfig.SAVE_VERSION, key],
 				("the balance and the wardrobe sit under the skins line and above the "
 					+ "binding count -- a field written after the count would be read "
 					+ "as a binding and would take that count's truncation guard down "
@@ -1350,13 +1350,13 @@ func test_the_balance_and_the_wardrobe_round_trip_byte_exactly() -> String:
 			# Deliberately not zeros, and deliberately not empty: a `_load` that
 			# assigned nothing at all would otherwise pass this by doing nothing.
 			RunConfig.petals = 99
-			RunConfig.purchased_skins = {"plant:not_a_real_row": ["ember"]}
+			RunConfig.purchased_skins = {"plant:not_a_real_row": ["sampler"]}
 			RunConfig._load()
 			err = _T.assert_eq(RunConfig.load_status, "loaded", "a current-version file loads")
 		if err == "":
 			err = _T.assert_eq(RunConfig.petals, 2, "the change came back exactly")
 		if err == "":
-			err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"golden"),
+			err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"plate"),
 				"and so did the purchase")
 		if err == "":
 			err = _T.assert_eq(RunConfig.purchased_skins.size(), 1,
@@ -1407,21 +1407,21 @@ func test_a_save_with_a_broken_purchase_line_is_refused_whole() -> String:
 	var cases: Dictionary = {
 		"a save cut before its wardrobe line": head,
 		"a count with no fields under it": head + "u1\n0\n",
-		"a count of zero with a field anyway": head + "u0 plant:sunflower=golden\n0\n",
-		"a key with no kind": head + "u1 :sunflower=golden\n0\n",
-		"a key with no separator": head + "u1 plantsunflower=golden\n0\n",
+		"a count of zero with a field anyway": head + "u0 plant:sunflower=plate\n0\n",
+		"a key with no kind": head + "u1 :sunflower=plate\n0\n",
+		"a key with no separator": head + "u1 plantsunflower=plate\n0\n",
 		"an entry with no families": head + "u1 plant:sunflower=\n0\n",
-		"a family list with a hole in it": head + "u1 plant:sunflower=golden,,frost\n0\n",
+		"a family list with a hole in it": head + "u1 plant:sunflower=plate,,cutpaper\n0\n",
 		# An id outside MILESTONE_ID_CHARS. `buy_skin` guards its own door against this
 		# for the reason `record_milestones` documents -- a writer that accepts what its
 		# reader rejects makes every save in the session fail silently -- and this is
 		# the reader half of that pair, asserted so the two cannot drift.
-		"an uppercase family id": head + "u1 plant:sunflower=Golden\n0\n",
-		"an uppercase kind": head + "u1 PLANT:sunflower=golden\n0\n",
+		"an uppercase family id": head + "u1 plant:sunflower=Plate\n0\n",
+		"an uppercase kind": head + "u1 PLANT:sunflower=plate\n0\n",
 		"the same row listed twice":
-			head + "u2 plant:sunflower=golden plant:sunflower=frost\n0\n",
+			head + "u2 plant:sunflower=plate plant:sunflower=cutpaper\n0\n",
 		"the same family listed twice on one row":
-			head + "u1 plant:sunflower=golden,golden\n0\n",
+			head + "u1 plant:sunflower=plate,plate\n0\n",
 		# The wardrobe present and the balance missing -- the mirror of the last case in
 		# the petal test, and it fails one line earlier: `p` is read first, so a `u`
 		# line arriving in its place is refused as a petal line.
@@ -1480,6 +1480,186 @@ func test_buying_every_skin_for_every_target_still_reads_back() -> String:
 		if err == "":
 			err = _T.assert_eq(RunConfig.purchased_skins.size(), targets.size(),
 				"with a row for every target")
+		return err)
+
+
+# -- the v12 family rename (plant-tower-defense-p5ke.2) -----------------------
+#
+# `golden`/`frost`/`ember` became `plate`/`cutpaper`/`sampler`, because a family stopped
+# being a palette and became an art style. Three tests, because there are three distinct
+# ways this loses a player's wardrobe: reading a v11 file forward, re-reading a v12 file
+# this build wrote, and meeting an id the map has no answer for.
+#
+# `test_skins.gd` asserts the TABLE and the two rename functions in isolation. These are
+# the claims only a whole file can make.
+
+
+## A v11 SAVE COMES FORWARD OWNED AND WORN, byte-exactly, on BOTH LINES.
+##
+## The `u` line says what is OWNED and the `s` line says what is WORN, and they name
+## families independently. Migrate `u` alone and the player keeps the purchase and
+## silently reverts to Default; migrate `s` alone and they are wearing a family they no
+## longer own, which `selected_skin()` corrects straight back to Default. Both halves
+## read to the player as "my skin came off", and only one of them is visible in the file.
+## So the assertions here are deliberately in pairs: owned AND worn, both ids, and then
+## the bytes.
+##
+## THE FIXTURE SPELLS THE OLD IDS AS LITERALS rather than deriving them from
+## `Skins.RENAMED_FAMILIES.keys()`. This stands in for a file on a real player's disk,
+## and a fixture derived from the map would rename itself to match whatever the map said
+## and assert nothing at all.
+##
+## The wardrobe carries TWO families on one row on purpose: `ember,golden` is sorted and
+## `sampler,plate` is not, so this is also the assertion that the migration re-sorts.
+func test_a_version_eleven_save_renames_its_skin_families_on_both_lines() -> String:
+	var plant: StringName = PlantCatalog.ids()[0]
+	var key: String = Skins.selection_key(Skins.KIND_PLANT, plant)
+	var v11: String = ("v11\n4138\n5008\nm1:campaign_cleared\n"
+		+ "cb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns1 %s=golden\np2\nu1 %s=ember,golden\n0\n"
+		) % [key, key]
+	return _with_scratch_save(0, 0, v11, func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "migrated",
+			"a v11 file is read forward and rewritten, not refused, got %s"
+				% RunConfig.load_status)
+		if err == "":
+			err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"plate"),
+				("the family bought as `golden` is owned as `plate` -- five petals were "
+					+ "paid for it and nothing in the file says so any more"))
+		if err == "":
+			err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"sampler"),
+				"and the second family on the same row came with it")
+		if err == "":
+			# THE HALF A `u`-ONLY MIGRATION LOSES.
+			err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PLANT, plant), &"plate",
+				("and it is still WORN -- a migration that renamed the wardrobe and not "
+					+ "the selection keeps the purchase and puts the player back in "
+					+ "Default with nothing anywhere saying why"))
+		if err == "":
+			err = _T.assert_false(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"golden"),
+				("while the retired id owns nothing, because there is no such family -- "
+					+ "which is exactly what would have happened to the plate had the "
+					+ "rename been left to the table alone"))
+		if err == "":
+			err = _T.assert_eq(RunConfig.petals, 2, "the balance came through untouched")
+		if err == "":
+			err = _T.assert_eq(RunConfig.campaign_high_score, 4138,
+				"and so did the rest of v11: the campaign score")
+		if err == "":
+			err = _T.assert_eq(RunConfig.endless_high_score, 5008, "the endless score")
+		if err == "":
+			err = _T.assert_true(RunConfig.has_milestone("campaign_cleared"),
+				"and the earned milestone")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				("v%d\n4138\n5008\nm1:campaign_cleared\ncb0 sfx0 mus0 spd0 svol0 mvol0\n"
+					+ "d0\ns1 %s=plate\np2\nu1 %s=plate,sampler\n0\n")
+					% [RunConfig.SAVE_VERSION, key, key],
+				("the file on disk is now a current-version file, byte for byte -- both "
+					+ "lines renamed, the wardrobe re-sorted (`sampler,plate` is not "
+					+ "sorted and `plate,sampler` is), and every other line in the same "
+					+ "place, because v12 adds no field"))
+		if err == "":
+			# Or the next launch refuses the file this migration just wrote.
+			RunConfig._load()
+			err = _T.assert_eq(RunConfig.load_status, "loaded",
+				"and it reads back as current rather than being migrated a second time")
+		return err)
+
+
+## A CURRENT-VERSION FILE ROUND TRIPS BYTE-EXACTLY THROUGH THE RENAME.
+##
+## The rename is gated on `VERSION_WITH_STYLE_SKINS` rather than on
+## `version < SAVE_VERSION`, and this is the assertion that says so from the outside: a
+## file this build wrote is `loaded`, not `migrated`, nothing is rewritten on load, and a
+## save composed from what the load produced is the same bytes. A rename that ran on a
+## current file would be a no-op today only because no key in the map is also a value --
+## which is true of this map and is not a property anything enforces.
+func test_a_current_version_save_with_a_wardrobe_round_trips_byte_exactly() -> String:
+	var plant: StringName = PlantCatalog.ids()[0]
+	var key: String = Skins.selection_key(Skins.KIND_PLANT, plant)
+	var current: String = ("v%d\n4138\n5008\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n"
+		+ "s1 %s=plate\np2\nu1 %s=plate,sampler\n0\n") % [RunConfig.SAVE_VERSION, key, key]
+	return _with_scratch_save(0, 0, current, func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "loaded",
+			("a current-version file is LOADED, not migrated -- 'migrated' here would "
+				+ "mean the rename ran over ids that were already current"))
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH), current,
+				"and nothing was rewritten: reading a good file writes no bytes at all")
+		if err == "":
+			err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"plate"),
+				"the wardrobe came back")
+		if err == "":
+			err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PLANT, plant), &"plate",
+				"worn as it was written")
+		if err == "":
+			# Deliberately not zeros: a `_load` that assigned nothing would pass the
+			# assertions above by doing nothing.
+			err = _T.assert_eq(RunConfig.petals, 2, "with the balance it went in with")
+		if err == "":
+			err = _T.assert_true(RunConfig._save(), "and it saves")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH), current,
+				("composing from what the load produced is the same bytes -- the round "
+					+ "trip a rename applied one time too many would break"))
+		return err)
+
+
+## A FAMILY THIS BUILD HAS NEVER HAD IS KEPT AND REFUSED, NOT REINTERPRETED.
+##
+## `Skins.RENAMED_FAMILIES` is a map and not a guess. A save from a LATER build names a
+## family this one does not have, on both lines, and the only safe reading is the one
+## `parse_purchase_line` already documents: keep it on disk verbatim, answer "not owned"
+## at the point of use, and fall back to DEFAULT_SKIN for what is worn.
+##
+## The refusal is AT THE POINT OF USE and not at the file, deliberately, and that is the
+## one judgement in this test. Condemning the whole save over an unfamiliar family id
+## would cost the two high scores sharing the file, and those cannot be re-earned --
+## which is the asymmetry `_parse_milestones` cites for not checking milestone ids
+## against `Milestones.TABLE` either.
+func test_a_save_naming_a_family_this_build_never_had_keeps_it_rather_than_guessing() -> String:
+	var plant: StringName = PlantCatalog.ids()[0]
+	var key: String = Skins.selection_key(Skins.KIND_PLANT, plant)
+	var v11: String = ("v11\n4138\n5008\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n"
+		+ "s1 %s=verdigris\np2\nu1 %s=verdigris\n0\n") % [key, key]
+	return _with_scratch_save(0, 0, v11, func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "migrated",
+			("the file is read forward, not refused -- the two scores in it cannot be "
+				+ "re-earned and one unfamiliar family id is not grounds to lose them"))
+		if err == "":
+			var kept: Array[String] = ["verdigris"]
+			err = _T.assert_eq(RunConfig.purchased_skins.get(key, []), kept,
+				"the purchase is kept on disk exactly as it was written")
+		if err == "":
+			err = _T.assert_eq(String(RunConfig.selected_skins.get(key, "")), "verdigris",
+				"and so is the selection")
+		if err == "":
+			err = _T.assert_false(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"plate"),
+				("while the stranger was NOT reinterpreted as a family this build does "
+					+ "have -- guessing here hands out a skin nobody bought"))
+		if err == "":
+			err = _T.assert_false(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"verdigris"),
+				"and it is not owned either, because this build has no such family")
+		if err == "":
+			err = _T.assert_eq(RunConfig.selected_skin(Skins.KIND_PLANT, plant),
+				Skins.DEFAULT_SKIN,
+				("so nothing is worn -- refused at the point of use, which is where an "
+					+ "unknown target and an unknown kind are already refused"))
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				("v%d\n4138\n5008\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n"
+					+ "s1 %s=verdigris\np2\nu1 %s=verdigris\n0\n")
+					% [RunConfig.SAVE_VERSION, key, key],
+				("and the rewrite kept it, on both lines. A build that dropped what it "
+					+ "could not name would delete the wardrobe of anyone who opened the "
+					+ "newer build once"))
+		if err == "":
+			RunConfig._load()
+			err = _T.assert_eq(RunConfig.load_status, "loaded",
+				"and the file carrying it still reads back as current")
 		return err)
 
 

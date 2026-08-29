@@ -1,8 +1,9 @@
 class_name Skins
 extends RefCounted
 
-## Every plant and every pest can wear one of a small set of colour skins, purely
-## cosmetic and purely player-chosen (plant-tower-defense-ncfv).
+## Every plant and every pest can wear one of a small set of skins, purely cosmetic and
+## purely player-chosen (plant-tower-defense-ncfv). A skin is an art STYLE for a plant
+## and a tint for a pest — see the two sections on that below.
 ##
 ## This file is the pure data and the rule, the same split `Milestones` already
 ## draws against `RunConfig`: `Skins` answers "what skins exist, what does one cost
@@ -21,12 +22,12 @@ extends RefCounted
 ## tints to draw, name and price, and fourteen individual "why does THIS skin cost
 ## THIS much" justifications, for a feature that is purely cosmetic. Instead there
 ## is one small table of skin FAMILIES (`FAMILIES` below), and every family applies
-## uniformly to every target: buying "Heirloom Gold" dresses whichever plant or pest
-## row it was bought on, the same gold, at the same price, whether that row is the
+## uniformly to every target: buying "Botanical Plate" dresses whichever plant or pest
+## row it was bought on, the same style, at the same price, whether that row is the
 ## Sunflower or the Aphid.
 ##
 ## OWNERSHIP IS PER TARGET, NOT PER FAMILY, and that is the one place the shop
-## deliberately does not follow the table's uniformity. Buying golden for the
+## deliberately does not follow the table's uniformity. Buying the plate for the
 ## Sunflower does not dress the Mint: a purchase that covered every row at once
 ## would be the milestone gate back again under a price tag, and would empty the
 ## shop in three transactions.
@@ -40,11 +41,12 @@ extends RefCounted
 ## ---------------------------------------------------------------------------
 ## WHY PURCHASED, AND WHY THE MILESTONE GATE WAS REMOVED RATHER THAN KEPT
 ##
-## Until the Petal shop these three families were milestone-gated: `campaign_cleared`
-## handed out golden, `unbroken_garden` frost, `threat_peak` ember. That gate is GONE,
-## not layered under a price, and the reason is arithmetic rather than taste. A
-## milestone unlocks a FAMILY, and a family applies to every target — so the day a
-## player cleared the campaign, golden arrived on all fourteen rows at once. With a
+## Until the Petal shop these three families were milestone-gated, one apiece:
+## `campaign_cleared` handed out the first, `unbroken_garden` the second, `threat_peak`
+## the third. That gate is GONE, not layered under a price, and the reason is arithmetic
+## rather than taste. A milestone unlocks a FAMILY, and a family applies to every target
+## — so the day a player cleared the campaign, one whole family arrived on all fourteen
+## rows at once. With a
 ## price on top, two thirds of the shop would have been unbuyable on the one day the
 ## player had most reason to open it, and the rest free. One gate or the other, and
 ## the one the player can steer is the one worth keeping.
@@ -53,10 +55,24 @@ extends RefCounted
 ## petals apiece, once, so the achievement still feeds the wardrobe — it just buys a skin
 ## the player picks instead of dictating one.
 ##
-## THE THREE IDS ARE KEPT VERBATIM (`golden`, `frost`, `ember`) so a v10 save's `s` line
-## still names families this build knows. Those selections survive the parse and are then
-## not selectable, because nothing is owned yet — see `RunConfig.selected_skin()`, whose
-## fallback to DEFAULT_SKIN *is* the v10 -> v11 migration.
+## THE THREE IDS WERE RENAMED AT v12, AND THE RENAME IS A SAVE MIGRATION — see
+## `RunConfig.VERSION_WITH_STYLE_SKINS` and `RENAMED_FAMILIES` below. They were `golden`,
+## `frost` and `ember`, which are names for COLOURS, and they were right for exactly as
+## long as a family WAS a colour: one palette ramp laid over the parent drawing. A family
+## is now one art STYLE — an ink plate, cut paper, a linen sampler — and the colour is a
+## consequence of the style rather than the thing being bought, so a colour name names the
+## wrong fact and the shop row reads as a paint chip.
+##
+## The IDS and not just the titles, deliberately. A title is what the player reads and
+## costs nothing to change; an id is what the SAVE carries, what `texture_path()` spells
+## into a filename, and what the art gates scope a palette by. Leaving three colour ids
+## under three style titles would have left every one of those saying "golden" about an
+## engraving — which is the state a name is in just before somebody trusts it.
+##
+## A v10 save's `s` line still parses and its selections still survive, exactly as they
+## did before; they are simply renamed on the way in now, and are then not selectable
+## because nothing is owned yet — see `RunConfig.selected_skin()`, whose fallback to
+## DEFAULT_SKIN *is* the v10 -> v11 migration.
 ##
 ## ---------------------------------------------------------------------------
 ## A PLANT SKIN IS A DRAWING, A PEST SKIN IS A TINT
@@ -82,8 +98,8 @@ const KIND_PEST := &"pest"
 ## `RunConfig.selected_skin()` ever falls back to.
 const DEFAULT_SKIN := &"default"
 
-## What a plant skin's drawing is called on disk: `sunflower.png` wearing `golden` is
-## `sunflower_skin_golden.png`. Written here and derived by `texture_path()` rather
+## What a plant skin's drawing is called on disk: `sunflower.png` wearing `plate` is
+## `sunflower_skin_plate.png`. Written here and derived by `texture_path()` rather
 ## than typed into any plant script, exactly as `PlantMutation.SPORT_SUFFIX` is — see
 ## `texture_path()` for what a literal would have cost.
 const SKIN_SUFFIX := "_skin_"
@@ -99,6 +115,41 @@ const SKIN_SUFFIX := "_skin_"
 const PLANT_SKIN_COST: int = 5
 const PEST_SKIN_COST: int = 3
 
+## Every family id this project has retired, and what it is called now. Read by
+## `RunConfig`'s v11 -> v12 migration (`VERSION_WITH_STYLE_SKINS`) and by nothing else at
+## runtime: a live build only ever writes the right-hand column.
+##
+## HERE RATHER THAN IN `RunConfig`, because what a family is CALLED is a fact about the
+## family — the same split the class header draws between this file and the save. The save
+## format owns WHEN to ask; this file owns the answer.
+##
+## A MAP, NOT A GUESS. An id that is not a key comes back unchanged, and that is the
+## behaviour a save from a LATER build needs: it names a family this build has never had,
+## it is kept on disk verbatim, and it is refused at the point of USE — `is_owned()`
+## answers false and `RunConfig.selected_skin()` falls back to DEFAULT_SKIN, the same
+## tolerance `RunConfig.parse_purchase_line` already documents. Reinterpreting an unknown
+## id as the nearest known one would dress a player in a skin they never bought, and the
+## two high scores sharing that file cannot be re-earned.
+##
+## IT NEVER SHRINKS. A key deleted here is a wardrobe that stops migrating for every
+## player who has not launched the game since v11 — and their `u` line still says
+## `golden`, so what they lose is a PURCHASE, not a preference.
+const RENAMED_FAMILIES: Dictionary = {
+	"golden": "plate",
+	"frost": "cutpaper",
+	"ember": "sampler",
+}
+
+
+## `id` as THIS build spells it: the current name for a retired id, or `id` unchanged.
+##
+## Takes and returns a String rather than a StringName because both callers are save
+## lines, which are text — converting once at the boundary is cheaper to be right about
+## than a StringName round trip at every lookup.
+static func current_family_id(id: String) -> String:
+	return String(RENAMED_FAMILIES.get(id, id))
+
+
 ## id, the label the Shop and the Skins screen show, the modulate colour applied over
 ## the sprite's own art, and whether this family has a generated DRAWING of its own.
 ##
@@ -107,18 +158,34 @@ const PEST_SKIN_COST: int = 3
 ## brightens it. Chosen to be visibly distinct from `Pest.MUTATION_TINT` so a skinned
 ## pest never reads as a mutated one.
 ##
-## `tint` survives the shop because a PEST skin is still a tint and nothing else. A
-## PLANT wearing an `art` family takes the drawing and `Color.WHITE`, never both —
-## see the class header, and `PlantMutation.SPORT_MODULATE` for the same argument the
-## first time this project made the mistake.
+## `tint` IS READ BY PESTS AND BY NOTHING ELSE. `Pest.set_pest_skin` (`game/pest.gd`) is
+## its one live caller; every plant path goes through `has_art()` and takes the generated
+## DRAWING with `Color.WHITE` over it. It stays on all three `art` rows all the same,
+## because a pest skin has no generated art to take instead — there are no `_skin_`
+## drawings for the five species, so the multiplier is the whole of what a pest buys.
+##
+## Said out loud here because the SHAPE invites the opposite reading: a row carrying both
+## a `tint` and an `art` looks like a row that means both, and a plant that took both is
+## exactly the defect this table was rebuilt to stop — multiplying a tint over an
+## already-recoloured sprite desaturates three deliberate hues into one muddy one. See
+## the class header, and `PlantMutation.SPORT_MODULATE` for the same argument the first
+## time this project made the mistake.
+##
+## So the three colours below are PEST colours, and they no longer have to agree with the
+## style their family draws for a plant — an engraving has no hue to match. Staying
+## visibly distinct from `Pest.MUTATION_TINT`, so a skinned pest never reads as a mutated
+## one, is the only constraint left on them.
 ##
 ## `unlock_milestone` is GONE rather than emptied. A row with an unused key is a row
 ## the next reader has to be told is unused; see the class header for why the gate
 ## went instead of sitting under a price.
 ##
-## The TITLES changed with the gate. "Golden"/"Frost"/"Ember" named a tint; these name
-## a made thing a player is being asked to spend on, which is what a shop row has to
-## read as. The ids did not change — a v10 save's `s` line names them.
+## THE TITLES NAME THE STYLE, and at v12 so do the ids. "Golden"/"Frost"/"Ember" named a
+## tint; "Heirloom Gold"/"Hoarfrost"/"Cinder" named a made thing but still named it by
+## its colour. These three name the TECHNIQUE the drawing is made with, which is what a
+## player who owns all three actually has: three visibly unrelated renderings of the same
+## plant, not three paint jobs. `RENAMED_FAMILIES` above carries the old spellings forward
+## out of a save; nothing in a live build writes them.
 const FAMILIES: Array[Dictionary] = [
 	{
 		"id": DEFAULT_SKIN,
@@ -127,20 +194,20 @@ const FAMILIES: Array[Dictionary] = [
 		"art": false,
 	},
 	{
-		"id": &"golden",
-		"title": "Heirloom Gold",
+		"id": &"plate",
+		"title": "Botanical Plate",
 		"tint": Color(1.25, 1.05, 0.55),
 		"art": true,
 	},
 	{
-		"id": &"frost",
-		"title": "Hoarfrost",
+		"id": &"cutpaper",
+		"title": "Cut Paper",
 		"tint": Color(0.72, 0.88, 1.15),
 		"art": true,
 	},
 	{
-		"id": &"ember",
-		"title": "Cinder",
+		"id": &"sampler",
+		"title": "Linen Sampler",
 		"tint": Color(1.25, 0.55, 0.45),
 		"art": true,
 	},

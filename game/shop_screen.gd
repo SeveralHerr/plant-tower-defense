@@ -30,16 +30,19 @@ extends OverlayScreen
 ## whole of the purchase state. Four states, spelled in `STATES` and produced by
 ## `button_state()`:
 ##
-##   buy           `Heirloom Gold  5✿`   not owned, affordable  — buys it and wears it
-##   unaffordable  `Heirloom Gold  5✿`   not owned, too dear    — disabled
-##   equip         `Heirloom Gold`       owned, not worn        — wears it
-##   worn          `Heirloom Gold  worn` owned and worn         — disabled
+##   buy           `Botanical Plate  5✿`   not owned, affordable  — buys it and wears it
+##   unaffordable  `Botanical Plate  5✿`   not owned, too dear    — disabled
+##   equip         `Botanical Plate`       owned, not worn        — wears it
+##   worn          `Botanical Plate  worn` owned and worn         — disabled
 ##
 ## ## Every width on this screen is measured, not chosen
 ##
 ## The row is three price buttons wide and the family titles are the game's, not this
-## screen's — "Heirloom Gold" is thirteen characters and the next family added could
-## be twenty. A typed-in button width would clip a title the day the table grows, and
+## screen's — "Botanical Plate" is fifteen characters and the next family added could
+## be twenty. That is not hypothetical: the v12 rename took the widest title from
+## "Heirloom Gold" to "Botanical Plate" and every column on this screen absorbed it
+## with nothing edited, which is what the derivation is for. A typed-in button width
+## would clip a title the day the table grows, and
 ## `Label.get_minimum_size()` cannot catch it because every row Label here is
 ## `clip_text`. So `family_button_width()`, `name_column_width()` and
 ## `wearing_column_width()` each sweep the real corpus through `GardenTheme.measure()`
@@ -181,7 +184,7 @@ const WORN_GLYPH := Glyphs.TICK
 ## 1164px of a 1152px canvas, so the word does not fit and a clipped price is worse
 ## than no mark at all. The unit is instead named twice on this screen where there is
 ## room for it — the balance line reads "Petals  N" and NOTE_TEXT says where they
-## come from — so a bare `Heirloom Gold  5` under a line reading `Petals  12` is
+## come from — so a bare `Botanical Plate  5` under a line reading `Petals  12` is
 ## still unambiguous. The worn mark's word does fit and is used.
 const PETAL_FALLBACK := ""
 const WORN_FALLBACK := "worn"

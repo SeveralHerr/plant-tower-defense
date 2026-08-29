@@ -50,8 +50,9 @@ read at runtime:
 
   * skin ramps    <- `SKIN_PALETTES` in the same file, a Dictionary of one eight-anchor
                      ramp per family, and applied ONLY to a stem ending
-                     `_skin_<that family>`. Scoped per family and not pooled: a frost
-                     anchor in an ember sprite is a real defect and stays a finding.
+                     `_skin_<that family>`. Scoped per family and not pooled: a
+                     sampler shade in a plate sprite is a real defect and stays a
+                     finding.
                      Which families exist is read from that block, never listed here.
 
 A sport's canvas size is DERIVED here rather than read, for the same reason the gate
@@ -227,7 +228,7 @@ Usage:
                files, so the fixture builds a miniature of all of it in a temp
                project: a gate script with EXPECTED_SIZE, PALETTE and SKIN_PALETTES, a
                STYLE.md with a palette table and a documented pair of skin ramps,
-               eleven SVGs, and the twenty-two PNGs plus the manifest the
+               thirteen SVGs, and the twenty-six PNGs plus the manifest the
                render half looks for (a real IHDR and no image data -- png_size reads
                24 bytes and nothing else). Cases: clean on all thirteen checks / 48x48
                against a declared 64 / a colour on no palette segment / a grey rim on
@@ -237,8 +238,12 @@ Usage:
                with no SVG / a skin whose row is DERIVED from its parent's and which is
                painted in its own family's ramp (clean) / a skin painted in ANOTHER
                family's ramp (a `palette` error, and the whole argument for scoping the
-               ramps per family instead of pooling them).
-               Baseline: 13 findings = 11 errors + 1 warning + 1 advisory, exit 1. The
+               ramps per family instead of pooling them) / a skin whose rim is 156
+               degrees of hue from its fill (CLEAN: a skin's rim is a MEDIUM and not a
+               darkening of the fill, so `check_outline` exempts a `_skin_` stem from the
+               hue and grey clauses) / the identical rim on a stem that is NOT a skin (an
+               `outline` warning, which is the whole of that exemption's scoping).
+               Baseline: 15 findings = 13 errors + 2 warnings + 2 advisory, exit 1. The
                advisory is the contract note that the fixture gate declares no
                MUTANT_PALETTE; it was missing from this baseline for a while, which
                left the fixture red on a clean corpus and is exactly the way a kept
@@ -292,6 +297,13 @@ Usage:
                                                  corpus. Without good_skin_gilt this
                                                  mutation SURVIVED, which is what put that
                                                  sprite there
+               `if skin_family_of(stem, contract) is not None: return` (check_outline)
+                 -> `if False and ...`        -> 3 failures. good_skin_frost's cross-hue
+                                                 rim starts warning again: outline 2 -> 3
+                                                 and warnings 2 -> 3. Without the
+                                                 `cross_hue_rim` twin in the corpus the
+                                                 exemption could instead be WIDENED to
+                                                 every stem and no case would move
                `palette_rgb += list(contract.skins[skin_family].values())`
                  -> add EVERY family's ramp   -> 2 failures. good_skin_ember and
                                                  good_skin_gilt go clean, errors 13 -> 12
@@ -639,10 +651,10 @@ def load_gate_constants(path):
     if m:
         mutant = [h.upper() for h in re.findall(r'"([0-9a-fA-F]{6})"', m.group(1))]
     # SKIN_PALETTES is a Dictionary of one array per family rather than one flat array,
-    # because a skin's ramp is scoped to ITS OWN family: the gate hands a `_skin_frost`
-    # stem the frost anchors and nothing else, and this tool has to be able to do the
-    # same or it would accept an ember shade in a frost sprite that the raster gate
-    # refuses. Flat, the three ramps would be indistinguishable here.
+    # because a skin's palette is scoped to ITS OWN family: the gate hands a `_skin_plate`
+    # stem that family's tones and nothing else, and this tool has to be able to do the
+    # same or it would accept a sampler shade in a plate sprite that the raster gate
+    # refuses. Flat, the three palettes would be indistinguishable here.
     skins = {}
     m = re.search(r"const\s+SKIN_PALETTES[^{]*\{(.*?)\n\}", text, re.S)
     if m:
@@ -1900,6 +1912,28 @@ def check_outline(stem, fill, stroke, where, contract, findings):
             "hue, darkened. %s" % where))
         return
 
+    # ---- the one clause a skin is allowed to break, and only a skin -------------------
+    #
+    # Everything above this line still applies to a `_skin_` stem: a rim is still darker
+    # than its fill, and is still never pure black. What does NOT apply below is the HUE
+    # half of the rule, and it is worth saying exactly why rather than leaving it as a
+    # waiver.
+    #
+    # "every rim is the object's own hue, darkened" is a statement about a kit whose
+    # outlines are a darker shade of the same paint. The three skin styles are re-drawings
+    # in a MEDIUM, and in two of the three the rim is not paint at all: an indigo running
+    # stitch on flax linen is floss on cloth, and the 167 degrees between them is the
+    # entire read of the style. (The ink plate does NOT need this exception -- its four
+    # tones are derived at one hue so ink on paper passes the clause unmodified, and cut
+    # paper never reaches it because a paper face carries no stroke. The exception exists
+    # for the sampler and is written to be as narrow as that.)
+    #
+    # Scoped to `_skin_` stems on purpose, and this is the load-bearing half: the 34
+    # hand-drawn sprites stay held to exactly the contract they were held to before the
+    # styles existed. A grey rim on a coloured fill in `mint.svg` is still an error.
+    if skin_family_of(stem, contract) is not None:
+        return
+
     fill_grey = saturation(fill) < GREY_SATURATION
     stroke_grey = saturation(stroke) < GREY_SATURATION
     if stroke_grey and not fill_grey:
@@ -1985,16 +2019,18 @@ const EXPECTED_SIZE := {
 \t"no_fill": 64,
 \t"translucent": 64,
 \t"off_centre": 64,
+\t"cross_hue_rim": 64,
 \t"phantom": 64,
 }
 
 const PALETTE: PackedStringArray = [
 \t"1F8A4C", "2ECC71", "31D978",
 \t"727272", "939393", "AAAAAA",
+\t"ECDCB8",
 ]
 
 const SKIN_PALETTES := {
-\t"frost": ["0C618C", "87CEF2"],
+\t"frost": ["0C618C", "87CEF2", "C1A057"],
 \t"ember": ["902D0C", "F89B7C"],
 }
 '''
@@ -2011,10 +2047,11 @@ FIXTURE_STYLE = '''# Sprite style (fixture)
 |---|---|---|---|
 | Foliage green | `#1F8A4C` | `#2ECC71` | `#31D978` |
 | Stone | `#727272` | `#939393` | `#AAAAAA` |
+| Sand | | `#ECDCB8` | |
 
 Outline = 2px at 64x64, a darker shade of the fill. Never a gradient.
 
-Skin ramps: frost `#0C618C` `#87CEF2`, ember `#902D0C` `#F89B7C`. Legal in a
+Skin ramps: frost `#0C618C` `#87CEF2` `#C1A057`, ember `#902D0C` `#F89B7C`. Legal in a
 `_skin_<that family>` sprite and nowhere else.
 '''
 
@@ -2063,8 +2100,19 @@ FIXTURE_SVGS = {
     # written anywhere -- it is derived from the parent's -- so a clean result here is
     # also the assertion that the derivation happened at all. Without it, `declared`
     # would fire and this file would be indistinguishable from an undeclared sprite.
-    "good_skin_frost": _svg('<circle cx="32" cy="32" r="24" fill="#87CEF2" '
+    #
+    # Its rim is also 156 degrees of hue away from its fill, which is the SAMPLER case:
+    # a rim in a different medium (floss on linen, ink on paper) rather than a darkening
+    # of the fill's own paint. `check_outline` exempts a `_skin_` stem from the hue and
+    # grey clauses and from nothing else, so this sprite is clean and `cross_hue_rim`
+    # below -- the identical pairing on a stem that is NOT a skin -- is not.
+    "good_skin_frost": _svg('<circle cx="32" cy="32" r="24" fill="#C1A057" '
                             'stroke="#0C618C" stroke-width="2"/>'),
+    # The twin, and the whole of the scoping assertion: the same cross-hue rim on a
+    # hand-drawn stem is still a warning. Without this sprite the exemption above could
+    # be widened to every stem in the corpus and no fixture case would move.
+    "cross_hue_rim": _svg('<circle cx="32" cy="32" r="24" fill="#ECDCB8" '
+                          'stroke="#1F8A4C" stroke-width="2"/>'),
     # The scoping case, and the reason the ramps are handed out per family rather than
     # pooled: a FROST anchor in an EMBER sprite. Pooled, this passes; scoped, it is a
     # `palette` error like any other colour that is on no legal segment.
@@ -2091,7 +2139,7 @@ FIXTURE_BY_CHECK = {
     # contract note is filed under `palette`).
     "palette": 6,
     "flat_paint": 3,    # the <linearGradient>, the url(#g) use, the 0.5 opacity
-    "outline": 1,       # grey_rim
+    "outline": 2,       # grey_rim, and cross_hue_rim on a stem that is not a skin
     "outline_width": 0,
     "black_fill": 1,    # no_fill
     "content": 0,
@@ -2106,10 +2154,11 @@ FIXTURE_EXPECT_EXIT = 1
 
 # (errors, warnings, advisory) over the whole corpus. 16 findings in total:
 # declared 3 + canvas 1 + palette 4 + outline 1 + black_fill 1 + centred 1 = 11 errors,
-# plus flat_paint's <linearGradient> declaration and its url(#g) use = 13; the one
-# warning is flat_paint's opacity="0.5"; the two advisories are the contract notes that
-# the fixture gate declares no MUTANT_PALETTE and no `gilt` skin family.
-FIXTURE_EXPECT_SEVERITY = (13, 1, 2)
+# plus flat_paint's <linearGradient> declaration and its url(#g) use = 13; the two
+# warnings are flat_paint's opacity="0.5" and cross_hue_rim's rim; the two advisories are
+# the contract notes that the fixture gate declares no MUTANT_PALETTE and no `gilt` skin
+# family.
+FIXTURE_EXPECT_SEVERITY = (13, 2, 2)
 
 # stem -> the checks that must name it. Named individually because the per-check
 # counts can still be right for the wrong reasons: two `declared` findings is also
@@ -2123,6 +2172,7 @@ FIXTURE_SPRITE_CHECKS = {
     "no_fill": {"black_fill", "palette"},
     "translucent": {"flat_paint"},
     "off_centre": {"centred"},
+    "cross_hue_rim": {"outline"},
     "undeclared": {"declared"},
     "phantom": {"declared"},
     "good_skin_frost": set(),
@@ -2278,7 +2328,7 @@ def run_fixture():
           "firing prints `0` there in exactly the way a clean corpus does."
           % (len(FIXTURE_SVGS), len(CHECKS), fails))
     print("  NOT COVERED: the fixture exercises the contract loader, the paint and "
-          "geometry rules and the render pairing over nine hand-written SVGs whose "
+          "geometry rules and the render pairing over thirteen hand-written SVGs whose "
           "shapes are all circles. It does NOT exercise the path parser (`d` "
           "tokenising, bezier extrema), the transform stack, or the blend-distance "
           "metric near its tolerance -- the numeric heart of the geometry half is "

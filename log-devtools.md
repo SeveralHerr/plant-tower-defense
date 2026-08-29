@@ -11258,3 +11258,44 @@ integrator's, covering the runtime pass none of the four were allowed to run.
   - Improvement: shipped here as `project-settings --overridden-only`, and the shape worth
     upstreaming is the three-state reply (`defaults` / `overridden` / `no_default`) rather
     than the printing, since that is where the bug was.
+
+## 2026-08-29 — three skin STYLES: a skin becomes a drawing method, not a palette
+
+The brief moved: skins had to stop being the parent recoloured. Each family is now its own
+rendering style — ink botanical plate, cut-paper collage, embroidery on linen — and the
+motif system that existed to make a recolour into more than a recolour came out with it.
+
+- Value: **warranted** — and this time the harness was load-bearing BEFORE any code was
+  written, which is the shape it has never been used in here before.
+  - Expected: that the three styles would be authorable in SVG and that the risk was
+    aesthetic. I expected to spend the runtime budget at the end, looking at art.
+  - Got: a pre-flight probe of seven SVG features, rendered and LOOKED AT, said otherwise.
+    `<pattern>` renders as nothing (`opaque=0`) — the obvious way to hatch. `clip-path` on
+    a stroked `<line>` makes the line vanish, while the byte-identical hatch authored as
+    `<path d="M x1 y1 L x2 y2">` clips correctly. Round-cap dashes render as a row of dots,
+    which is the running stitch nearly for free. Transformed clip shapes work, which is
+    what let a hatch drawn in flat canvas space land inside a petal living under
+    `translate(32,32) rotate(150)`.
+  - Found: **three, and the first two were found before they could be made 51 times.**
+    (1) The pattern-fill dead end. (2) The `<line>`/`<path>` clip asymmetry — one element
+    name between the ink style working and shipping seventeen blank plants. (3) The
+    cut-paper style rendering as "the parent, desaturated": every static gate passed it,
+    the palette scoping passed it, and it was only visible by compositing four tiles side
+    by side at 3x on the real grass. Sent back mid-lane and reworked into a three-layer
+    stack with saturated stock.
+  - Cheaper: nothing for (1) and (2) — they are facts about a rasteriser and no amount of
+    reading finds them. (3) had no cheaper form either: it is a judgement about a picture.
+
+  **The generalisable bit, and the reason this entry is worth reading:** in this renderer
+  an unsupported feature fails by rendering NOTHING — no error, no warning, a valid PNG.
+  Twice in the probe session a silent failure read as a pass from opaque-pixel and colour
+  counts alone, and only opening the image caught it. So the probe pattern is: author the
+  primitive, render it, and put it in a contact strip next to a known-good control, before
+  committing a generator to it.
+
+- Gap: **no gaps this turn.** The one friction was structural rather than missing: a lane
+  in a fan-out cannot type-check its own diff, because `--require-compile` needs the
+  project imported and `import_check.py` / `lint_project.gd` are explicitly not
+  parallel-safe. Both lanes named it unprompted. That is the documented design, not a
+  hole — the integrator's single engine pass is what it trades for — and it cost nothing
+  here because lint came back 77 of 77 compiled on the first try.
