@@ -7317,6 +7317,92 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			"alpha": PlacementPreview.RING_ALPHA, "ground": grass, "on": "grass"},
 		{"what": "dead/redundant reach ring", "mark": ring, "gates": false,
 			"alpha": PlacementPreview.RING_ALPHA, "ground": dirt, "on": "dirt"},
+		# EVERYTHING BELOW is plant-tower-defense-75os / -w86n: the derived sweep of
+		# `tools/gate_aim_check.py`'s UNASKED colours declared in world-space scripts,
+		# pushed through this same arithmetic. Six of these were genuine failures and
+		# are fixed at their declaration (see GardenTheme's own header, beside
+		# GROUND_SEPARATION_MIN, for the full enumeration and each fix's derivation);
+		# the rest are passes worth having on record so the next darkening pass has a
+		# number to check against.
+		#
+		# CHEW_RING_COLOR: ChompFlower stands only on grass (Bramble is the only
+		# road plant), so dirt is not a reachable ground for this mark.
+		{"what": "chomp flower chew ring", "mark": ChompFlower.CHEW_RING_COLOR,
+			"gates": true, "alpha": ChompFlower.CHEW_RING_COLOR.a, "ground": grass,
+			"on": "grass"},
+		# DROPLET_COLOR / DROPLET_RIM_COLOR: same grass-only reasoning as the chew
+		# ring above -- a Sundew never stands on the road.
+		{"what": "sundew droplet fill", "mark": StickySundew.DROPLET_COLOR,
+			"gates": true, "alpha": StickySundew.DROPLET_COLOR.a, "ground": grass,
+			"on": "grass"},
+		{"what": "sundew droplet rim", "mark": StickySundew.DROPLET_RIM_COLOR,
+			"gates": true, "alpha": StickySundew.DROPLET_RIM_COLOR.a, "ground": grass,
+			"on": "grass"},
+		# ROAD_ANSWER_COLOR: the mirror case -- this ring is drawn on EVERY road cell
+		# (Board's own header, "SCOPE DECISION: THE WHOLE ROAD") and never on grass.
+		{"what": "road-answer ring", "mark": Board.ROAD_ANSWER_COLOR, "gates": true,
+			"alpha": Board.ROAD_ANSWER_COLOR.a, "ground": dirt, "on": "dirt"},
+		# SHADOW_COLOR / BLAST_FILL / BLAST_RIM: a Dandelion's seed can land on either
+		# ground, so both are reachable and both are checked.
+		{"what": "seed bomb shadow", "mark": SeedBomb.SHADOW_COLOR, "gates": true,
+			"alpha": SeedBomb.SHADOW_COLOR.a, "ground": grass, "on": "grass"},
+		{"what": "seed bomb shadow", "mark": SeedBomb.SHADOW_COLOR, "gates": true,
+			"alpha": SeedBomb.SHADOW_COLOR.a, "ground": dirt, "on": "dirt"},
+		{"what": "seed bomb blast fill", "mark": SeedBomb.BLAST_FILL, "gates": true,
+			"alpha": SeedBomb.BLAST_FILL.a, "ground": grass, "on": "grass"},
+		{"what": "seed bomb blast fill", "mark": SeedBomb.BLAST_FILL, "gates": true,
+			"alpha": SeedBomb.BLAST_FILL.a, "ground": dirt, "on": "dirt"},
+		{"what": "seed bomb blast rim", "mark": SeedBomb.BLAST_RIM, "gates": true,
+			"alpha": SeedBomb.BLAST_RIM.a, "ground": grass, "on": "grass"},
+		{"what": "seed bomb blast rim", "mark": SeedBomb.BLAST_RIM, "gates": true,
+			"alpha": SeedBomb.BLAST_RIM.a, "ground": dirt, "on": "dirt"},
+		# HUSK BODY, at its WORST alpha rather than its best. Unlike every fixed-alpha
+		# mark above, this one fades continuously across the husk's whole collectible
+		# life (`0.35 + 0.35 * frac`, HuskLayer._draw) -- a player can look at it at
+		# any point in that fade, so the alpha that has to clear is the dimmest one it
+		# ever reaches, 0.35, not the freshest. A husk can sit on either ground.
+		{"what": "husk body, near end of life", "mark": HuskLayer.BODY_COLOR,
+			"gates": true, "alpha": 0.35, "ground": grass, "on": "grass"},
+		{"what": "husk body, near end of life", "mark": HuskLayer.BODY_COLOR,
+			"gates": true, "alpha": 0.35, "ground": dirt, "on": "dirt"},
+		# DROUGHT_MARK: the crack dashes scatter across the whole board, both grounds.
+		# DROUGHT_TINT itself is not a row here -- it is a uniform full-board wash
+		# that changes the ground's own tint rather than a shape drawn against it, so
+		# `reads_on_ground` is not the question DROUGHT_TINT answers (see its own
+		# comment in weather_overlay.gd).
+		{"what": "drought crack mark", "mark": WeatherOverlay.DROUGHT_MARK,
+			"gates": true, "alpha": WeatherOverlay.DROUGHT_MARK.a, "ground": grass,
+			"on": "grass"},
+		{"what": "drought crack mark", "mark": WeatherOverlay.DROUGHT_MARK,
+			"gates": true, "alpha": WeatherOverlay.DROUGHT_MARK.a, "ground": dirt,
+			"on": "dirt"},
+		# PIP_COLOR: a genuine pass, not a fix -- the corn spread arc's pip FILL
+		# (distinct from PIP_RIM_COLOR above, which was already gated) clears both
+		# grounds on its own, tightly on grass at 0.0154 margin.
+		{"what": "corn spread pip fill", "mark": CornCobbler.PIP_COLOR, "gates": true,
+			"alpha": CornCobbler.PIP_COLOR.a, "ground": grass, "on": "grass"},
+		{"what": "corn spread pip fill", "mark": CornCobbler.PIP_COLOR, "gates": true,
+			"alpha": CornCobbler.PIP_COLOR.a, "ground": dirt, "on": "dirt"},
+		# Lane pressure hatch, at its OWN worst (brightest) case: full pressure means
+		# alpha = HATCH_ALPHA exactly. Only ever drawn on the road -- "grass cells
+		# never light up" (test_recording_lane_pressure_off_the_road_is_ignored).
+		# Another genuine pass, and the tightest one in this whole table besides the
+		# held-over selection marker: 0.0149 margin.
+		{"what": "lane pressure hatch, full pressure", "mark": GardenTheme.DANGER,
+			"gates": true, "alpha": LanePressureOverlay.HATCH_ALPHA, "ground": dirt,
+			"on": "dirt"},
+		# THE SHARED REACH-RING FAMILY (Plant.REACH_RING_ALPHA, six plants), NOT
+		# GATED and deliberately not fixed here -- plant-tower-defense-qt79 already
+		# exists to decide whether a reach ring owes this floor at all, the same
+		# question the dead/redundant ring above is deferred on. Recorded with the
+		# CLOSEST one so the question stays visible rather than filed silently:
+		# Aloe's own ring clears grass by only 0.0012 (luminance 0.858 against
+		# grass's 0.642, at REACH_RING_ALPHA 0.55). The other five all fail outright:
+		# ChompFlower -0.0649, CornCobbler -0.0802, Dandelion -0.1029, Mint -0.0787,
+		# Nettle -0.0409, StickySundew -0.1074 (margins against the 0.12 floor).
+		{"what": "aloe reach ring (closest of six shared-alpha rings)",
+			"mark": Aloe.RING_COLOR, "gates": false, "alpha": Aloe.RING_COLOR.a,
+			"ground": grass, "on": "grass"},
 	]
 	var err: String = ""
 	var checked: int = 0
@@ -7342,15 +7428,16 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			return err
 	# The denominator, because a table that lost its rows would pass in silence.
 	if err == "":
-		err = _T.assert_eq(checked, 21,
+		err = _T.assert_eq(checked, 39,
 			"the sweep visited every board mark and both grounds for the ring")
 	if err == "":
 		# AND the exception set is pinned by membership, not by count alone. A new mark
 		# that fails and is quietly marked `gates: false` is exactly how a gate rots;
 		# this makes doing that a failing test rather than a passing one.
-		err = _T.assert_eq(ungated.size(), 4,
-			("exactly four rows are ungated -- the two reach-ring ones and the two corn "
-				+ "spread-arc ones -- and they are: %s") % ", ".join(ungated))
+		err = _T.assert_eq(ungated.size(), 5,
+			("exactly five rows are ungated -- the two dead/redundant reach-ring ones, "
+				+ "the two corn spread-arc ones, and the one shared reach-ring "
+				+ "representative -- and they are: %s") % ", ".join(ungated))
 	if err == "":
 		# The mutation guard: without this, replacing reads_on_at with `return true`
 		# leaves every assertion above green. A ring at RING_ALPHA over grass is the

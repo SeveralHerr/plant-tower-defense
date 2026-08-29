@@ -71,14 +71,32 @@ const SPIN_TURNS: float = 0.75
 ## that says where the thing in the air is actually going to land.
 const SHADOW_RADIUS: float = 4.0
 const SHADOW_APEX_SHRINK: float = 0.55
-const SHADOW_COLOR := Color(0.0, 0.0, 0.0, 0.22)
+## ALPHA RAISED (plant-tower-defense-75os/w86n): pure black clears grass at 0.22
+## (0.141 separation) but missed GROUND_DIRT by 0.0025 (0.117 against the floor's
+## 0.12) — the seed usually lands over the road, which is the ground this cue most
+## needs. The colour is already the darkest it can be, so the only lever is alpha;
+## 0.26 clears both (0.167 on grass, 0.139 on dirt). See
+## test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at.
+const SHADOW_COLOR := Color(0.0, 0.0, 0.0, 0.26)
 
 ## The burst. Cream over a sand rim — the Dandelion's own two hues, so a blast
 ## reads as that plant's doing rather than as a generic explosion, and it cannot
 ## be confused with CornCobbler's green range ring, ChompFlower's orange chew ring
 ## or StickySundew's blue-grey beads.
-const BLAST_FILL := Color(1.0, 0.93, 0.78, 0.34)
-const BLAST_RIM := Color(0.65, 0.61, 0.51, 0.9)
+##
+## ALPHA RAISED (plant-tower-defense-75os/w86n): the fill's own header calls this
+## "the only thing that says WHERE the blast was and HOW BIG it was", which makes it
+## exactly the kind of cue GROUND_SEPARATION_MIN exists for, and nothing had priced
+## it. At the original 0.34 alpha it cleared dirt (0.136) but missed grass by 0.021
+## (0.099 against 0.12); 0.48 clears both (0.140 on grass, 0.192 on dirt).
+const BLAST_FILL := Color(1.0, 0.93, 0.78, 0.48)
+## DARKENED (plant-tower-defense-75os/w86n): the rim is meant to carry the reading
+## the way `CornCobbler.PIP_RIM_COLOR` carries its pip's, and the original
+## `Color(0.65, 0.61, 0.51)` failed BOTH grounds at its own 0.9 alpha (0.028 on grass,
+## 0.069 on dirt, against a 0.12 floor) — a rim weaker than the fill it is supposed to
+## outline. `.darkened(0.40)`: luminance 0.367, clearing grass by 0.128 and dirt by
+## 0.031. See test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at.
+const BLAST_RIM := Color(0.39, 0.37, 0.31, 0.9)
 const BLAST_RIM_WIDTH: float = 3.0
 const BLAST_SEGMENTS: int = 28
 

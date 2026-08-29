@@ -163,6 +163,120 @@ const GROUND_DIRT := Color(0.733, 0.502, 0.267)
 const GROUND_SEPARATION_MIN: float = 0.12
 
 
+## EVERY EXPRESSION IN `game/` THAT PRODUCES A COLOUR FROM ANOTHER COLOUR
+## (plant-tower-defense-9lie), derived by grepping `.lightened(`, `.darkened(`,
+## `.lerp(`, `Color(` with a non-literal first argument, and per-channel arithmetic
+## (`.r * `, `.a * `) across every `.gd` under `game/`, not listed from memory.
+## Cycle 163, 164 and 165 each found one of these priced wrong — BLOCKED_COLOR
+## walked into the road it was drawn on, WARNING_COLOR passed dirt only because of
+## its own re-alpha, `SelectionMarker.held_ink` halved a mark's contrast by halving
+## its alpha — and none of the three cycles that found them were looking for this
+## shape. This is that search, done once, so the next one is a lookup instead of a
+## stumble.
+##
+## SIX SHAPES, and what each one does to luminance and to alpha:
+##
+## 1. `.lightened(amt)` / `.darkened(amt)` — moves luminance toward white or black by
+##    `amt` of the remaining distance; alpha untouched. Both of this board's grounds
+##    sit in the MIDDLE of the luminance range (grass 0.643, dirt 0.534), so
+##    LIGHTENING a mark walks it toward them and DARKENING walks it away — the
+##    opposite of the intuition that dimming a cue should lighten it. World-space
+##    sites: `Pest.marker_fill`/`marker_ink` (`tint_for(...).lightened(MARKER_LIGHTEN)`
+##    / `.darkened(MARKER_DARKEN)`, drawn on the pest's own body, not ground — outside
+##    this question). Screen-space: `build()`/`style_paper_button()`'s
+##    `PAPER.lightened(0.12)` button-hover fill. `OK_COLOR` and `BLOCKED_COLOR` in
+##    `PlacementPreview` are DOCUMENTED as `LEAF`/`DANGER` lightened/darkened but are
+##    literals, not calls — a `const` initialiser cannot call a method, so the
+##    derivation is asserted by `test_the_placement_brackets_come_from_the_palette_and_
+##    still_look_the_same` instead of being visible in the expression.
+##
+## 2. `Color(base, alpha)` — copies RGB from `base` untouched (luminance unchanged)
+##    and REPLACES alpha outright with the second argument; this is a full
+##    substitution, not a scale. Since separation scales by alpha (see `reads_on_at`
+##    below), the same RGB reads as a pass or a fail purely on which literal lands in
+##    this slot — `WARNING_COLOR := Color(DANGER, 0.95)` clears dirt at 0.95 where
+##    the bracket alpha of 0.75 would not have. World-space sites:
+##    `CornCobbler`'s `Color(PIP_RIM_COLOR, PIP_RIM_COLOR.a * fade)` /
+##    `Color(SPREAD_ARC_COLOR, ...)` / `Color(PIP_COLOR, ...)`,
+##    `LanePressureOverlay._draw`'s `Color(DANGER, alpha * HATCH_ALPHA)`,
+##    `PlacementPreview.board_dead_color()`'s `Color(DEAD_COLOR, BOARD_DEAD_ALPHA)`,
+##    `SelectionMarker.WARNING_COLOR`, `StickySundew.RING_COLOR :=
+##    Color(PATCH_COLOR, Plant.REACH_RING_ALPHA)` (and five sibling plants' shared
+##    reach-ring consts, same shape, listed under shape 6), `SeedBomb`'s
+##    `Color(BLAST_FILL, BLAST_FILL.a * fade)` / `Color(BLAST_RIM, ...)`,
+##    `Sunflower`'s `Color(GAUGE_FLASH_COLOR, GAUGE_FLASH_COLOR.a * _bloom_flash)`
+##    (drawn over the gauge's own backing panel, not ground), `Game._update_cursor`'s
+##    `Color(LEAF, 0.30)` / `Color(DANGER, 0.30)` hover wash (owned by
+##    `game.gd`, outside this lane — see the margin table below). Screen-space: the
+##    HUD/notebook/pause/run-summary/title font-alpha family (`Color(GardenTheme.INK,
+##    0.x)` and siblings), none of which touch the playfield.
+##
+## 3. Per-component alpha arithmetic, `Color(base.r, base.g, base.b, base.a * k)` or
+##    `Color(base, alpha_expr)` where `alpha_expr` is computed rather than a literal —
+##    same effect as shape 2 (RGB/luminance unchanged, alpha replaced) but the
+##    replacement is a multiply rather than a constant, so the drawn alpha moves with
+##    a caller's own state. `SelectionMarker.held_ink` (`base.a * HELD_ALPHA_SCALE`,
+##    0.5 — cycle 165's finding), `PlacementPreview._refresh_reach_ring`
+##    (`Color(base.r, base.g, base.b, RING_ALPHA)` — drops the base alpha entirely
+##    rather than scaling it), `HuskLayer._draw`'s husk body
+##    (`Color(BODY_COLOR, 0.35 + 0.35 * frac)`, continuously fading across the whole
+##    life of the mark rather than a fixed state — see the margin table for why this
+##    one is priced at its WORST alpha, not its best).
+##
+## 4. Per-channel scaling, `Color(base.r * k, base.g * k, base.b * k, base.a)` —
+##    scales R, G and B by the same `k`, which scales luminance by exactly `k` too
+##    (luminance is a fixed linear combination of the three) and leaves alpha alone —
+##    the mirror image of shape 3. `Pest.hit_flash_color()` /
+##    `shell_flash_color()` (`HIT_FLASH_BOOST` > 1, brightens; `SHELL_FLASH_DIM` < 1,
+##    darkens), both drawn on the pest's own body — outside this question, and
+##    outside this lane's file ownership regardless.
+##
+## 5. `.lerp(other, t)` between two named colours — luminance moves linearly between
+##    the two ends' luminances as `t` sweeps 0..1 (a direct consequence of luminance
+##    being linear in RGB), alpha only if the two ends' alphas differ. World-space:
+##    `HuskLayer`'s rot-ring `DIM_RING.lerp(BRIGHT_RING, glow)`. Screen/UI-space:
+##    `Hud.threat_color_on` (`PAPER.lerp(warm, ...)` then `warm.lerp(hot, ...)`),
+##    `Hud.health_color_on` (`low.lerp(full, fraction)`), `TitleBackdrop._draw_sky`
+##    (`SKY_TOP.lerp(SKY_HORIZON, t)`). `composite_over` below (`ground.lerp(Color(
+##    mark, 1.0), alpha)`) is this same shape turned into the measuring instrument
+##    itself: it is *why* shapes 2 and 3 scale separation by exactly alpha — a lerp
+##    toward `ground` moves luminance toward `ground`'s by exactly the lerp factor.
+##
+## 6. Plain aliasing, `const X := Y` with no operation at all — luminance and alpha
+##    both pass through unchanged, so an alias is only ever wrong if `Y` was already
+##    too close to a ground the alias then gets drawn on somewhere `Y` itself never
+##    was. `GROUND_GRASS := LEAF` (deliberate, documented above) and
+##    `Board.ROAD_ANSWER_COLOR := GardenTheme.LEAF` (NOT deliberate in this sense —
+##    LEAF is the grass hue, aliased onto a ring drawn on the ROAD, and the two
+##    grounds' luminances are close enough that this nearly worked and then didn't;
+##    see the margin table). `Plant.REACH_RING_ALPHA`, shared by six plants' own
+##    `RING_COLOR`/`RING_EDGE` consts via shape 2 rather than shape 6, is the aliasing
+##    case for the ALPHA half of a colour rather than the RGB half.
+##
+## WHERE THE OUTPUTS LAND (plant-tower-defense-75os / -w86n): every shape-2/3 result
+## that reaches the playfield was swept through `reads_on_at` at the alpha it ships
+## with, alongside every other drawn board colour `tools/gate_aim_check.py` surfaces
+## as declared in a world-space script but not yet named in a gate assertion. Six
+## genuine failures came out of it — `ChompFlower.CHEW_RING_COLOR`,
+## `StickySundew.DROPLET_COLOR`/`DROPLET_RIM_COLOR`, `Board.ROAD_ANSWER_COLOR`,
+## `SeedBomb.SHADOW_COLOR`/`BLAST_FILL`/`BLAST_RIM`, `HuskLayer`'s husk body and
+## `WeatherOverlay.DROUGHT_MARK` — each now darkened or lightened (or, for
+## `SHADOW_COLOR`/`BLAST_FILL`, alpha-raised, since black already has nowhere lower
+## to go) with the arithmetic recorded beside the constant and a row in
+## `test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at`. The
+## shared reach-ring family (shape 6, `Plant.REACH_RING_ALPHA`) is measured but NOT
+## fixed here: `aloe.gd`'s own ring clears grass by only 0.0012 and every sibling
+## plant's version fails outright, but the alpha is shared across six plants and
+## `plant-tower-defense-qt79` already exists to decide whether a reach ring — as
+## opposed to a mark like the ones above — owes this floor at all. Recolouring six
+## plants' rings to answer a question filed as still open would be answering it by
+## default rather than on purpose. `Game._update_cursor`'s hover wash
+## (`Color(LEAF, 0.30)` / `Color(DANGER, 0.30)`, `game.gd`) is the worst single number
+## found — the FREE state matches grass exactly, 0.0 separation at any alpha, because
+## `LEAF` *is* `GROUND_GRASS` — but `game.gd` is outside this file's ownership; it is
+## recorded here, unfixed, for whoever owns that file next.
+
+
 ## How far apart two colours are in the one channel that survives colour being
 ## thrown away.
 ##
