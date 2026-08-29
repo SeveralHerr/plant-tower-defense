@@ -289,7 +289,7 @@ func _refresh_health_bar() -> void:
 func _refresh_damage_sprite() -> void:
 	if _sprite == null:
 		return
-	var path: String = texture_for_health(health / MAX_HEALTH)
+	var path: String = frame_texture_path(texture_for_health(health / MAX_HEALTH))
 	if not _frames.has(path):
 		_frames[path] = load(path) as Texture2D
 	var texture: Texture2D = _frames[path] as Texture2D

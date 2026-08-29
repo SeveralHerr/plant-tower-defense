@@ -23007,7 +23007,7 @@ func _sport_reading(plant: Plant) -> float:
 ## plant of a different kind -- a player would need the parent two cells away to see
 ## it -- and the mark alone would leave two identical drawings differing by three
 ## small diamonds. This is the test that says a sport is legible at all.
-func test_a_sport_wears_its_tint_and_its_mark_and_an_ordinary_plant_wears_neither() -> String:
+func test_a_sport_wears_its_own_art_and_its_mark_and_an_ordinary_plant_wears_neither() -> String:
 	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
 	var board: Board = game.board
 	var seat: Vector2i = Vector2i(-1, -1)
@@ -23044,10 +23044,19 @@ func test_a_sport_wears_its_tint_and_its_mark_and_an_ordinary_plant_wears_neithe
 	if err == "":
 		var sprites: Array[Node] = sport.find_children("*", "Sprite2D", true, false)
 		var sprite: Sprite2D = null if sprites.is_empty() else sprites[0] as Sprite2D
-		err = _T.assert_true(sprite != null, "and it has a sprite to tint")
+		err = _T.assert_true(sprite != null, "and it has a sprite")
 		if err == "":
-			err = _T.assert_eq(sprite.modulate, PlantMutation.TINT,
-				"which wears the sport tint rather than the default white")
+			err = _T.assert_eq(sprite.texture.resource_path,
+				PlantMutation.sport_texture_path(PlantCatalog.texture_path(PlantCatalog.CORN)),
+				("which loads the sport's OWN drawing. Reading the loaded texture and not "
+					+ "the path it was asked for is the point: a derived sprite that was "
+					+ "generated but never rendered, or rendered but never imported, is a "
+					+ "null texture here and an invisible plant on screen"))
+		if err == "":
+			err = _T.assert_eq(sprite.modulate, PlantMutation.SPORT_MODULATE,
+				("and multiplies nothing over it. A tint over an already-recoloured sprite "
+					+ "does not read as more dramatic, it desaturates three deliberate hues "
+					+ "toward one"))
 	# The control: an ordinary plant of the same kind, planted the ordinary way.
 	if err == "":
 		var free_cell: Vector2i = Vector2i(-1, -1)
@@ -23074,7 +23083,123 @@ func test_a_sport_wears_its_tint_and_its_mark_and_an_ordinary_plant_wears_neithe
 				var plain_sprite: Sprite2D = plain_sprites[0] as Sprite2D
 				err = _T.assert_eq(plain_sprite.modulate, Color.WHITE,
 					"and no tint -- the sports must not have recoloured every plant")
+			if err == "":
+				var plain_sprites2: Array[Node] = plain.find_children("*", "Sprite2D",
+					true, false)
+				var plain_sprite2: Sprite2D = plain_sprites2[0] as Sprite2D
+				err = _T.assert_eq(plain_sprite2.texture.resource_path,
+					PlantCatalog.texture_path(PlantCatalog.CORN),
+					("and its own drawing, not the mutant one -- `frame_texture_path` "
+						+ "returning the sport path unconditionally would be invisible on "
+						+ "a sport and wrong on every plant the player bought"))
 	_T.free_ui(game)
+	return err
+
+
+## EVERY frame a plant can wear has a mutant twin on disk, not just its standing one.
+##
+## This is the test that would have caught the bug the whole `frame_texture_path` seam
+## exists to prevent, and the reason it is written as a sweep over the FRAME LISTS rather
+## than over `PlantCatalog.ids()`. A plant does not have one sprite. The Bramble swaps
+## between three by health, the Dandelion between four by fluff and the Chomp between four
+## by what it is chewing, and every one of those swaps is a `load()` at the moment the
+## player is looking hardest at that plant. A per-kind check passes with nine sports and a
+## mutated Chomp that turns back into an ordinary Chomp the instant it bites.
+##
+## `load()` and not `ResourceLoader.exists()`: a `.import` entry can name a PNG that was
+## generated, never rendered, and never imported, and `exists()` believes the entry. The
+## thing that has to be true is that a texture comes back.
+func test_every_frame_a_plant_can_wear_has_a_sport_twin_that_actually_loads() -> String:
+	var frames: Array[String] = []
+	for id: StringName in PlantCatalog.ids():
+		frames.append(PlantCatalog.texture_path(id))
+	frames.append_array(Bramble.DAMAGE_TEXTURES)
+	frames.append_array(Dandelion.FLUFF_TEXTURES)
+	frames.append(ChompFlower.GAPE_TEXTURE_PATH)
+	frames.append(ChompFlower.EATING_TEXTURE_PATH)
+	frames.append(ChompFlower.EATING_LATE_TEXTURE_PATH)
+
+	var err: String = _T.assert_gt(frames.size(), PlantCatalog.ids().size(),
+		("the sweep covers more than one frame per plant -- if it does not, the frame "
+			+ "constants moved and this test is back to checking nine standing sprites"))
+	if err != "":
+		return err
+	var seen := {}
+	for base: String in frames:
+		if seen.has(base):
+			continue
+		seen[base] = true
+		var sport: String = PlantMutation.sport_texture_path(base)
+		err = _T.assert_true(sport != base,
+			"%s resolves to a DIFFERENT path for a sport, got %s" % [base, sport])
+		if err == "":
+			err = _T.assert_true(load(sport) != null,
+				("%s loads. Generate it with `python tools/gen_sport_svg.py --write`, "
+					+ "render with tools/render_svg.gd, then `godot --headless --import`")
+					% sport)
+		if err == "":
+			err = _T.assert_true(load(base) != null,
+				"%s still loads -- the parent must not have been overwritten" % base)
+		if err != "":
+			return err
+	return _T.assert_gte(seen.size(), 17,
+		("all seventeen frames were reached; got %d. A shrinking denominator here is a "
+			+ "frame list that stopped being read, not a plant that lost a frame")
+			% seen.size())
+
+
+## `frame_texture_path` answers for the plant asking, and the answer is stable.
+##
+## Three properties, and the third is the one a table-shaped implementation would fail.
+## An ordinary plant gets its own path back unchanged; a sport gets the mutant one; and
+## resolving an ALREADY-mutant path returns it rather than appending a second suffix.
+## That last case is not hypothetical -- `ChompFlower._show_idle_sprite` restores a texture
+## it cached earlier, and `Dandelion.head_texture_path` reads back whatever is loaded, so a
+## path that has been through the resolver once can go through it again.
+func test_the_sport_path_resolver_is_stable_and_asks_the_plant_not_the_kind() -> String:
+	var base: String = PlantCatalog.texture_path(PlantCatalog.BRAMBLE)
+	var err: String = _T.assert_eq(PlantMutation.texture_path(base, false), base,
+		"a plain plant is handed its own drawing back untouched")
+	if err == "":
+		err = _T.assert_eq(PlantMutation.texture_path(base, true),
+			PlantMutation.sport_texture_path(base),
+			"and a sport is handed the mutant one")
+	if err == "":
+		var once: String = PlantMutation.sport_texture_path(base)
+		err = _T.assert_eq(PlantMutation.sport_texture_path(once), once,
+			("resolving an already-mutant path is a no-op. Appending a second suffix "
+				+ "gives %s_sport_sport.png, which loads as null and draws nothing")
+				% once.get_basename())
+	if err == "":
+		err = _T.assert_eq(PlantMutation.sport_texture_path(""), "",
+			"and an empty path stays empty rather than becoming '_sport.'")
+	if err == "":
+		err = _T.assert_true(PlantMutation.sport_texture_path(base).ends_with(".png"),
+			"the extension survives the rename, or nothing can import the result")
+	return err
+
+
+## The suffix is spelled the same in the three places that have to agree.
+##
+## `PlantMutation.SPORT_SUFFIX` resolves a texture at runtime; `test_sprite_style.gd`'s own
+## SPORT_SUFFIX decides which sprites may use MUTANT_PALETTE; `tools/gen_sport_svg.py`
+## writes the files. The generator already checks itself against the gate on every run, and
+## this is the third edge of that triangle -- without it, renaming the suffix here would
+## leave every sport loading a path nothing generates, silently, with both other checks
+## clean.
+func test_the_sport_suffix_agrees_with_the_sprite_gate() -> String:
+	var gate := load("res://test/unit/test_sprite_style.gd") as GDScript
+	var err: String = _T.assert_true(gate != null, "the sprite gate script loads")
+	if err != "":
+		return err
+	var suffix: Variant = gate.get_script_constant_map().get("SPORT_SUFFIX")
+	if err == "":
+		err = _T.assert_true(suffix != null,
+			"test_sprite_style.gd still declares SPORT_SUFFIX -- MUTANT_PALETTE is keyed off it")
+	if err == "":
+		err = _T.assert_eq(String(suffix), PlantMutation.SPORT_SUFFIX,
+			("the gate and the runtime spell the sport suffix the same way. They do not "
+				+ "read each other, so a rename in one is a silent miss in the other"))
 	return err
 
 
@@ -23130,26 +23255,49 @@ func test_the_sport_badge_stays_clear_of_the_health_bar_and_never_pulses_away() 
 			if err != "":
 				return err
 	if err == "":
-		var star: PackedVector2Array = PlantMutation.badge_star()
-		err = _T.assert_eq(star.size(), PlantMutation.STAR_POINTS * 2,
-			"a four-point star is eight vertices: a spike and a valley each")
+		var blades: Array[PackedVector2Array] = PlantMutation.badge_trefoil()
+		err = _T.assert_eq(blades.size(), PlantMutation.TREFOIL_BLADES,
+			"the trefoil is one polygon per blade")
 		if err == "":
-			err = _T.assert_float_eq(star[0].distance_to(PlantMutation.BADGE_CENTRE),
-				PlantMutation.STAR_OUTER, 0.001,
-				"the first vertex is a spike, at the outer radius")
+			for blade: PackedVector2Array in blades:
+				for at: Vector2 in blade:
+					var r: float = at.distance_to(PlantMutation.BADGE_CENTRE)
+					err = _T.assert_true(
+						r >= PlantMutation.TREFOIL_INNER - 0.001
+							and r <= PlantMutation.TREFOIL_OUTER + 0.001,
+						("every blade vertex sits between the inner and outer radius -- "
+							+ "got %.3f, want %.2f..%.2f") % [r, PlantMutation.TREFOIL_INNER,
+							PlantMutation.TREFOIL_OUTER])
+					if err != "":
+						return err
 		if err == "":
-			err = _T.assert_float_eq(star[1].distance_to(PlantMutation.BADGE_CENTRE),
-				PlantMutation.STAR_INNER, 0.001,
-				"and the second is a valley, at the inner one")
+			# The first blade points up-screen, which art_src/STYLE.md makes the facing of
+			# everything directional in this kit. Read off the blade's own MIDPOINT rather
+			# than a vertex: a sector's vertices sit at the edges of its span, so no vertex
+			# is on the axis and asserting one is on it would fail a correct trefoil.
+			var first: PackedVector2Array = blades[0]
+			var mid: Vector2 = (first[0] + first[first.size() / 2 - 1]) * 0.5
+			err = _T.assert_float_eq(mid.x, PlantMutation.BADGE_CENTRE.x, 0.001,
+				"the first blade is centred on the vertical, got %s" % mid)
+			if err == "":
+				err = _T.assert_true(mid.y < PlantMutation.BADGE_CENTRE.y,
+					"and points up-screen rather than down, got %s" % mid)
 		if err == "":
-			err = _T.assert_true(star[0].x > PlantMutation.BADGE_CENTRE.x - 0.001
-					and star[0].x < PlantMutation.BADGE_CENTRE.x + 0.001
-					and star[0].y < PlantMutation.BADGE_CENTRE.y,
-				("the first spike points up-screen, which art_src/STYLE.md makes the "
-					+ "facing of everything directional in this kit -- got %s") % star[0])
+			err = _T.assert_true(PlantMutation.TREFOIL_OUTER < PlantMutation.BADGE_RADIUS,
+				"and the whole trefoil fits inside the disc it is drawn on")
 		if err == "":
-			err = _T.assert_true(PlantMutation.STAR_OUTER < PlantMutation.BADGE_RADIUS,
-				"and the whole star fits inside the disc it is drawn on")
+			# The gaps are what make this readable at nine pixels: three blades of
+			# TREFOIL_SPAN each must leave at least as much yellow between them as they
+			# cover, or the mark closes into a disc with a hole and stops being a trefoil
+			# at all. Asserted against the blade count rather than against 60 degrees, so
+			# a fourth blade has to re-earn the ratio instead of inheriting it.
+			var gap: float = TAU / float(PlantMutation.TREFOIL_BLADES) - PlantMutation.TREFOIL_SPAN
+			err = _T.assert_true(gap >= PlantMutation.TREFOIL_SPAN - 0.001,
+				("the gap between blades (%.3f rad) is at least as wide as a blade "
+					+ "(%.3f rad)") % [gap, PlantMutation.TREFOIL_SPAN])
+		if err == "":
+			err = _T.assert_true(PlantMutation.TREFOIL_HUB < PlantMutation.TREFOIL_INNER,
+				"and the hub stops short of the blades rather than merging with them")
 	if err == "":
 		# The clearance. The health bar is a rect in the same space the badge is drawn
 		# in, so this is a box against a circle and not an impression.
@@ -23160,7 +23308,22 @@ func test_the_sport_badge_stays_clear_of_the_health_bar_and_never_pulses_away() 
 		err = _T.assert_true(
 			nearest.distance_to(PlantMutation.BADGE_CENTRE) > PlantMutation.BADGE_RADIUS,
 			("the badge clears the health bar %s -- a damaged sport must not have its "
-				+ "remaining health covered by the mark that says it is a sport") % bar)
+				+ "remaining health covered by the mark that says it is a sport. Got "
+				+ "%.2f px between centres against a %.1f px radius")
+				% [bar, nearest.distance_to(PlantMutation.BADGE_CENTRE),
+					PlantMutation.BADGE_RADIUS])
+	if err == "":
+		# And it stays on its own tile. The bar check pushes the badge right and down; far
+		# enough and it lands on the neighbouring cell, where it would read as a mark on
+		# the WRONG plant -- a defect that is invisible on a lone plant and appears only
+		# once the garden is full, which is when nobody is inspecting geometry.
+		var half: float = float(Board.CELL) * 0.5
+		var reach: float = PlantMutation.BADGE_RADIUS
+		err = _T.assert_true(
+			absf(PlantMutation.BADGE_CENTRE.x) + reach <= half
+				and absf(PlantMutation.BADGE_CENTRE.y) + reach <= half,
+			("the whole badge sits inside the %d px cell -- centre %s, radius %.1f")
+				% [Board.CELL, PlantMutation.BADGE_CENTRE, reach])
 	if err == "":
 		# Both extremes of the pulse plus a sample between them, because a floor read
 		# at one instant says nothing about the trough.
@@ -23176,7 +23339,11 @@ func test_the_sport_badge_stays_clear_of_the_health_bar_and_never_pulses_away() 
 			err = _T.assert_float_eq(SportMark.pulse_at(0.0), 1.0, 0.001,
 				"and starts at full, so a mark added mid-frame does not fade in from "
 				+ "nothing")
-	return ""
+	# `err`, not "". This read `return ""` and swallowed every assertion after the ring:
+	# the clearance check, both pulse checks and the whole trefoil block could all fail
+	# and the test reported a pass, which is the exact shape CLAUDE.md warns about for an
+	# aborted coroutine and is worse here because nothing aborts.
+	return err
 
 
 ## The hardest patch holding a pest sets its speed, whichever patch caught it first.

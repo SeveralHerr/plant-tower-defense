@@ -478,6 +478,18 @@ func setup(id: StringName, at: Vector2i, on_board: Board) -> void:
 	_make_world_controls_click_through()
 
 
+## The texture this plant should actually load for a frame it wants to wear.
+##
+## Every texture assignment in the game goes through here — this class's own sprite, the
+## Bramble's three damage frames, the Dandelion's four fluff frames and the Chomp's four
+## eating frames — so "is there a mutant twin of this picture" is asked once. Four call
+## sites each remembering to ask is four chances for a mutated plant to revert to
+## unmutated colours the moment it takes a bite or a hit, which is precisely the frame a
+## player is looking at it.
+func frame_texture_path(base_path: String) -> String:
+	return PlantMutation.texture_path(base_path, is_sport)
+
+
 func _build_visuals() -> void:
 	# The sprite hangs off the sway pivot, not off the plant — see `_sway_pivot`.
 	_sway_pivot = Node2D.new()
@@ -485,18 +497,13 @@ func _build_visuals() -> void:
 	add_child(_sway_pivot)
 
 	_sprite = Sprite2D.new()
-	_sprite.texture = load(PlantCatalog.texture_path(kind)) as Texture2D
-	# A sport wears its parent's drawing with a shift over it, which is the whole of
-	# "different but similar". Multiplied into `modulate` rather than swapped for a
-	# second texture: nine more PNGs is nine more things for `test_sprite_style` to
-	# police and nine more chances for a sport to stop looking like its own kind.
-	#
-	# A sport's tint wins outright over a chosen skin: it is the run's OWN state --
-	# this instance is a mutated survivor, not a standing preference -- and it is
-	# gone the moment CrossBreeder throws a different one, so it must not be a colour
-	# the player has to go and un-pick on the Skins screen to see again.
+	_sprite.texture = load(frame_texture_path(PlantCatalog.texture_path(kind))) as Texture2D
+	# A sport wears its OWN drawing -- `art_src/<kind>_sport.svg`, derived from this
+	# plant's by `tools/gen_sport_svg.py` -- and nothing is multiplied over it. See
+	# PlantMutation.SPORT_MODULATE for why that is white rather than the violet tint
+	# this was, and for why a sport does not wear a chosen skin.
 	if is_sport:
-		_sprite.modulate = PlantMutation.TINT
+		_sprite.modulate = PlantMutation.SPORT_MODULATE
 	else:
 		_sprite.modulate = Skins.tint_for(skin_id)
 	_sway_pivot.add_child(_sprite)
