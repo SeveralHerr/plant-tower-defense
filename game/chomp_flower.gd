@@ -96,7 +96,18 @@ const LEVELS: Array[Dictionary] = [
 const CHEW_RING_RADIUS: float = 22.0
 const CHEW_RING_WIDTH: float = 3.0
 ## Named rather than inline now that two places would otherwise spell it.
-const CHEW_RING_COLOR := Color(1.0, 0.55, 0.15, 0.85)
+##
+## DARKENED (plant-tower-defense-75os): the mid-meal cue is a live, informational
+## ring — how close a pest is to being freed — not a decoration, so it owes
+## `GardenTheme.GROUND_SEPARATION_MIN` the way `PlacementPreview.BLOCKED_COLOR` does,
+## and it was never in the sweep that priced that one. ChompFlower stands only on
+## grass, and the original `Color(1.0, 0.55, 0.15)` sits at luminance 0.617 against
+## grass's 0.642 — a base separation of 0.026, which even at alpha 1.0 clears less
+## than a quarter of the floor. This is that hue `.darkened(0.22)`: luminance 0.481,
+## base separation 0.161, and at the ring's own 0.85 alpha that is 0.137 — clearing
+## by 0.017. See
+## test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at.
+const CHEW_RING_COLOR := Color(0.78, 0.43, 0.12, 0.85)
 
 ## The Chomp's hue for the SHARED reach ring (plant-tower-defense-snnp). Alpha comes
 ## from `Plant.REACH_RING_ALPHA` rather than being a second copy of it, which is the
