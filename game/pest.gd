@@ -642,14 +642,22 @@ const EAT_DPS: float = 14.0
 const CHOPS_TO_FELL: int = 3
 const CHOP_STRIKE_AT: float = 0.68
 
-## Pixels the body pulls back through the wind-up, and pixels it drives forward on the
-## strike. Read against `Board.CELL` (64) and the sprite scales in `SPECIES` (0.72 to
-## 1.45): 10 px of lunge is about a sixth of a cell, which crosses enough of the gap
-## between the road and the bed to read as contact without drawing the bug inside the
-## plant. `CHOP_LUNGE` is deliberately larger than `CHOP_REAR` — two halves of one beat at
-## the same size read as a rock back and forth, not as a blow.
-const CHOP_REAR: float = 5.0
-const CHOP_LUNGE: float = 10.0
+## How far the body pulls back through the wind-up, and how far it drives forward on the
+## strike. BOTH DERIVED FROM `Board.CELL`, because the distance that matters is the gap
+## the blow has to cross and that gap is a cell: a pest walks the road and a bed stands one
+## cell off it, so the two sprites' edges are roughly `CELL` minus their two half-heights
+## apart. A quarter of a cell closes that to touching at the scales `SPECIES` actually
+## draws (0.72 to 1.45) without hauling the bug inside the plant.
+##
+## MEASURED, not guessed, and the first pass was too small: at 5/10 px the beat was plainly
+## there at 3.4x zoom and easy to miss at the 1x the game is played at (frames
+## real00000024.png vs real00000032.png). These are the numbers that survived looking at
+## the same two frames again.
+##
+## `CHOP_LUNGE` is deliberately more than twice `CHOP_REAR` — two halves of one beat at the
+## same size read as a rock back and forth, not as a blow.
+const CHOP_REAR: float = Board.CELL * 0.11
+const CHOP_LUNGE: float = Board.CELL * 0.25
 
 ## Where the wind-up hands over to the strike. The gap to `CHOP_STRIKE_AT` is 0.13 of the
 ## cycle, about 0.14 s at the derived period: short enough to be a snap.
@@ -669,9 +677,12 @@ const CHOP_WIND_EASE: float = 0.45
 const CHOP_STRIKE_EASE: float = 2.4
 const CHOP_RECOVER_EASE: float = 2.0
 
-## Peak body-axis stretch on the strike, against `GAIT_STRETCH`'s walk-cycle amount. Larger
-## than the gait's on purpose: a chop that does not out-read the scuttle is not a chop.
-const CHOP_STRETCH: float = 0.22
+## Peak body-axis stretch on the strike, against `GAIT_STRETCH`'s 0.06 walk-cycle amount.
+## FIVE TIMES it, which is not a gentle preference: the travel above is only ten-odd pixels
+## at the size the game is actually played at, and the silhouette changing shape is what
+## carries the blow the rest of the way. A chop that does not plainly out-read the scuttle
+## it interrupts is not a chop.
+const CHOP_STRETCH: float = 0.30
 
 
 ## Seconds between two strikes. A static func rather than a const because it reads
