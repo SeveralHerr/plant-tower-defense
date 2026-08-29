@@ -116,6 +116,17 @@ moment. Open the cited lines and verify they say what the bead says. If the clai
 already satisfied or wrong, STOP and report that instead of writing code." Four beads in
 this project have been claimed whose factual premise was already false.
 
+**No backgrounding, and the final message IS the report.** "Never spawn a background or
+async task of your own and wait on it — run everything synchronously, in this same turn.
+Your FINAL message must contain the full report text itself (worktree, branch, commits,
+diff-stat, what you found, gate results) — never a promise to report once something
+finishes." Three lanes in one session did real, correct, committed work and then ended
+their turn with "I'll pause and wait for the sweep to finish" or equivalent — the
+work was fine, the terminal message was not. Each cost the parent a manual recovery
+(inspect the worktree's `git status` and diff, re-run the gates, commit by hand) per §3's
+"a garbled report is not evidence the work is bad" note. The line above is the cheap fix,
+paid once per prompt instead of once per recovery.
+
 **File ownership as a hard boundary.** List what it OWNS, then list what it must NOT edit
 by name — including `kanban.md`, `cycle-log.md`, `log-devtools.md`, `CLAUDE.md`,
 `AGENTS.md`, `.beads/*` — and "do not run any `bd` command that writes; the parent owns the
@@ -254,6 +265,25 @@ in, and the same green result reappears. Budget this import as its own step afte
 fan-out merge, not just after each worktree's — it is a directory-local cache, not a
 repo-wide one, and "I already verified this" from a different checkout does not carry
 over.
+
+**Stop hunting for the Godot binary — `addons/godot_selftest/devtools_config.json`'s
+`godot_bin` key already has it.** `python tools/run_tests.py` and `tools/devtools.py`
+read it automatically; only a bare `godot --headless ...` invocation (an `--import` or a
+direct `lint_project.gd` run outside those wrappers) needs the path spelled out, and it
+should come from that same config key, not from a fresh `Get-ChildItem`/`find` sweep of
+Downloads. One session re-discovered the installed binary's path by searching the
+filesystem before checking the config that already named it — the config is the source
+of truth precisely so nobody has to do that twice, let alone once per lane.
+
+**Don't gate the next lane on this round's slowest sibling.** The default pattern —
+spawn N lanes, wait for all N, merge, verify, THEN spawn the next N — leaves the parent
+idle for however long the slowest lane in a batch takes, every round, even though the
+other lanes finished long before it. Merge and close out a lane's bead the moment it
+lands (already the right move per §4 below), and claim + spawn its replacement in the
+SAME turn rather than waiting for the batch to complete — a continuous stream of lanes,
+not a sequence of gated batches. Over a many-round fan-out this is the single largest
+lever on wall-clock time, and it costs nothing: the lanes that are still running keep
+running exactly as before.
 
 **The parent owes each lane's wiring, not just its merge.** Cycle 101's upgrade lane
 correctly refused to touch `hud.gd` and `game.gd` and listed seven exact edits it needed
