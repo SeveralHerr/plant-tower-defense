@@ -124,6 +124,16 @@ var health: float = MAX_HEALTH
 ## reads `kind`, which is the shop, the packets, the coverage map, the wave-side
 ## readouts and every test over the catalogue.
 var is_sport: bool = false
+
+## The cosmetic skin this plant is wearing — purely decorative, chosen by the
+## player on the Skins screen and unlocked by Milestones (plant-tower-defense-ncfv).
+## See `game/skins.gd` for the table and `RunConfig.selected_skin()` for the
+## persisted choice.
+##
+## Set in `setup()`, before `_build_visuals()` reads it, the same ordering
+## `is_sport`'s own comment describes — nothing repaints a plant after it is built,
+## so this is the only chance the tint gets.
+var skin_id: StringName = Skins.DEFAULT_SKIN
 ## What this plant's firing interval is multiplied by right now. 1.0 is clear
 ## weather; a drought wave sets 2.0 (plant-tower-defense-q3lx).
 ##
@@ -455,6 +465,10 @@ func setup(id: StringName, at: Vector2i, on_board: Board) -> void:
 	board = on_board
 	if board != null:
 		position = board.cell_to_world(at)
+	# Read here, before _build_visuals(), on the same footing is_sport documents:
+	# nothing repaints a plant after it is built, so this is the only chance the
+	# chosen skin gets to reach the sprite.
+	skin_id = RunConfig.selected_skin(Skins.KIND_PLANT, kind)
 	add_to_group("plants")
 	_build_visuals()
 	_on_setup()
@@ -476,8 +490,15 @@ func _build_visuals() -> void:
 	# "different but similar". Multiplied into `modulate` rather than swapped for a
 	# second texture: nine more PNGs is nine more things for `test_sprite_style` to
 	# police and nine more chances for a sport to stop looking like its own kind.
+	#
+	# A sport's tint wins outright over a chosen skin: it is the run's OWN state --
+	# this instance is a mutated survivor, not a standing preference -- and it is
+	# gone the moment CrossBreeder throws a different one, so it must not be a colour
+	# the player has to go and un-pick on the Skins screen to see again.
 	if is_sport:
 		_sprite.modulate = PlantMutation.TINT
+	else:
+		_sprite.modulate = Skins.tint_for(skin_id)
 	_sway_pivot.add_child(_sprite)
 
 	_health_back = ColorRect.new()

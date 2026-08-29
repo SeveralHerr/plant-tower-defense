@@ -27,6 +27,11 @@ signal uproot_requested
 ## clock; the HUD only reports the press, exactly as it does for the wave.
 signal speed_requested
 
+## The player asked to open the Skins screen (plant-tower-defense-ncfv). `Game`
+## owns pausing and building the overlay, the same division `speed_requested`
+## above draws for the clock — the HUD only reports the press.
+signal skins_requested
+
 const BAR_HEIGHT: int = 72
 const PANEL_WIDTH: int = 256
 
@@ -57,6 +62,30 @@ const THREAT_SHOW_FROM: int = 2
 ## they were re-proportioned to carry (plant-tower-defense-73y). Net effect: the
 ## row's headroom went UP, 19px to 38, while gaining a control.
 const NEXT_WAVE_BUTTON_SIZE := Vector2(130, 40)
+
+## The door to the Skins screen (plant-tower-defense-ncfv). 40 tall, the floor
+## every interactive Control on an overlay is held to (`findings` gates one at
+## 40x40) — but as narrow as `test_the_top_row_fits_the_narrowest_viewport_the_
+## stretch_mode_can_produce` allows and not a px more: this row's headroom AT THE
+## NARROWEST CANVAS `stretch/aspect=expand` can produce (1152px, not whatever a
+## developer's own window happens to be) is exactly 38px including the one new
+## STATS_SEPARATION this button's own presence in the row costs — see
+## `min_viewport_width()`. 26 leaves 2px rather than spending the last of it, so a
+## single future pixel added anywhere else in the row does not flip this straight
+## back to red. A short glyph, not a word: "Skins" needs far more than 26px at
+## GardenTheme.BUTTON_FONT_SIZE, so this button overrides its own font size down
+## to SKINS_BUTTON_FONT_SIZE and wears a single letter, same as a Keys-screen
+## column with nothing to put in it wears blank rather than a truncated word.
+## Priced into `stats_row_budget()` below by name, the same way NEXT_WAVE_BUTTON_SIZE
+## and GameSpeed.button_size() are, since nothing here is a STAT_READOUTS row a sum
+## could pick up automatically.
+const SKINS_BUTTON_SIZE := Vector2(26, 40)
+## Smaller than GardenTheme.BUTTON_FONT_SIZE (18) so a single letter clears its own
+## button's padding at SKINS_BUTTON_SIZE's width — see that constant's own comment
+## for why the button is this narrow at all.
+const SKINS_BUTTON_FONT_SIZE: int = 13
+## The button's own text. A letter, not a word — see SKINS_BUTTON_SIZE.
+const SKINS_BUTTON_TEXT := "S"
 
 ## Every readout gets a clipped width budget, so the row can never overflow
 ## however long a counter grows. They are listed together because what matters
@@ -1089,6 +1118,7 @@ var _plant_bar: GridContainer
 var _packet_buttons: Dictionary = {}
 var _next_wave_button: Button
 var _speed_button: Button
+var _skins_button: Button
 var _selection_box: VBoxContainer
 var _selection_label: Label
 var _upgrade_button: Button
@@ -1455,6 +1485,24 @@ func _build_top_bar(root: Control) -> void:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stats.add_child(spacer)
+
+	# The door to the Skins screen. LEFT of the speed toggle, for the same reason
+	# the speed toggle sits left of the wave button: the wave button stays the
+	# row's right anchor, and the Spacer above is what keeps every fixed control
+	# pinned there rather than drifting to the row's true left edge.
+	_skins_button = Button.new()
+	_skins_button.name = "SkinsButton"
+	_skins_button.text = SKINS_BUTTON_TEXT
+	_skins_button.tooltip_text = "Skins -- pick a colour for your plants and pests"
+	_skins_button.custom_minimum_size = SKINS_BUTTON_SIZE
+	_skins_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	GardenTheme.style_paper_button(_skins_button)
+	# Smaller than the paper-button default the style just applied, so the one
+	# letter clears its own padding at this button's narrow width — see
+	# SKINS_BUTTON_SIZE's own comment.
+	_skins_button.add_theme_font_size_override("font_size", SKINS_BUTTON_FONT_SIZE)
+	_skins_button.pressed.connect(func() -> void: skins_requested.emit())
+	stats.add_child(_skins_button)
 
 	# The garden's playback speed. LEFT of the wave button, not right: the wave
 	# button is the row's right anchor and the Spacer above exists to keep it
@@ -2087,18 +2135,23 @@ static func _worst_case_text() -> Dictionary:
 	return table
 
 
-## The row's four slots plus its separations plus its two buttons.
+## The row's four slots plus its separations plus its three buttons.
 ##
 ## The widths are summed off STAT_READOUTS rather than off four named constants, which
 ## is the half of that table's point that faces the budget: a readout added to the row
 ## is added to this sum in the same edit, so `hud_stats_row` can no longer report a row
 ## narrower than the one on screen.
+##
+## SKINS_BUTTON_SIZE.x joined NEXT_WAVE_BUTTON_SIZE.x and GameSpeed.button_size().x
+## here in the same edit that added the button to the row (plant-tower-defense-ncfv) —
+## exactly the rule this comment already states, for the third fixed control rather
+## than a fourth STAT_READOUTS row.
 static func stats_row_budget(readouts: int) -> float:
 	var widths: float = 0.0
 	for readout: Dictionary in STAT_READOUTS:
 		widths += float(readout["width"])
 	return (widths + float(STATS_SEPARATION * readouts) + NEXT_WAVE_BUTTON_SIZE.x
-		+ GameSpeed.button_size().x)
+		+ GameSpeed.button_size().x + SKINS_BUTTON_SIZE.x)
 
 
 ## No position argument: every caller either puts the label in a container that
@@ -3204,7 +3257,7 @@ func interactive_controls() -> Array[Button]:
 	for button: Variant in _packet_buttons.values():
 		if button is Button:
 			out.append(button)
-	for button: Button in [_next_wave_button, _speed_button, _upgrade_button, _uproot_button]:
+	for button: Button in [_next_wave_button, _speed_button, _skins_button, _upgrade_button, _uproot_button]:
 		if button != null and is_instance_valid(button):
 			out.append(button)
 	return out

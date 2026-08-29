@@ -707,6 +707,12 @@ var is_armoured: bool = false
 var is_winged: bool = false
 var is_hungry: bool = false
 
+## The cosmetic skin the player has chosen for this species — purely decorative,
+## picked on the Skins screen and unlocked by Milestones (plant-tower-defense-ncfv).
+## See `game/skins.gd` for the table and `set_pest_skin()` below, which is the only
+## writer, for how it reaches the sprite.
+var skin_id: StringName = Skins.DEFAULT_SKIN
+
 var _route: PackedVector2Array = PackedVector2Array()
 var _leg: int = 1
 var _sprite: Sprite2D
@@ -910,6 +916,11 @@ func setup(which: StringName, route: PackedVector2Array) -> void:
 	_gait_phase = gait_phase(_next_gait_index)
 	_next_gait_index = (_next_gait_index + 1) % GAIT_PHASE_PERIOD
 	_build_visuals(String(stats["texture"]), float(stats["scale"]))
+	# After _build_visuals(), which is what builds _sprite -- set_pest_skin()'s tint
+	# is a no-op before it exists. Before any apply_mutation() call, so the ordinary
+	# case just wears the skin; see set_pest_skin()'s own comment for the one that
+	# does not.
+	set_pest_skin(RunConfig.selected_skin(Skins.KIND_PEST, which))
 	var dead_path: String = String(stats.get("dead_texture", ""))
 	if dead_path != "":
 		_dead_texture = load(dead_path) as Texture2D
@@ -1137,6 +1148,23 @@ static func tint_for(which: StringName) -> Color:
 func _tint(colour: Color) -> void:
 	if _sprite != null:
 		_sprite.modulate = colour
+
+
+## Sets the cosmetic skin and, unless a mutation has already claimed the sprite's
+## colour, applies its tint through the same `_tint()` a mutation's own hue goes
+## through above.
+##
+## A MUTATION STILL WINS OUTRIGHT, exactly the priority `apply_mutation`'s own
+## comment states for two mutations composing onto one tint: MUTATION_TINT carries
+## gameplay information (see that constant's header) and a skin carries none, so a
+## skin never has an opinion once a mutation has one. `setup()` calls this before
+## any mutation can have landed, so the ordinary case is simply "wear the skin";
+## the guard only matters for a pest skinned and then mutated in the same frame
+## (`Game.spawn_pest` applies mutations after `_new_pest` finishes `setup()`).
+func set_pest_skin(id: StringName) -> void:
+	skin_id = id
+	if mutation == &"":
+		_tint(Skins.tint_for(skin_id))
 
 
 ## Which silhouette marks this pest wears. Pure and flag-driven, so a pest
