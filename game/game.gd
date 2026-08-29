@@ -378,6 +378,10 @@ var autostart_waves: bool = false
 ## inherit the drought, and one placed during it must.
 var weather: StringName = WaveDirector.WEATHER_CLEAR
 var _weather_overlay: WeatherOverlay = null
+## The ambient bees (plant-tower-defense-qz4j). Purely aesthetic, and held here only so
+## `_apply_board_layout` can keep it over the board and `_apply_weather` can tell it to
+## sit out the rain -- nothing in a run reads it.
+var _bees: BeeSwarm = null
 var _score_recorded: bool = false
 
 ## Petals this run has earned from waves, held until `bank_score()` files them
@@ -612,6 +616,18 @@ func _ready() -> void:
 	_preview.visible = false
 	_entities.add_child(_preview)
 
+	# A SIBLING of Entities, not a child of it, and the difference is load-bearing.
+	# Draw order inside Entities is child order, and plants are added to it all run --
+	# so a bee layer parented there would sink under every plant the player builds. As a
+	# sibling added after it, bees are over the whole board and under the HUD's own
+	# CanvasLayer, with the ordering structural rather than maintained. It is given
+	# Entities' position by _apply_board_layout, which is the only thing keeping the two
+	# in the same space.
+	_bees = BeeSwarm.new()
+	_bees.name = "BeeSwarm"
+	_bees.setup(board.board_size())
+	add_child(_bees)
+
 	hud = Hud.new()
 	hud.name = "HUD"
 	add_child(hud)
@@ -795,6 +811,11 @@ func _apply_weather(next: StringName) -> void:
 	# DESCRIBE a value are a separate population from the code that uses it.
 	if _weather_overlay != null:
 		_weather_overlay.set_weather(next)
+	# And the bees, which do not fly in the rain. Told from here for the same reason as
+	# the overlay: one place decides what the weather is, and everything that shows it
+	# hears about it in one breath.
+	if _bees != null:
+		_bees.set_weather(next)
 	hud.show_weather(next)
 
 
@@ -3865,6 +3886,11 @@ func _apply_board_layout() -> void:
 	_entities.position = Vector2(
 		floorf(maxf(0.0, (play.x - board_px.x) * 0.5)),
 		Hud.BAR_HEIGHT + floorf(maxf(0.0, (play.y - board_px.y) * 0.5)))
+	# The bee layer is a sibling of Entities and therefore does NOT inherit this. Given
+	# the same origin here, in the one function that knows where the board sits, so a
+	# resized window cannot leave bees flying over the side panel.
+	if _bees != null and is_instance_valid(_bees):
+		_bees.position = _entities.position
 
 
 ## Every Aloe mends the damaged plants it reaches (plant-tower-defense-ibvb).

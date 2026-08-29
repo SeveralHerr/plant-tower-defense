@@ -6829,3 +6829,32 @@ Three findings kept out here rather than buried in a log:
   on a flower with nothing visibly holding it. Only `screenshot --region` could say so.
   **A drawn overlay's assertions are about the geometry; whether anything is on screen is
   about what is composited on top of it, and no property read answers that.**
+
+- **A behaviour change makes some tests fail and others lie, and the liars are the
+  dangerous half.** Giving the Chomp a `GRAB_LEAD` (plant-tower-defense-q9h4) turned 11
+  tests red — fine, they said exactly what had changed. The ones to worry about were the
+  greens: `test_a_busy_chomp_ignores_everything_else_in_reach` staged two pests level with
+  the flower, so after the change it grabbed *neither*, and the assertion "the second pest
+  walks past an occupied mouth" passed over a mouth that was never occupied. Same shape in
+  `test_a_winged_pest_flies_over_a_chomps_reach`, which then passed for two reasons instead
+  of the one it names. **After changing a precondition, grep for every test that stages
+  that precondition and read the ones that still pass** — a red test tells you where the
+  change reached; a green one tells you nothing until you check whether it can still fail.
+
+- **A standing "run the sweep after any balance edit" instruction is only as wide as the
+  sweep's model.** `RunSim` scores gardens by coverage — `best_placement` ranks by
+  `Game.engagement_reach(id)` cells per seed (tools/run_sim.gd:718) — and never grabs,
+  chews or fires. So the playtest sweep answers the *economy and coverage* half of balance
+  and is structurally blind to the other half: any edit that changes WHEN a plant engages
+  rather than how far it reaches runs green on every board and every difficulty while
+  proving nothing. Filed as a bead. **The lesson generalises past this repo: a gate whose
+  model is narrower than the instruction pointing at it will keep reporting clean, and the
+  instruction is what has to carry the boundary.**
+
+- **The failure mode of a geometry constant is often silence, so gate it in frames.**
+  `GRAB_LEAD` is spent out of the chord the reach cuts across a lane one cell away, and
+  set too long the Chomp simply never eats — with no error anywhere, because "found no
+  prey" and "there is no prey" look identical. A pixel assertion (`window > 0`) is not
+  enough: a 6 px window is open and useless. Expressing the gate as *at least four physics
+  frames, for every species, at its own top speed and the fastest game speed a player can
+  pick* is what makes it fail honestly, and both mutations proved it does.

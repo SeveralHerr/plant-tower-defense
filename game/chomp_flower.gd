@@ -18,6 +18,32 @@ extends Plant
 ## cells so it still only covers the lane it is actually next to.
 const GRAB_RADIUS: float = Board.CELL * 1.15
 
+## HOW FAR PAST THE FLOWER a pest has to walk before the mouth will close on it.
+##
+## Without this the Chomp bites at the LEADING edge of its circle — the bug is caught
+## before it is even level with the plant, which reads as a trap rather than as an
+## ambush. The flower now lets them come on a bit and snaps from behind.
+##
+## A quarter of a `Board.CELL`, and it is an ABSOLUTE rather than a fraction of
+## `grab_radius()` on purpose: the ladder buys reach (1.00 -> 1.13 -> 1.26), and a lead
+## scaled to reach would mean a flower that costs more waits LONGER before eating, which
+## is not what any rung is selling. 16 px is "a little past the stem" at every rung.
+##
+## THE ARITHMETIC THIS NUMBER LIVES OR DIES BY, because the failure mode is silence. A
+## Chomp stands on grass and its prey walks the road one `Board.CELL` away, so the reach
+## only covers a chord: at rung 1 the half-width along the road is
+## sqrt(73.6^2 - 64^2) = 36.3 px. Requiring 16 px of it leaves a 20.3 px window. The
+## fastest pest in the table is the aphid at 78 px/s, doubled by `GameSpeed`'s 2x step,
+## which is ~2.6 px per physics frame — about eight frames to notice the bug in the
+## window and close on it.
+##
+## Push this number past the chord's half-width and the flower eats NOTHING, with no
+## error anywhere, because "found no prey" and "there is no prey" look identical — the
+## same failure `GRAB_RADIUS` above records from when it was 62. That is why
+## `test_the_pass_window_stays_open_for_every_species_at_double_speed` exists and why it
+## is written against frames rather than pixels.
+const GRAB_LEAD: float = Board.CELL * 0.25
+
 ## The mouth's ladder — the second one in the game, and the first that is not the
 ## cob's (see `Plant.upgrade_ladder` for the surface this fills in).
 ##
@@ -650,6 +676,13 @@ func _act(delta: float, pests: Array[Pest]) -> void:
 		if pest.is_winged:
 			winged += 1
 		else:
+			# Counted WITHOUT the lead check above. This number feeds
+			# `idle_only_because_of_flight`, whose whole sentence is "everything in
+			# reach flies" — and a walker that has not gone past yet does not make that
+			# sentence true, it just makes it early. Folding the lead in here would put
+			# the flight hint on screen for the fraction of a second before every
+			# ordinary catch, which is the one thing that signal's rising edge exists
+			# to avoid.
 			grabbable += 1
 	if not idle_only_because_of_flight(winged, grabbable):
 		_flight_noted = false
@@ -674,6 +707,52 @@ static func idle_only_because_of_flight(winged_in_reach: int, grabbable_in_reach
 	return winged_in_reach > 0 and grabbable_in_reach == 0
 
 
+## Pure: how far past this flower the pest has walked, in pixels along its OWN
+## direction of travel. Negative while it is still coming, 0 as it goes by the stem,
+## positive once it is leaving.
+##
+## A projection and not a coordinate comparison, which is the whole reason it is a
+## function: the road turns four times, so "past" is a different axis and a different
+## sign in each leg of it. `PATH_CORNERS` walks +X, then +Y, then -X, then +Y, then +X,
+## then -Y, then +X — a rule written as `pest.x > plant.x` would be correct on the three
+## legs that run +X, backwards on the one that runs -X, and simply meaningless on the
+## three vertical ones.
+##
+## Static and pure so the sign is assertable for all four headings with no board, no
+## pest and no frame — see `test_a_chomp_waits_for_a_pest_to_pass_from_every_direction`.
+static func pass_distance(plant_at: Vector2, pest_at: Vector2, heading: Vector2) -> float:
+	if heading.length_squared() <= 0.0001:
+		return 0.0
+	return (pest_at - plant_at).dot(heading.normalized())
+
+
+## Pure: is this pest far enough past the flower for the mouth to close?
+##
+## A pest with NO heading is grabbable, and that default is deliberate rather than
+## incidental. `travel_direction()` cannot currently answer zero — `_facing` is set at
+## spawn — but if it ever did, the two available failures are "eats slightly early" and
+## "never eats again, silently". This class has already paid for the second one once
+## (see `GRAB_RADIUS`), so the degenerate case falls back to the behaviour that shipped.
+static func is_past_enough(plant_at: Vector2, pest_at: Vector2, heading: Vector2,
+		lead: float) -> bool:
+	if heading.length_squared() <= 0.0001:
+		return true
+	return pass_distance(plant_at, pest_at, heading) >= lead
+
+
+## Pure: the widest a pest can be caught in, along the road, for a flower at `for_level`.
+##
+## Half the chord the reach cuts across a lane one `Board.CELL` away, minus the lead the
+## bug has to spend getting past first. This is the number that goes to zero when the
+## lead is set too long, and `0.0` here means a flower that never eats.
+static func pass_window_for(for_level: int) -> float:
+	var reach: float = grab_radius_for(for_level)
+	var across: float = reach * reach - Board.CELL * Board.CELL
+	if across <= 0.0:
+		return 0.0
+	return maxf(0.0, sqrt(across) - GRAB_LEAD)
+
+
 func _nearest_free_pest(pests: Array[Pest]) -> Pest:
 	var best: Pest = null
 	var best_distance: float = grab_radius()
@@ -681,6 +760,13 @@ func _nearest_free_pest(pests: Array[Pest]) -> Pest:
 		# Winged (doc: "ignores ground plants") flies over a Chomp's reach — the
 		# mouth simply cannot close on it. It still walks into Corn's kernels.
 		if pest.held_by != null or pest.is_winged:
+			continue
+		# The ambush. Checked BEFORE the distance so a bug still approaching is not
+		# merely out-ranked by a nearer one — it is not prey yet at all, and a Chomp
+		# with one bug in front of it and nothing else must stay idle rather than
+		# closing early on the only thing it can see.
+		if not is_past_enough(global_position, pest.global_position,
+				pest.travel_direction(), GRAB_LEAD):
 			continue
 		var d: float = pest.global_position.distance_to(global_position)
 		if d <= best_distance:

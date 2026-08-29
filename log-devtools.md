@@ -11121,3 +11121,75 @@ integrator's, covering the runtime pass none of the four were allowed to run.
   `launch --isolated --snapshot-userstate` did its job with six other Godot processes on
   the machine — `quit` reported `restored 1 file(s)` and the developer's save is back at
   `v10`, which is the one thing a run that writes a persisted balance had to get right.
+
+## 2026-08-29 — the Chomp waits until a pest is past it (plant-tower-defense-q9h4)
+
+- Value: **warranted** — and the sharpest thing the bridge did this turn was refuse to
+  agree with a stage I had set up wrong.
+  - Expected: a confirming read. The rule is two pure statics with a four-heading sweep
+    over them, so the geometry was already nailed down headless; the live pass was meant
+    to say only *where on the road* the grab now lands.
+  - Got: my first attempt teleported the beetle to `x=200` and the flower ate it
+    immediately, which looked like the rule not working at all. Reading the state instead
+    of trusting the setup: `find-nodes --class Pest --call travel_direction` came back
+    `{"x": -1.0, "y": 4.37e-08}` with `_leg=1`. The teleport had put the bug PAST its own
+    next waypoint, `_update_facing` had turned it round, and the flower was correctly
+    grabbing a bug that was now walking the other way. The rule was right and my stage was
+    nonsense.
+    Re-run properly — fresh spawn, real road, `step-time` in 0.2s slices — the flower sits
+    at `x=224` and the mouth closes at `x=240.33`, 16.3 px past it, which is `GRAB_LEAD`
+    plus one frame of travel. The beetle walked 189.0, 196.6, 204.2, 211.8, 220.1, 227.7,
+    235.9 with `is_busy()=false` the whole way, including straight through 187.7, which is
+    where the old leading-edge rule would have bitten.
+  - Found: (1) the bad stage above; (2) **17 tests staged their prey level with the
+    flower**, and the ones that stayed GREEN were the worse half —
+    `test_a_busy_chomp_ignores_everything_else_in_reach` went on passing while the flower
+    grabbed neither pest, so "the second bug walks past an occupied mouth" was true of a
+    mouth that was never occupied, and the winged test passed for two reasons instead of
+    the one it names; (3) **the playtest sweep cannot see this change at all** — `RunSim`
+    ranks placements by `Game.engagement_reach` coverage (`tools/run_sim.gd:718`) and never
+    simulates a grab, so an edit to WHEN a plant engages is invisible to it on every board
+    and every difficulty. It ran green and that green means nothing here.
+  - Cheaper: the headless half carried most of the confidence and cost seconds — the
+    four-heading cross product, and two mutations of `GRAB_LEAD` (0.60 cells closes the
+    window; 0.47 leaves it open at 2.4 frames) that each went red with the message they
+    were written for. Nothing cheaper could have given the road position, and nothing
+    cheaper would have caught the bad stage.
+
+- Gap: **no devtools-harness gap this turn.** The one thing that cost time was a stage I
+  built wrong, and the bridge diagnosed it in one read; `find-nodes --call` on a zero-arg
+  getter is exactly the verb for "what does this node think is true", and it worked.
+
+## 2026-08-29 — ambient bees: a cosmetic layer nothing in the game reads (plant-tower-defense-qz4j)
+
+- Value: **warranted** — the whole cost argument for this feature is "an idle garden pays
+  nothing", and that is a claim about `set_process` in a running tree that no headless run
+  and no diff can settle. The bridge answered it directly.
+  - Expected: the eight pure-static tests would carry the flight and the schedule, and the
+    live pass would be a formality confirming a bee is drawn where the maths says.
+  - Got: `bee_state` → `{"flying": 0, "next_bout_seconds": 28.06, "processing": false}`
+    after a bout ended, and `{"flying": 3, "processing": true}` during one. That pair is
+    the cost claim, measured: the layer really does stop stepping between bouts and really
+    does re-arm inside GAP_MIN..GAP_MAX. `run-method _apply_weather ["rain"]` then
+    `cmd bee_bout` → `{"bees": 0, "refused": "weather is rain"}`.
+  - Found: (1) **the wings were wrong on screen and right in every test.** At
+    `BODY_LENGTH * 1.12` and 8.2 px off the centre line the two pale ovals were the biggest
+    shapes in the drawing, so an 18 px bee read as a white moth carrying a gold seed. Only a
+    screenshot could say so — `test_a_bees_two_wings_beat_against_each_other` asserts the
+    beat is opposed and passes at any size. Now 0.72 of the body, tucked at 4.6 px.
+    (2) **my own debug verb reported a confirmed rain rule that had not been exercised.**
+    `cmd bee_bout` returned `sent 0 bee(s)` in rain — and 0 is also what it returns when a
+    bout is already flying, which is what had actually happened. The verb now reads the
+    reason BEFORE forcing and reports `refused`, so the two zeroes are distinguishable.
+    (3) the meta-gate `test_every_positional_devtools_verb_refuses_a_call_with_no_position`
+    caught both new verbs going unclassified, which is the check doing its job.
+  - Cheaper: nothing for (1) — it is a judgement about a rendered picture at its real size,
+    and no gate in this repo asks "does this drawing read as the animal it is". The
+    scheduler half could have been argued from the code; it would not have been *measured*.
+
+- Gap: **no devtools-harness gap this turn.** The bridge had a verb for every question:
+  `run-method` for the weather, `wait-frames` + `pause` for a moving drawing, `screenshot
+  --region` for the crop, and project verbs for the rest. Worth recording that the two
+  project verbs written for this feature were themselves the source of a false pass — a
+  status field that cannot distinguish two causes of the same number is the same defect
+  class the harness's own `findings` denominator exists to prevent, one level down.

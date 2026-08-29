@@ -1919,6 +1919,26 @@ func _advance(distance: float) -> void:
 ## other three are 90-degree turns off that art, which Godot's rotation turns
 ## clockwise: +90 deg (PI/2) faces +X (right), 180 deg faces +Y (down), -90 deg
 ## faces -X (left).
+## Which way this pest is walking, as a unit vector in the parent's space.
+##
+## Derived from `_facing` rather than from `_route[_leg] - position`, and the difference
+## matters at exactly one moment: a pest standing ON its next waypoint has a zero-length
+## leg vector and would answer `Vector2.ZERO`, while `_facing` still holds the direction
+## it arrived travelling. `_update_facing` snaps it to one of four cardinals and runs on
+## every advance, including once at spawn (see `_build_route`), so this is exact from the
+## first frame and never mid-turn.
+##
+## Kept through a stall on purpose. A pest held in a Chomp, stopped by a Bramble or
+## chewing a plant bed is not advancing, and the last direction it walked is the honest
+## answer to "which way is this bug facing" — `corpse_rotation()` already relies on the
+## same property.
+##
+## STYLE.md's convention is up-screen at rest, so `Vector2.UP.rotated(_facing)` is the
+## heading `_facing` was built to describe.
+func travel_direction() -> Vector2:
+	return Vector2.UP.rotated(_facing)
+
+
 func _update_facing(direction: Vector2) -> void:
 	if _sprite == null:
 		return
