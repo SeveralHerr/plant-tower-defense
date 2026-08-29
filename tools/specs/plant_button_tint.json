@@ -1,0 +1,13 @@
+{
+  "function": "plant_button_tint_on",
+  "class": "Hud",
+  "return_type": "Color",
+  "params": [["unlocked", "bool"], ["affordable", "bool"], ["hinted", "bool"], ["safe", "bool"]],
+  "cases": [
+    {"when": {"hinted": true}, "value": "PACKET_HINT_TINT", "desc": "hinted lifts out of the dim regardless of lock/afford/palette"},
+    {"when": {"unlocked": false}, "value": "PLANT_BUTTON_DIM", "desc": "locked -- not yet unlocked by any packet"},
+    {"when": {"unlocked": true, "affordable": false, "safe": true}, "value": "PLANT_BUTTON_POOR_SAFE", "desc": "unlocked, short on seeds, colourblind-safe palette"},
+    {"when": {"unlocked": true, "affordable": false, "safe": false}, "value": "PLANT_BUTTON_POOR", "desc": "unlocked, short on seeds, default palette"},
+    {"when": {}, "value": "Color.WHITE", "desc": "unlocked and affordable"}
+  ]
+}

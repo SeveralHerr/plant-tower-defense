@@ -1,0 +1,12 @@
+{
+  "function": "seeds_flash_tint_on",
+  "class": "Hud",
+  "return_type": "Color",
+  "params": [["increased", "bool"], ["safe", "bool"]],
+  "cases": [
+    {"when": {"increased": true, "safe": false}, "value": "SEEDS_GAIN_TINT", "desc": "a payout, default palette"},
+    {"when": {"increased": true, "safe": true}, "value": "SEEDS_GAIN_TINT_SAFE", "desc": "a payout, colourblind-safe palette"},
+    {"when": {"increased": false, "safe": false}, "value": "SEEDS_SPEND_TINT", "desc": "a purchase, default palette -- the case the UX report was filed about"},
+    {"when": {}, "value": "SEEDS_SPEND_TINT_SAFE", "desc": "a purchase, colourblind-safe palette"}
+  ]
+}
