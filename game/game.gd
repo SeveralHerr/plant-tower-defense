@@ -34,13 +34,47 @@ const PREP_SECONDS: float = 18.0
 ## repeating them, so the numbers that forty-odd references across the repo already mean
 ## cannot drift from the profile that ships them. Change `LIVES` and standard follows.
 ##
-## WHAT VARIES AND WHAT DOES NOT. These three shape how much ROOM the player has: beds to
-## lose, seconds to think, seeds to open with. The wave curve itself is untouched and is
-## deliberately out of scope — `_raw_threat`'s own block records that the curve is
+## WHAT VARIES AND WHAT DOES NOT. Three of these shape how much ROOM the player has: beds
+## to lose, seconds to think, seeds to open with. `seed_yield` shapes the ECONOMY, and it
+## is the axis added by plant-tower-defense-i8oh. The wave curve itself is still untouched
+## and still deliberately out of scope — `_raw_threat`'s own block records that the curve is
 ## asserted to rise strictly wave over wave out to 300, so a strength multiplier is a
 ## change that has to be re-verified against that property rather than added beside it.
-## Filed separately. A difficulty that changes only the room is still a real difficulty:
-## on `gentle` a player who loses four beds to a wave they misread is still in the run.
+## Filed separately.
+##
+## WHY THE ECONOMY, AND WHAT THE ROOM AXES COULD NOT DO. The three room axes were measured
+## across a whole campaign and separated nothing (plant-tower-defense-i8oh). Under the
+## shipped `RunSim.greedy_cover`, on seed 1, all three profiles were overrun on wave 7 with
+## every bed spent and within 19 seeds of the same income; under `RunSim.thicken_cover` all
+## three reached wave 22 having lost NOTHING and earned 5735 seeds each — the same number to
+## the digit, three times. Lives cannot separate runs that lose none. Prep time cannot
+## separate a policy that spends the instant the window opens. Starting seeds shift the
+## first plant by part of a wave and are gone by wave 2. The one thing that was still
+## deciding the run at wave 20 was whether the purse could keep buying, so that is the axis
+## that was made to bind. `docs/playtest-runs.jsonl` carries both halves of that
+## measurement, before and after.
+##
+## `seed_yield` MULTIPLIES WHAT A KILL AND A SUNFLOWER ARE WORTH, at the moment the game
+## decides what they are worth and nowhere else — `_on_pest_died` and `_on_plant_grew_seeds`
+## below, through `seeds_after_yield`. It is applied to the pest's value ONCE, so the husk
+## that kill drops follows it without being scaled a second time. Standard is exactly 1.0,
+## which is not decoration: `seeds_after_yield(n, 1.0)` returns `n` for every n, so the
+## standard campaign is bit-for-bit the game it was before this axis existed, and any number
+## that moved on standard is a bug rather than a rebalance.
+##
+## THE NUMBERS ARE DERIVED FROM THE PROFILE'S OWN OTHER AXES, not tuned. Each profile
+## already takes a ratio against standard, and it is the same ratio three times over:
+## gentle has 15 beds of 10 (1.5), 26 seconds of 18 (1.44) and 40 opening seeds of 25 (1.6);
+## harsh has 5 of 10 (0.5), 9 of 18 (0.5) and 15 of 25 (0.6). So the yield is 1.5 and 0.5 —
+## the ratio those three already agreed on — and the blurbs now say the same sentence the
+## table does. Picking a fourth independent number would have made the yield the one axis
+## with no reason behind it, and `test_the_seed_yield_takes_the_ratio_the_other_axes_take`
+## in `test/unit/test_playtest.gd` is the gate that keeps it derived.
+##
+## A difficulty that changes only the room is still a real difficulty — on `gentle` a player
+## who loses four beds to a wave they misread is still in the run — but it is not one any
+## measurement of this game could SEE, and a selector nothing can measure is a selector that
+## drifts. This one is readable off a single run's `seeds_earned`.
 ##
 ## THE ORDER IS THE ORDER A PICKER SHOWS. `DIFFICULTY_ORDER` exists so the title screen
 ## (bead 4) has one list to iterate instead of sorting a Dictionary, which in GDScript is
@@ -54,10 +88,11 @@ const DIFFICULTY_ORDER: Array[StringName] = [
 const DIFFICULTIES: Dictionary = {
 	DIFFICULTY_GENTLE: {
 		"label": "Gentle",
-		"blurb": "More beds, more time, more seeds. The same waves.",
+		"blurb": "Half again the beds, the time and the harvest. The same waves.",
 		"lives": 15,
 		"prep_seconds": 26.0,
 		"starting_seeds": 40,
+		"seed_yield": 1.5,
 	},
 	DIFFICULTY_STANDARD: {
 		"label": "Standard",
@@ -65,13 +100,15 @@ const DIFFICULTIES: Dictionary = {
 		"lives": LIVES,
 		"prep_seconds": PREP_SECONDS,
 		"starting_seeds": SeedBank.STARTING_SEEDS,
+		"seed_yield": 1.0,
 	},
 	DIFFICULTY_HARSH: {
 		"label": "Harsh",
-		"blurb": "Half the beds, half the thinking time, one plant's grace.",
+		"blurb": "Half the beds, half the thinking time, half the harvest.",
 		"lives": 5,
 		"prep_seconds": 9.0,
 		"starting_seeds": 15,
+		"seed_yield": 0.5,
 	},
 }
 
@@ -177,6 +214,15 @@ var starting_lives: int = LIVES
 ## everywhere the RUN is what is being timed; `PREP_SECONDS` itself stays the standard
 ## profile's value and the thing the comments about pacing still refer to.
 var prep_seconds: float = PREP_SECONDS
+## What a kill and a Sunflower are worth on this run, from the profile's `seed_yield`
+## (plant-tower-defense-i8oh). 1.0 is the designed game and is standard's value, so a run
+## that never reads a profile pays exactly what it always paid.
+##
+## A FIELD ON THE RUN rather than a read of `RunConfig.difficulty` at each payment, the same
+## shape `lives` and `prep_seconds` already have. `_ready` sets all three from one profile
+## lookup, which is what makes "the profile is applied first" a single statement rather than
+## three places that could disagree about which run they are in.
+var seed_yield: float = 1.0
 var selected_plant: StringName = PlantCatalog.CORN
 var selected_placed: Plant = null
 ## The plant the player is comparing FROM: the selection before this one, kept on
@@ -383,6 +429,10 @@ func _ready() -> void:
 	starting_lives = int(profile["lives"])
 	lives = starting_lives
 	prep_seconds = float(profile["prep_seconds"])
+	# The economy axis. Ahead of the bank for the same reason `starting_seeds` is: a run
+	# that paid a kill at the standard rate and corrected itself afterwards would be a
+	# visible tick in the seed counter with no cause a reader of it could find.
+	seed_yield = float(profile["seed_yield"])
 
 	# The speed the player chose in their last run (plant-tower-defense-zgzc).
 	# Here rather than in RunConfig._ready(), which fires at process start while the
@@ -1139,6 +1189,27 @@ static func weather_seed_value_for(base: int, under: StringName) -> int:
 	return maxi(1, int(round(float(base) * WaveDirector.seed_multiplier_for(under))))
 
 
+## `base` seeds after the difficulty's `seed_yield`, and the ONE place that arithmetic
+## lives (plant-tower-defense-i8oh).
+##
+## STATIC, PURE, AND CALLED FROM BOTH DRIVERS, exactly like `weather_seed_value_for` above
+## and for the same reason. `tools/run_sim.gd` re-derives this game's economy rather than
+## calling into it — its own header says so at length and names that as the thing most
+## likely to go stale — so an income rule that had a second copy in the driver would be one
+## rounding decision away from a simulation that reports a run the game does not play. Two
+## call sites, one function, no arithmetic to keep in step.
+##
+## NEVER ROUNDS A PAYMENT AWAY. `maxi(1, ...)` is the same floor `weather_seed_value_for`
+## keeps: a one-seed aphid on a lean profile is worth less, and worth SOMETHING, because a
+## kill that pays nothing is a kill the player cannot tell from a miss. `base <= 0` passes
+## through untouched — a zero is a source that produced nothing this frame, not a payment
+## to be floored up to one.
+static func seeds_after_yield(base: int, scale: float) -> int:
+	if base <= 0:
+		return base
+	return maxi(1, int(round(float(base) * scale)))
+
+
 ## How many pests are still WALKING, as opposed to how many nodes are still in the
 ## "pests" group. The two disagree for `Pest.DEATH_LINGER` after every kill, because a
 ## corpse stays in the group while it lies there — and a bed that counted corpses would
@@ -1184,12 +1255,20 @@ func _on_pest_died(pest: Pest) -> void:
 	# cost more to get here (plant-tower-defense-4c1l). Applied to the direct seeds
 	# only -- the husk below already carries husk_multiplier(), and scaling both would
 	# pay the weather bonus twice for one kill.
-	bank.add_seeds(weather_seed_value(pest.seed_value))
+	# THE DIFFICULTY IS APPLIED TO THE PEST'S VALUE, ONCE, and then both payments below read
+	# that number (plant-tower-defense-i8oh). Scaling the seeds and the husk separately would
+	# pay the profile's multiplier twice for one kill, and it would round twice — a
+	# three-seed aphid on a lean profile would come out worth a different amount depending on
+	# which of the two roundings you asked about. Same rule the weather bonus follows two
+	# lines down: applied to the direct seeds only, because the husk already carries
+	# husk_multiplier() and scaling both would pay the weather bonus twice.
+	var worth: int = seeds_after_yield(pest.seed_value, seed_yield)
+	bank.add_seeds(weather_seed_value(worth))
 	# Half again, as a husk — collectible for a bonus, or left to rot. See
 	# CompostMeter: this is what makes "sweep the field" worth doing. Scaled by
 	# husk_multiplier() so a harder kill (a mutation) pays out more, tying the
 	# mutation and compost systems together instead of leaving them side by side.
-	var husk_value: int = CompostMeter.husk_value_for(pest.seed_value, pest.husk_multiplier())
+	var husk_value: int = CompostMeter.husk_value_for(worth, pest.husk_multiplier())
 	compost.drop_husk(pest.position, husk_value)
 	# Last, after the seeds and the husk this kill earned: the brood is the
 	# consequence of the kill, not part of paying for it, and a player who kills
@@ -2162,9 +2241,14 @@ func _on_plant_destroyed(plant: Plant) -> void:
 ## reason, as the husk's.
 func _on_plant_grew_seeds(amount: int, plant: Plant) -> void:
 	Sfx.play(Sfx.SEEDS_GROWN)
-	bank.add_seeds(amount)
+	# The profile's yield, on the second of the three income sources
+	# (plant-tower-defense-i8oh). The GLYPH reads the same number the bank did, deliberately:
+	# a flower that flies a 5 and banks a 3 is a readout the player will trust over the
+	# counter, and then stop trusting either.
+	var paid: int = seeds_after_yield(amount, seed_yield)
+	bank.add_seeds(paid)
 	if hud != null and is_instance_valid(hud) and is_instance_valid(plant):
-		hud.fly_seed_glyph(_entities.to_global(plant.position), amount)
+		hud.fly_seed_glyph(_entities.to_global(plant.position), paid)
 
 
 func upgrade_selected() -> String:

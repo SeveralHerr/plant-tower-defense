@@ -19,6 +19,11 @@ extends SceneTree
 ##   --seed N           the roll seed; repeatable, one run per seed
 ##   --seeds N          shorthand for seeds 1..N
 ##   --difficulty NAME  gentle | standard | harsh (default standard). Repeatable.
+##   --policy NAME      greedy | thicken (default greedy). Repeatable, and the names come
+##                      from `RunSim.POLICY_NAMES` rather than from a list here, so a
+##                      policy added to the driver is selectable the same day. The two are
+##                      the two ends of the skill range (plant-tower-defense-i8oh): greedy
+##                      stops planting once the road is covered, thicken keeps going.
 ##   --endless          play past the fixed table
 ##   --no-sweep         do not sweep husks, i.e. the floor a player who never clicks gets
 ##   --json             emit every record as one JSON document instead of a table
@@ -62,6 +67,7 @@ func _run() -> void:
 	var waves: int = DEFAULT_WAVES
 	var seeds: Array[int] = []
 	var difficulties: Array[StringName] = []
+	var policies: Array[StringName] = []
 	var endless: bool = false
 	var sweep: bool = true
 	var as_json: bool = false
@@ -86,6 +92,10 @@ func _run() -> void:
 				i += 1
 				if i < args.size():
 					difficulties.append(StringName(args[i]))
+			"--policy":
+				i += 1
+				if i < args.size():
+					policies.append(StringName(args[i]))
 			"--endless":
 				endless = true
 			"--no-sweep":
@@ -119,43 +129,57 @@ func _run() -> void:
 		return
 	if difficulties.is_empty():
 		difficulties.append(_game_script.DIFFICULTY_STANDARD)
+	if policies.is_empty():
+		policies.append(_sim_script.POLICY_GREEDY)
 
 	var failures: int = 0
 	var empty: int = 0
 	var all: Array[Dictionary] = []
 	var jsonl: Array[String] = []
-	for difficulty: StringName in difficulties:
-		for roll: int in seeds:
-			var sim: Object = _sim_script.new()
-			sim.difficulty = difficulty
-			sim.endless = endless
-			sim.wave_ceiling = waves
-			sim.roll_seed = roll
-			sim.sweep_husks = sweep
-			var records: Array[Dictionary] = sim.play(host)
-			print(sim.summary_line())
-			if sim.foreign_pests > 0 or sim.foreign_plants > 0:
-				# Nothing else runs in this process, so a non-zero census here is a bug in
-				# this script rather than a sibling test — said out loud because the same
-				# number is a REAL hazard for the test-suite caller.
-				printerr("playtest: %d foreign pest(s) and %d foreign plant(s) were already in the tree"
-					% [sim.foreign_pests, sim.foreign_plants])
-			if out_path != "":
-				_collect_jsonl(jsonl, difficulty, roll, endless, sweep, sim, records, waves)
-			if as_json:
-				all.append({
-					"difficulty": String(difficulty), "seed": roll, "endless": endless,
-					"swept": sweep, "ended": String(sim.ended), "failure": sim.failure,
-					"waves_played": sim.waves_played, "waves_attempted": waves,
-					"records": _jsonable(records),
-				})
-			else:
-				_print_table(records)
-			if sim.failure != "":
-				failures += 1
-			if sim.waves_played <= 0:
-				empty += 1
-			sim.dispose()
+	for policy: StringName in policies:
+		for difficulty: StringName in difficulties:
+			for roll: int in seeds:
+				var sim: Object = _sim_script.new()
+				sim.difficulty = difficulty
+				sim.endless = endless
+				sim.wave_ceiling = waves
+				sim.roll_seed = roll
+				sim.sweep_husks = sweep
+				# REFUSED BY NAME rather than fallen back on. A typo'd policy that quietly
+				# played greedy would write a row LABELLED with the name that was typed,
+				# and the committed baseline's whole job is to say which policy produced
+				# which numbers. See `RunSim.policy_named`.
+				var refusal: String = sim.use_policy(policy)
+				if refusal != "":
+					printerr("playtest: %s" % refusal)
+					host.queue_free()
+					quit(2)
+					return
+				var records: Array[Dictionary] = sim.play(host)
+				print(sim.summary_line())
+				if sim.foreign_pests > 0 or sim.foreign_plants > 0:
+					# Nothing else runs in this process, so a non-zero census here is a bug
+					# in this script rather than a sibling test — said out loud because the
+					# same number is a REAL hazard for the test-suite caller.
+					printerr("playtest: %d foreign pest(s) and %d foreign plant(s) were already in the tree"
+						% [sim.foreign_pests, sim.foreign_plants])
+				if out_path != "":
+					_collect_jsonl(jsonl, difficulty, roll, endless, sweep, sim, records, waves)
+				if as_json:
+					all.append({
+						"difficulty": String(difficulty), "seed": roll, "endless": endless,
+						"swept": sweep, "policy": String(sim.policy_name),
+						"ended": String(sim.ended), "failure": sim.failure,
+						"waves_played": sim.waves_played, "waves_attempted": waves,
+						"records": _jsonable(records),
+					})
+				else:
+					_print_table(records)
+				if sim.failure != "":
+					failures += 1
+				if sim.waves_played <= 0:
+					empty += 1
+				sim.dispose()
 	if as_json:
 		print(JSON.stringify(all, "  "))
 	if out_path != "":
@@ -167,7 +191,7 @@ func _run() -> void:
 			return
 		print("playtest: %d row(s) written to %s" % [jsonl.size(), out_path])
 	host.queue_free()
-	var attempted: int = difficulties.size() * seeds.size()
+	var attempted: int = policies.size() * difficulties.size() * seeds.size()
 	print("Playtest: %d run(s), %d played nothing, %d driver failure(s)"
 		% [attempted, empty, failures])
 	if empty > 0:
@@ -184,7 +208,8 @@ func _run() -> void:
 ## One JSONL row per wave, plus one per run, both carrying the four keys that identify
 ## the run they belong to.
 ##
-## THE RUN KEYS ARE ON EVERY ROW ON PURPOSE. A wave row that only carried a wave number
+## THE RUN KEYS ARE ON EVERY ROW ON PURPOSE, and `policy` is one of them. A wave row that
+## only carried a wave number
 ## would need a join to be readable, and the first thing anyone does with a JSONL file is
 ## `grep` one line out of it. The wave row is otherwise exactly what `RunSim` recorded --
 ## the keys are its `RECORD_KEYS` and this function never names one, so a column added
@@ -193,8 +218,12 @@ func _run() -> void:
 ## same reason and refuses a row carrying anything else.
 func _collect_jsonl(into: Array[String], difficulty: StringName, roll: int, endless: bool,
 		sweep: bool, sim: Object, records: Array[Dictionary], attempted: int) -> void:
+	# The policy comes off the SIM rather than off the loop variable, so the label on the
+	# row is the one `use_policy` actually installed. A row identified by a name nobody
+	# checked against the Callable is the drift this column exists to close.
 	var keys: Dictionary = {
 		"difficulty": String(difficulty), "seed": roll, "endless": endless, "swept": sweep,
+		"policy": String(sim.policy_name),
 	}
 	for record: Dictionary in records:
 		var row: Dictionary = keys.duplicate()
