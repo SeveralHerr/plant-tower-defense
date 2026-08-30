@@ -167,6 +167,16 @@ built by import; until it is, every script referencing the new class fails to co
 `Could not find type "X"`, and it cascades into files you did not touch. Also mint a `.uid`
 for a new `.gd` — lint reports a missing sidecar.
 
+**The same applies when somebody ELSE's work arrives — a merge, a pull, a lane you did not
+write.** The cache is a property of the checkout, not of your diff, so a merge that lands a
+new method on an existing class leaves it stale exactly as your own commit would. Measured
+2026-08-29: a merge landed six new statics on `Pest`, and the next suite run reported
+`Failed: 5` with `Invalid call. Nonexistent function 'chop_reach' in base 'GDScript'` —
+against functions plainly present in `game/pest.gd`. Nothing about that reads as a cache
+problem; it reads as a broken merge, and the first instinct is to go and fix code that is
+already correct. **A failure naming a function you can see in the file is a stale cache
+until `import_check.py` says otherwise.** Re-import, then re-run: it went to 1193/1193.
+
 **Run `import_check.py`, not the bare `--import`, for the same reason as `run_tests.py`.**
 `godot --headless --path . --import` exits `0` whether or not the scripts it just re-scanned
 compile: the parse errors are printed and never returned, so "the class cache was

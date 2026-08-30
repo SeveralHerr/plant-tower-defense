@@ -94,6 +94,19 @@ const INFINITY := "∞"
 const PETAL := "✿"
 const TICK := "✓"
 
+## The two currencies the Petal shop gained when a skin stopped costing one thing
+## (plant-tower-defense-il1y). Dingbats like the two above, asked of the font by the
+## same `ShopScreen._mark()` before either is drawn, and marks for the same reason the
+## petal is: each stands bare beside a number in the purse row and in a price row.
+##
+## CHOSEN AGAINST EACH OTHER AS WELL AS AGAINST THE PETAL. The three sit on one line,
+## in one colour, at one size, so the only thing separating them is silhouette: a
+## florette is round and filled, the diamond is angular, the ringed star is round and
+## OPEN. Two filled round marks side by side would have read as one currency written
+## twice.
+const COMPOST := "❖"
+const HEARTWOOD := "❂"
+
 
 ## One row per distinct non-ASCII character in `res://game/*.gd`.
 ##
@@ -193,8 +206,24 @@ const TABLE: Array[Dictionary] = [
 		"codepoint": 0x273F,
 		"unicode_name": "BLACK FLORETTE",
 		"roles": [ROLE_MARK],
-		"means": "One petal, the currency skins are bought with. Appended bare to a price (\"Heirloom Gold  5✿\") because the word does not fit: three priced buttons carrying \"5 petals\" measured 1164px against a 1152px canvas, so the unit is carried by the balance line and the note instead and the price wears the mark. Bare beside a number, which is the shape the collision gate bites, so it is gated with the rest.",
-		"drawn_in": ["shop_screen.gd"],
+		"means": "One petal, the first of the three currencies a skin is bought with -- waves and milestones pay it. Appended bare to an amount (\"120✿\") in the Shop's purse row and in its price rows, because the word does not fit three currencies across: the units are named in the note instead, which is composed from Currency.TABLE's own `source` strings. Bare beside a number, which is the shape the collision gate bites, so it is gated with the rest.",
+		"drawn_in": ["shop_screen.gd", "currency.gd"],
+	},
+	{
+		"glyph": COMPOST,
+		"codepoint": 0x2756,
+		"unicode_name": "BLACK DIAMOND MINUS WHITE X",
+		"roles": [ROLE_MARK],
+		"means": "One compost, earned by defeating pests (Currency.COMPOST_PER_PESTS of them apiece). Drawn exactly as the petal is and in the same row, so it is a mark for the same reason. Angular against the petal's round filled florette, because the two are read side by side at one size in one colour and silhouette is the only thing telling them apart.",
+		"drawn_in": ["shop_screen.gd", "currency.gd"],
+	},
+	{
+		"glyph": HEARTWOOD,
+		"codepoint": 0x2742,
+		"unicode_name": "CIRCLED OPEN CENTRE EIGHT POINTED STAR",
+		"roles": [ROLE_MARK],
+		"means": "One heartwood, the scarce currency: a milestone or a campaign won, and nothing else pays it. A ring around an open centre, which is what a cut trunk looks like and is also the one of the three marks that is round but not filled -- see COMPOST for why that matters.",
+		"drawn_in": ["shop_screen.gd", "currency.gd"],
 	},
 	{
 		"glyph": TICK,

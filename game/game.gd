@@ -384,17 +384,24 @@ var _weather_overlay: WeatherOverlay = null
 var _bees: BeeSwarm = null
 var _score_recorded: bool = false
 
-## Petals this run has earned from waves, held until `bank_score()` files them
-## (plant-tower-defense-u82u).
+## What this run has earned toward the Shop, as `Currency` id -> count, held until
+## `bank_score()` files it (plant-tower-defense-u82u, widened to three currencies at
+## plant-tower-defense-il1y).
 ##
-## RUN-LOCAL AND ACCUMULATED, not paid out per wave, and that is one save file write per
-## run instead of one per wave: `RunConfig.add_petals` writes on every change, and a
-## twenty-two wave campaign would otherwise rewrite `user://highscore.save` twenty-two
-## times for a number nothing reads until the run is over.
+## RUN-LOCAL AND ACCUMULATED, not paid out as it is earned, and that is one save file
+## write per run instead of one per wave: `RunConfig.grant` writes on every change, and
+## a twenty-seven wave campaign would otherwise rewrite `user://highscore.save`
+## twenty-seven times for numbers nothing reads until the run is over.
+##
+## PETALS ARE THE ONLY THING COUNTED IN HERE AS IT HAPPENS. Compost is derived from
+## `pests_defeated` at banking time rather than incremented per kill, because the run
+## already counts the kills and a second counter beside the first is a second thing to
+## keep in step — see `bank_score()`. Heartwood is not here at all: both of its sources
+## are end-of-run facts (`_end_run`), and neither is knowable mid-run.
 ##
 ## Flushed inside `bank_score()` — see that function. Not persisted: an unbanked run is
 ## an unfinished one, and the whole point of the latch there is that a run pays once.
-var _petals_earned: int = 0
+var _earned: Dictionary = {}
 
 ## The plant an Uproot click has armed, and how long it stays armed. Held here
 ## rather than in the Hud because the HUD is deliberately stateless — it renders
@@ -921,8 +928,8 @@ func _check_wave_cleared() -> void:
 	# `has_more_waves()` branch below: the final campaign wave takes the `else` branch
 	# straight to victory, so an award written one line down would silently pay nothing
 	# for the hardest wave in the run. Accumulated rather than filed — see
-	# `_petals_earned` and `bank_score()`.
-	_petals_earned += 1
+	# `_earned` and `bank_score()`.
+	_earned[String(Currency.PETALS)] = int(_earned.get(String(Currency.PETALS), 0)) + 1
 	if director.has_more_waves():
 		# The wave that was about to attack got a banner and a bell the instant
 		# it started (_on_wave_started); the wave a player just survived was
@@ -1274,8 +1281,27 @@ func spawn_pest(species: StringName, mutations: Array = []) -> void:
 ## the same route, with the same signals, as one the wave director asked for —
 ## the alternative is two spawn paths and a brood that quietly stops paying
 ## seeds or stops costing a bed.
+## Which node class a species arrives as. Seven of the eight are a bare `Pest` and are
+## told apart by their `SPECIES` row alone, which is the whole reason this game has one
+## pest script and a table rather than eight scripts.
+##
+## The Cutworm is the one that could not be a table row: its body is 953 px long, so it
+## has its own walk, its own drawing and its own damage zones (`game/cutworm.gd`). The
+## decision lives HERE, at the single spawn funnel, rather than as a static on `Pest` —
+## a base class that names its own subclass is a cycle, and GDScript resolves those at
+## load time in an order nothing in this repo controls.
+##
+## Named rather than inlined so `test_every_species_spawns_the_node_class_it_needs` has
+## something to call: a species added later that quietly comes out as a plain `Pest`
+## when it needed a subclass is invisible at every other seam.
+func _pest_node_for(species: StringName) -> Pest:
+	if species == Pest.CUTWORM:
+		return Cutworm.new()
+	return Pest.new()
+
+
 func _new_pest(species: StringName) -> Pest:
-	var pest := Pest.new()
+	var pest: Pest = _pest_node_for(species)
 	_entities.add_child(pest)
 	# Endless difficulty rides on the wave number, not on the endless flag —
 	# both scales are 1.0 inside the fixed table, so campaign spawns and a
@@ -1623,8 +1649,29 @@ func _end_run(_banner: String) -> void:
 	# is the one place that array is in hand — the newness exists for exactly the instant
 	# after the union, which is the whole reason that function has a return value.
 	var fresh_milestones: Array = stats["new_milestones"] as Array
+	# BOTH CURRENCIES A MILESTONE PAYS, in one write. Heartwood is the half that makes
+	# the achievement matter at the new prices: milestones and campaign victories are
+	# the only two things in the game that pay it (`Currency`), so the seven of them are
+	# a real head start on a price whose scarcest term is measured in campaign wins.
+	var end_of_run: Dictionary = {}
 	if not fresh_milestones.is_empty():
-		RunConfig.add_petals(fresh_milestones.size() * RunConfig.MILESTONE_PETALS)
+		end_of_run[String(Currency.PETALS)] = (fresh_milestones.size()
+			* RunConfig.MILESTONE_PETALS)
+		end_of_run[String(Currency.HEARTWOOD)] = (fresh_milestones.size()
+			* Currency.MILESTONE_HEARTWOOD)
+	# A WON CAMPAIGN, and only a won one. `victory` is unreachable in endless — see
+	# `bank_score`'s own header on `has_more_waves()` being unconditionally true there —
+	# which is the point rather than an accident: a mode with no last wave cannot be
+	# finished, so no amount of endless play substitutes for clearing the campaign.
+	#
+	# Granted here rather than in `bank_score()` even though that is the latch, because
+	# this whole block already sits behind `_end_run`'s own idempotency guard and
+	# `victory` is a fact only this function has. The pause doors reach `bank_score()`
+	# without ever reaching here, which is correct: quitting is not winning.
+	if victory:
+		end_of_run[String(Currency.HEARTWOOD)] = (int(end_of_run.get(
+			String(Currency.HEARTWOOD), 0)) + Currency.VICTORY_HEARTWOOD)
+	RunConfig.grant_all(end_of_run)
 	_summary = RunSummary.build(stats)
 	_summary_layer = CanvasLayer.new()
 	_summary_layer.name = "SummaryLayer"
@@ -1657,10 +1704,11 @@ func _end_run(_banner: String) -> void:
 ## and then quitting, still files exactly one score.
 ##
 ## IT FILES BOTH OF THE RUN'S PERSISTED REWARDS, not just the score: the seed total
-## against the high score, and the petals the run earned by clearing waves
-## (plant-tower-defense-u82u). Widened rather than joined by a second function, because
-## the latch and the four call sites are the valuable part and a sibling call would have
-## to be remembered at every one of them.
+## against the high score, and the currencies the run earned — petals for its waves and
+## compost for its kills (plant-tower-defense-u82u, plant-tower-defense-il1y). Widened
+## rather than joined by a second function, because the latch and the four call sites
+## are the valuable part and a sibling call would have to be remembered at every one of
+## them.
 ## What the pause card says about the moment it interrupted. The old text was the
 ## constant "The wave is waiting.", which is false between waves -- and pause can
 ## fire at any moment outside game-over.
@@ -1679,14 +1727,24 @@ func bank_score() -> bool:
 	if _score_recorded:
 		return false
 	_score_recorded = true
-	# THE RUN'S PETALS GO THROUGH THE SAME LATCH, and that is why they are filed here
+	# THE RUN'S EARNINGS GO THROUGH THE SAME LATCH, and that is why they are filed here
 	# rather than beside it. This function is already the one place both end paths and
 	# both pause doors reach, and it is already guarded against paying twice; a second
 	# call added next to it at those four sites would be four chances to forget one, and
 	# the one forgotten would be the pause door that the last fix had to add.
-	if _petals_earned > 0:
-		RunConfig.add_petals(_petals_earned)
-		_petals_earned = 0
+	#
+	# COMPOST IS DERIVED HERE, not counted per kill. `pests_defeated` is already the
+	# run's own tally and is already what the post-mortem prints, so a parallel counter
+	# incremented beside it would be a second number that can disagree with the first —
+	# and the disagreement would show up as a payout, which is the worst place for it.
+	# Floored by `Currency.compost_for`, so a run that killed nineteen is worth nothing.
+	var compost: int = Currency.compost_for(pests_defeated)
+	if compost > 0:
+		_earned[String(Currency.COMPOST)] = compost
+	# ONE WRITE for all of it — see `RunConfig.grant_all`. Cleared afterwards so a second
+	# call through some path this latch has not yet met cannot pay twice.
+	RunConfig.grant_all(_earned)
+	_earned = {}
 	return RunConfig.record_score(bank.seeds_earned_total)
 
 

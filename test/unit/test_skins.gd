@@ -105,7 +105,7 @@ func test_the_default_skin_is_always_owned_free_and_white() -> String:
 		err = _T.assert_eq(Skins.tint_for(Skins.DEFAULT_SKIN), Color(1.0, 1.0, 1.0),
 			"and paints no visible change")
 	if err == "":
-		err = _T.assert_eq(Skins.cost_for(Skins.KIND_PLANT, Skins.DEFAULT_SKIN), 0,
+		err = _T.assert_true(Skins.price_for(Skins.KIND_PLANT, Skins.DEFAULT_SKIN).is_empty(),
 			"and costs nothing -- it is the sprite's own art, there is nothing to buy")
 	if err == "":
 		err = _T.assert_false(Skins.has_art(Skins.DEFAULT_SKIN),
@@ -133,15 +133,305 @@ func test_every_buyable_family_is_priced_titled_and_drawn() -> String:
 			err = _T.assert_true(Skins.title_of(id) != String(id),
 				"%s has a shop label, not its bare id" % id)
 		if err == "":
-			err = _T.assert_eq(Skins.cost_for(Skins.KIND_PLANT, id), Skins.PLANT_SKIN_COST,
+			err = _T.assert_eq(Skins.price_for(Skins.KIND_PLANT, id),
+				Skins.PRICES[Skins.KIND_PLANT],
 				"%s costs a plant skin's price on a plant" % id)
 		if err == "":
-			err = _T.assert_eq(Skins.cost_for(Skins.KIND_PEST, id), Skins.PEST_SKIN_COST,
+			err = _T.assert_eq(Skins.price_for(Skins.KIND_PEST, id),
+				Skins.PRICES[Skins.KIND_PEST],
 				"%s costs a pest skin's price on a pest" % id)
+	return err
+
+
+## EVERY KIND IS PRICED IN EVERY CURRENCY, walked over both tables rather than over a
+## list of the three ids typed here (`.claude/skills/derive-the-list`). A currency added
+## to `Currency.TABLE` and forgotten in `Skins.PRICES` would otherwise cost nothing: a
+## missing key reads as 0, `Currency.covers` answers true for it, and the shop would
+## quietly sell a two-currency skin with no error anywhere.
+func test_every_kind_is_priced_in_every_currency() -> String:
+	var kinds: Array[StringName] = []
+	for target: Dictionary in Skins.targets():
+		var kind := StringName(target["kind"])
+		if not kinds.has(kind):
+			kinds.append(kind)
+	var err: String = _T.assert_gt(kinds.size(), 1,
+		"more than one target kind, or the per-kind pricing claim below is vacuous")
+	var checked: int = 0
+	for kind: StringName in kinds:
+		if err != "":
+			break
+		err = _T.assert_true(Skins.PRICES.has(kind), "%s has a price row at all" % kind)
+		if err != "":
+			break
+		var price: Dictionary = Skins.PRICES[kind] as Dictionary
+		err = _T.assert_eq(price.size(), Currency.ids().size(),
+			("%s is priced in exactly the currencies that exist -- %d terms against %d "
+				+ "currencies") % [kind, price.size(), Currency.ids().size()])
+		for id: StringName in Currency.ids():
+			if err != "":
+				break
+			checked += 1
+			err = _T.assert_true(price.has(String(id)),
+				"%s names a price in %s" % [kind, id])
+			if err == "":
+				err = _T.assert_gt(int(price[String(id)]), 0,
+					("%s costs a positive amount of %s -- a zero term is a currency "
+						+ "that is not really part of the price") % [kind, id])
 	if err == "":
-		err = _T.assert_gt(Skins.PLANT_SKIN_COST, Skins.PEST_SKIN_COST,
-			"a generated drawing costs more than a tint, or the two prices are "
-				+ "saying the same thing about two different purchases")
+		err = _T.assert_eq(checked, kinds.size() * Currency.ids().size(),
+			"%d price terms swept, which is every kind against every currency" % checked)
+	return err
+
+
+## A drawing costs more than a tint IN EVERY CURRENCY, not just on average.
+##
+## The old single-number version of this said `PLANT_SKIN_COST > PEST_SKIN_COST` and was
+## a complete claim because there was one number. With three there are three ways to get
+## it wrong, and the interesting one is a price where two terms say "a plant skin is
+## dearer" and the third says the opposite -- which reads to a player as a plant skin
+## being cheaper than a pest one whenever that term is the binding constraint, which it
+## is precisely when it is the scarcest.
+func test_a_plant_skin_costs_more_than_a_pest_skin_in_every_currency() -> String:
+	var plant: Dictionary = Skins.PRICES[Skins.KIND_PLANT] as Dictionary
+	var pest: Dictionary = Skins.PRICES[Skins.KIND_PEST] as Dictionary
+	var err: String = ""
+	var checked: int = 0
+	for id: StringName in Currency.ids():
+		if err != "":
+			break
+		checked += 1
+		err = _T.assert_gt(int(plant.get(String(id), 0)), int(pest.get(String(id), 0)),
+			("a generated drawing costs more %s than a tint does, or these two prices "
+				+ "are saying the same thing about two different purchases") % id)
+	return err if err != "" else _T.assert_gt(checked, 2,
+		"%d currencies compared, and there should be one per Currency.TABLE row" % checked)
+
+
+# -- the currency table and the wallet line (plant-tower-defense-il1y) --------
+
+
+## Every row of `Currency.TABLE` is complete and distinct, walked over the table rather
+## than over three ids typed here (`.claude/skills/derive-the-list`).
+##
+## `source_of` is asserted because it is DRAWN -- it is the last column of the Shop's
+## currency table, not a comment -- so an empty one is a blank cell on a real screen.
+func test_every_currency_is_named_marked_and_says_where_it_comes_from() -> String:
+	var ids: Array[StringName] = Currency.ids()
+	var err: String = _T.assert_eq(ids.size(), Currency.TABLE.size(),
+		"ids() is the whole table and nothing else")
+	if err == "":
+		err = _T.assert_gt(ids.size(), 2,
+			"%d currencies, and a skin is meant to cost more than one thing" % ids.size())
+	var seen_titles: Array[String] = []
+	var seen_glyphs: Array[String] = []
+	for id: StringName in ids:
+		if err != "":
+			break
+		err = _T.assert_true(Currency.has(id), "%s is a currency this build knows" % id)
+		if err == "":
+			err = _T.assert_true(Currency.title_of(id) != String(id),
+				"%s has a drawn word, not its bare id" % id)
+		if err == "":
+			err = _T.assert_false(Currency.source_of(id).is_empty(),
+				("%s says where it comes from -- that string is a COLUMN on the Shop, "
+					+ "so an empty one is a blank cell") % id)
+		if err == "":
+			err = _T.assert_false(Currency.glyph_of(id).is_empty(),
+				"%s has a mark" % id)
+		if err == "":
+			# DISTINCT, all three ways. Two currencies sharing a word or a mark are two
+			# rows the player reads as one.
+			err = _T.assert_false(seen_titles.has(Currency.title_of(id)),
+				"%s's word is its own" % id)
+		if err == "":
+			err = _T.assert_false(seen_glyphs.has(Currency.glyph_of(id)),
+				"and so is its mark -- three amounts in one column at one size are told "
+					+ "apart by silhouette and nothing else")
+		seen_titles.append(Currency.title_of(id))
+		seen_glyphs.append(Currency.glyph_of(id))
+	if err == "":
+		# An id from a newer build's save: named by its own spelling, marked with
+		# nothing, and explained with nothing -- never blank, never guessed at.
+		err = _T.assert_eq(Currency.title_of(&"verdigris"), "verdigris",
+			"an unknown currency falls back to its raw id rather than rendering blank")
+		if err == "":
+			err = _T.assert_eq(Currency.glyph_of(&"verdigris"), "",
+				"and carries no mark")
+		if err == "":
+			err = _T.assert_eq(Currency.source_of(&"verdigris"), "",
+				"and claims no source, so a composed note simply omits it")
+	return err
+
+
+## `compost_for` is a FLOOR, and the boundary is the whole of it: a run that killed
+## COMPOST_PER_PESTS - 1 pests is worth nothing, and one that killed exactly
+## COMPOST_PER_PESTS is worth one. Rounding up would make a quit-out worth a wave.
+func test_compost_is_floored_against_the_pests_a_run_defeated() -> String:
+	var rate: int = Currency.COMPOST_PER_PESTS
+	var err: String = _T.assert_gt(rate, 1,
+		"the rate is more than one pest, or flooring is not a claim about anything")
+	if err == "":
+		err = _T.assert_eq(Currency.compost_for(0), 0, "a run that killed nothing pays nothing")
+	if err == "":
+		err = _T.assert_eq(Currency.compost_for(-4), 0,
+			"and neither does a negative, which is not a shape a run produces but is "
+				+ "one an int can hold")
+	if err == "":
+		err = _T.assert_eq(Currency.compost_for(rate - 1), 0,
+			"one pest short of the rate is still nothing -- FLOORED, not rounded")
+	if err == "":
+		err = _T.assert_eq(Currency.compost_for(rate), 1, "exactly the rate is one")
+	if err == "":
+		err = _T.assert_eq(Currency.compost_for(rate * 3 + rate - 1), 3,
+			"and the remainder past a multiple is dropped rather than carried")
+	return err
+
+
+## The wallet line round trips, and the shapes it has to refuse are refused.
+##
+## `parse_wallet_line` is asserted directly here as well as through a whole save in
+## test_economy.gd, because this is where its GRAMMAR lives: the file-level test can only
+## say "the save was refused", and cannot say which of a dozen malformed lines it was
+## refused for.
+func test_compose_and_parse_wallet_line_round_trip() -> String:
+	var purse: Dictionary = Currency.empty_wallet()
+	purse[String(Currency.PETALS)] = 118
+	purse[String(Currency.COMPOST)] = 40
+	var line: String = RunConfig.compose_wallet_line(purse)
+	var err: String = _T.assert_true(
+		line.begins_with("%s%d " % [RunConfig.WALLET_PREFIX, Currency.ids().size()]),
+		("every known currency is written, including the ones at zero, and the line is "
+			+ "count-prefixed: %s") % line)
+	if err == "":
+		var parsed: Variant = RunConfig.parse_wallet_line(line)
+		err = _T.assert_eq(parsed, purse,
+			"parse_wallet_line reads back exactly what was written")
+	if err == "":
+		# SORTED, so two saves holding the same wallet are byte-identical rather than
+		# differing by the order the player happened to earn things in.
+		var shuffled: Dictionary = {}
+		var backwards: Array[StringName] = Currency.ids()
+		backwards.reverse()
+		for id: StringName in backwards:
+			shuffled[String(id)] = int(purse[String(id)])
+		err = _T.assert_eq(RunConfig.compose_wallet_line(shuffled), line,
+			"and the field order is the writer's sort, not the Dictionary's")
+	if err == "":
+		# A caller that named nothing still gets every currency -- the shape
+		# `compose_save`'s own default relies on.
+		err = _T.assert_eq(RunConfig.compose_wallet_line({}),
+			RunConfig.compose_wallet_line(Currency.empty_wallet()),
+			"an empty Dictionary composes the same line a full empty wallet does")
+	var refused: Dictionary = {
+		"a line with no marker": "3 petals=1",
+		"the marker with no count": "w petals=1",
+		"a count that is not a number": "wx petals=1",
+		"a count that disagrees with the fields": "w2 petals=1",
+		"a negative count": "w-1",
+		"a field with no value": "w1 petals",
+		"a value that is not a number": "w1 petals=some",
+		"a negative amount": "w1 petals=-1",
+		"an id outside the legal alphabet": "w1 Petals=1",
+		"the same currency twice": "w2 petals=1 petals=2",
+	}
+	for what: String in refused:
+		if err != "":
+			break
+		err = _T.assert_eq(RunConfig.parse_wallet_line(String(refused[what])), null,
+			"%s is refused, not half-read (%s)" % [what, refused[what]])
+	if err == "":
+		# The tolerance the refusals must NOT swallow: a currency this build has never
+		# had is a legal line. Refusing it would condemn a save whose two high scores
+		# cannot be re-earned, over a balance that can.
+		var future: Variant = RunConfig.parse_wallet_line("w1 verdigris=7")
+		err = _T.assert_eq(future, {"verdigris": 7},
+			"while a currency from a newer build parses, because the whole file is at "
+				+ "stake and one unfamiliar id is not grounds to lose it")
+	return err
+
+
+## `wallet_from_parsed` fills in what a save did not carry and keeps what this build
+## cannot spend -- the two halves of reading a wallet written by a different build.
+func test_a_parsed_wallet_gains_this_builds_currencies_and_keeps_the_strangers() -> String:
+	var thin: Dictionary = RunConfig.wallet_from_parsed({String(Currency.PETALS): 5})
+	var err: String = _T.assert_eq(thin.size(), Currency.ids().size(),
+		"a save naming one currency reads as a full wallet: %s" % thin)
+	if err == "":
+		err = _T.assert_eq(Currency.amount_in(thin, Currency.PETALS), 5,
+			"with what it did name")
+	if err == "":
+		err = _T.assert_eq(Currency.amount_in(thin, Currency.COMPOST), 0,
+			("and zero of what it did not -- which is the honest reading rather than a "
+				+ "fallback, since nothing before v13 could have earned it"))
+	if err == "":
+		var strange: Dictionary = RunConfig.wallet_from_parsed({"verdigris": 7})
+		err = _T.assert_eq(int(strange.get("verdigris", 0)), 7,
+			("a currency this build does not know is KEPT, so a round trip through an "
+				+ "older build is not a silent confiscation"))
+		if err == "":
+			err = _T.assert_eq(Currency.amount_in(strange, &"verdigris"), 7,
+				"and reads back through the same door every other amount does")
+	if err == "":
+		# Never negative, whatever a corrupted line said. `_is_score` already refuses one
+		# at the parser; this is the second door, because a negative reaching the wallet
+		# is what makes the next save fail its own readback for the rest of the session.
+		var broken: Dictionary = RunConfig.wallet_from_parsed({String(Currency.PETALS): -3})
+		err = _T.assert_eq(Currency.amount_in(broken, Currency.PETALS), 0,
+			"a negative amount clamps to zero rather than reaching the wallet")
+	return err
+
+
+## `grant_all` is ONE WRITE for several currencies, which is the whole reason it exists
+## beside `grant`: a banked run pays petals and compost together, and three grants would
+## rewrite the save three times while the post-mortem is animating.
+##
+## The claim a `grant`-shaped test cannot make is the FILE one, so this counts writes by
+## deleting the save between calls and asking whether it came back.
+func test_grant_all_pays_every_currency_in_one_write() -> String:
+	var stashed: Dictionary = _stash_shop_state()
+	_stage_shop("user://test_skins_grant_all.save", Currency.empty_wallet())
+	var earned: Dictionary = {
+		String(Currency.PETALS): 27,
+		String(Currency.COMPOST): 35,
+		String(Currency.HEARTWOOD): 1,
+	}
+	RunConfig.grant_all(earned)
+	var err: String = ""
+	for id: StringName in Currency.ids():
+		if err != "":
+			break
+		err = _T.assert_eq(Currency.amount_in(RunConfig.wallet, id),
+			int(earned[String(id)]), "%s landed" % id)
+	if err == "":
+		err = _T.assert_true(FileAccess.file_exists(RunConfig.save_path),
+			"and the grant wrote the file")
+	if err == "":
+		# ADDS, never replaces: a second banked run tops the wallet up.
+		RunConfig.grant_all({String(Currency.PETALS): 3})
+		err = _T.assert_eq(Currency.amount_in(RunConfig.wallet, Currency.PETALS), 30,
+			"a second grant adds to what was there")
+	if err == "":
+		# NOTHING TO PAY IS NO WRITE, the same rule `grant` follows and for the reason
+		# `set_colorblind_safe` gives: the save is not a place to record that nothing
+		# happened. A run that cleared no wave and killed nothing reaches this.
+		DirAccess.remove_absolute(RunConfig.save_path)
+		RunConfig.grant_all({})
+		err = _T.assert_false(FileAccess.file_exists(RunConfig.save_path),
+			"an empty grant writes nothing")
+		if err == "":
+			RunConfig.grant_all({String(Currency.PETALS): 0})
+			err = _T.assert_false(FileAccess.file_exists(RunConfig.save_path),
+				"and neither does a grant of zero")
+	if err == "":
+		# A bad id costs a warning and NOT the grants beside it, which is the whole
+		# argument for doing the refusals against the in-memory wallet first.
+		RunConfig.grant_all({"verdigris": 4, String(Currency.COMPOST): 2})
+		err = _T.assert_eq(Currency.amount_in(RunConfig.wallet, Currency.COMPOST), 37,
+			"a currency this build does not have does not cost the ones beside it")
+		if err == "":
+			err = _T.assert_eq(int(RunConfig.wallet.get("verdigris", 0)), 0,
+				"and it was refused rather than invented")
+	_restore_shop_state(stashed)
 	return err
 
 
@@ -349,7 +639,7 @@ func _stash_shop_state() -> Dictionary:
 		"selected_skins": RunConfig.selected_skins.duplicate(true),
 		"purchased_skins": RunConfig.purchased_skins.duplicate(true),
 		"earned_milestones": RunConfig.earned_milestones.duplicate(),
-		"petals": RunConfig.petals,
+		"wallet": RunConfig.wallet.duplicate(true),
 		"load_status": RunConfig.load_status,
 	}
 
@@ -363,19 +653,61 @@ func _restore_shop_state(stashed: Dictionary) -> void:
 	RunConfig.selected_skins = (stashed["selected_skins"] as Dictionary).duplicate(true)
 	RunConfig.purchased_skins = (stashed["purchased_skins"] as Dictionary).duplicate(true)
 	RunConfig.earned_milestones = (stashed["earned_milestones"] as Dictionary).duplicate()
-	RunConfig.petals = int(stashed["petals"])
+	RunConfig.wallet = (stashed["wallet"] as Dictionary).duplicate(true)
 	RunConfig.load_status = str(stashed["load_status"])
 
 
-## Points RunConfig at `path` with an empty wardrobe and `balance` petals.
-func _stage_shop(path: String, balance: int) -> void:
+## Points RunConfig at `path` with an empty wardrobe and `purse` in the wallet.
+func _stage_shop(path: String, purse: Dictionary) -> void:
 	RunConfig.save_path = path
 	for suffix: String in ["", ".tmp", ".bak"]:
 		if FileAccess.file_exists(path + suffix):
 			DirAccess.remove_absolute(path + suffix)
 	RunConfig.selected_skins = {}
 	RunConfig.purchased_skins = {}
-	RunConfig.petals = balance
+	RunConfig.wallet = purse
+
+
+## A wallet holding exactly `copies` of `price` and nothing else -- the staging every
+## shop test wants, because "can afford exactly this and no more" is the boundary each
+## of them is actually about.
+##
+## DERIVED FROM THE PRICE, never typed. A test that staged `{"petals": 120, ...}` would
+## be a second copy of `Skins.PRICES` that stops agreeing with it the day the prices are
+## retuned, and would then pass or fail for a reason having nothing to do with the code
+## under test.
+static func _purse_for(price: Dictionary, copies: int = 1) -> Dictionary:
+	var out: Dictionary = Currency.empty_wallet()
+	for key: Variant in price.keys():
+		out[String(key)] = int(price[key]) * copies
+	return out
+
+
+## `_purse_for(price)` with one unit of `short` taken back out: the boundary
+## `Currency.covers` turns on, and the only wallet that tells `>=` from `>`.
+static func _purse_short_of(price: Dictionary, short: StringName) -> Dictionary:
+	var out: Dictionary = _purse_for(price)
+	out[String(short)] = maxi(0, int(out.get(String(short), 0)) - 1)
+	return out
+
+
+## The two prices added together -- for the tests that buy a plant skin AND a pest one
+## and then assert the wallet is spent to the penny.
+static func _purse_for_both() -> Dictionary:
+	var out: Dictionary = _purse_for(Skins.PRICES[Skins.KIND_PLANT] as Dictionary)
+	for key: Variant in (Skins.PRICES[Skins.KIND_PEST] as Dictionary).keys():
+		out[String(key)] = (int(out.get(String(key), 0))
+			+ int((Skins.PRICES[Skins.KIND_PEST] as Dictionary)[key]))
+	return out
+
+
+## Whether the wallet is empty in every currency -- "spent to the penny", said once
+## rather than three assertions per test.
+static func _purse_is_empty() -> bool:
+	for id: StringName in Currency.ids():
+		if Currency.amount_in(RunConfig.wallet, id) != 0:
+			return false
+	return true
 
 
 ## THE FOUR REFUSALS `buy_skin` documents, each one asserted to leave the balance and
@@ -383,7 +715,8 @@ func _stage_shop(path: String, balance: int) -> void:
 ## misses, and the half that would show up as a player being charged for nothing.
 func test_buy_skin_refuses_unknown_unaffordable_and_already_owned() -> String:
 	var stashed: Dictionary = _stash_shop_state()
-	_stage_shop("user://test_skins_buy_refusals.save", Skins.PLANT_SKIN_COST)
+	_stage_shop("user://test_skins_buy_refusals.save",
+		_purse_for(Skins.PRICES[Skins.KIND_PLANT] as Dictionary))
 	var plant: StringName = PlantCatalog.ids()[0]
 
 	var err: String = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PLANT, &"not_a_plant", &"plate"),
@@ -395,33 +728,41 @@ func test_buy_skin_refuses_unknown_unaffordable_and_already_owned() -> String:
 		err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PLANT, plant, Skins.DEFAULT_SKIN),
 			"and so is the default, which is not for sale because everyone has it")
 	if err == "":
-		err = _T.assert_eq(RunConfig.petals, Skins.PLANT_SKIN_COST,
-			"three refusals later the balance has not moved")
+		err = _T.assert_eq(RunConfig.wallet,
+			_purse_for(Skins.PRICES[Skins.KIND_PLANT] as Dictionary),
+			"three refusals later the wallet has not moved")
 	if err == "":
 		err = _T.assert_eq(RunConfig.purchased_skins, {}, "and nothing was recorded")
 	if err == "":
 		err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"the affordable purchase goes through")
 	if err == "":
-		err = _T.assert_eq(RunConfig.petals, 0, "and costs exactly its price")
+		err = _T.assert_true(_purse_is_empty(), "and costs exactly its price: %s"
+			% RunConfig.wallet)
 	if err == "":
 		err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"buying it again is refused rather than silently charged")
 	if err == "":
-		err = _T.assert_eq(RunConfig.petals, 0, "so the balance is still zero, not negative")
+		err = _T.assert_true(_purse_is_empty(),
+			"so the wallet is still zero, not negative: %s" % RunConfig.wallet)
 	if err == "":
-		# The unaffordable case, at exactly one petal short -- the boundary, not a
-		# comfortable zero, because `cost > petals` and `cost >= petals` differ only
-		# there.
-		RunConfig.petals = Skins.PEST_SKIN_COST - 1
+		# The unaffordable case, ONE UNIT SHORT IN EACH CURRENCY IN TURN -- the boundary,
+		# not a comfortable zero, because `covers` turns on `>=` and a `>` would differ
+		# only there. Each currency separately, because `Currency.covers` is all-or-
+		# nothing and the way to get that wrong is to check one term and stop.
 		var pest: StringName = StringName(Pest.SPECIES.keys()[0])
-		err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PEST, pest, &"cutpaper"),
-			"one petal short is refused")
+		var pest_price: Dictionary = Skins.PRICES[Skins.KIND_PEST] as Dictionary
+		for short: StringName in Currency.ids():
+			if err != "":
+				break
+			RunConfig.wallet = _purse_short_of(pest_price, short)
+			err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PEST, pest, &"cutpaper"),
+				"one %s short is refused even with every other currency in hand" % short)
+			if err == "":
+				err = _T.assert_eq(RunConfig.wallet, _purse_short_of(pest_price, short),
+					"and what it did have is still there")
 		if err == "":
-			err = _T.assert_eq(RunConfig.petals, Skins.PEST_SKIN_COST - 1,
-				"and the petal it did have is still there")
-		if err == "":
-			RunConfig.petals = Skins.PEST_SKIN_COST
+			RunConfig.wallet = _purse_for(pest_price)
 			err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PEST, pest, &"cutpaper"),
 				"exactly the price is enough")
 	_restore_shop_state(stashed)
@@ -433,7 +774,8 @@ func test_buy_skin_refuses_unknown_unaffordable_and_already_owned() -> String:
 ## key could be built wrong and hand plate to every plant at once.
 func test_buying_a_skin_for_one_target_does_not_give_it_to_another() -> String:
 	var stashed: Dictionary = _stash_shop_state()
-	_stage_shop("user://test_skins_per_target.save", Skins.PLANT_SKIN_COST * 2)
+	_stage_shop("user://test_skins_per_target.save",
+		_purse_for(Skins.PRICES[Skins.KIND_PLANT] as Dictionary, 2))
 	var ids: Array[StringName] = PlantCatalog.ids()
 	var err: String = _T.assert_gt(ids.size(), 1,
 		"more than one plant, or this test cannot tell a leak from a hit")
@@ -457,32 +799,45 @@ func test_buying_a_skin_for_one_target_does_not_give_it_to_another() -> String:
 	return err
 
 
-## Petals cannot go negative, which is not a nicety: `_is_score` refuses a negative on
-## the `p` line, so a balance that went below zero would fail `_save()`'s own readback
-## and every save for the rest of the session would silently return false.
-func test_petals_never_go_negative() -> String:
+## A balance cannot go negative, which is not a nicety: `_is_score` refuses a negative
+## amount on the `w` line, so a wallet that went below zero would fail `_save()`'s own
+## readback and every save for the rest of the session would silently return false.
+##
+## SWEPT OVER EVERY CURRENCY, not asserted on petals and assumed of the rest: `grant`
+## takes the id as an argument, so "the guard is on the function" is exactly the kind of
+## claim that holds for the one currency somebody tested it with.
+func test_a_balance_never_goes_negative() -> String:
 	var stashed: Dictionary = _stash_shop_state()
-	_stage_shop("user://test_skins_petal_floor.save", 0)
-	var err: String = _T.assert_eq(RunConfig.add_petals(-5), 0,
-		"a negative grant is a no-op, not a subtraction")
-	if err == "":
-		err = _T.assert_eq(RunConfig.add_petals(0), 0, "and zero changes nothing either")
+	_stage_shop("user://test_skins_petal_floor.save", Currency.empty_wallet())
+	var err: String = ""
+	for id: StringName in Currency.ids():
+		if err != "":
+			break
+		err = _T.assert_eq(RunConfig.grant(id, -5), 0,
+			"a negative grant of %s is a no-op, not a subtraction" % id)
+		if err == "":
+			err = _T.assert_eq(RunConfig.grant(id, 0), 0,
+				"and zero %s changes nothing either" % id)
 	if err == "":
 		err = _T.assert_false(FileAccess.file_exists(RunConfig.save_path),
-			"neither wrote the file -- the save is not a place to record that "
+			"none of them wrote the file -- the save is not a place to record that "
 				+ "nothing happened")
 	if err == "":
-		err = _T.assert_eq(RunConfig.add_petals(3), 3, "a real grant lands")
+		err = _T.assert_eq(RunConfig.grant(Currency.PETALS, 3), 3, "a real grant lands")
 	if err == "":
-		# Spend every petal there is, then try to spend past the floor.
+		err = _T.assert_eq(RunConfig.grant(&"not_a_currency", 9), 0,
+			"and a currency this build does not have is refused rather than invented")
+	if err == "":
+		# Nowhere near any price, so every term of the purchase is short at once.
 		var plant: StringName = PlantCatalog.ids()[0]
 		err = _T.assert_false(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
-			"a purchase dearer than the balance is refused rather than overdrawn")
+			"a purchase dearer than the wallet is refused rather than overdrawn")
 		if err == "":
-			err = _T.assert_eq(RunConfig.petals, 3, "and the balance is untouched")
+			err = _T.assert_eq(Currency.amount_in(RunConfig.wallet, Currency.PETALS), 3,
+				"and the wallet is untouched")
 	if err == "":
 		err = _T.assert_true(RunConfig._save(),
-			"the balance still reads back through the loader's own validator")
+			"the wallet still reads back through the loader's own validator")
 	_restore_shop_state(stashed)
 	return err
 
@@ -520,8 +875,7 @@ func test_set_skin_refuses_a_skin_that_was_never_bought() -> String:
 ## different lines and either could be the one that did not reach disk.
 func test_set_skin_persists_once_the_skin_is_bought() -> String:
 	var stashed: Dictionary = _stash_shop_state()
-	_stage_shop("user://test_skins_persist.save",
-		Skins.PLANT_SKIN_COST + Skins.PEST_SKIN_COST)
+	_stage_shop("user://test_skins_persist.save", _purse_for_both())
 	var plant: StringName = PlantCatalog.ids()[0]
 	var pest: StringName = StringName(Pest.SPECIES.keys()[0])
 	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
@@ -538,7 +892,8 @@ func test_set_skin_persists_once_the_skin_is_bought() -> String:
 		err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PEST, pest, &"sampler"),
 			"sampler is bought for the pest with exactly the pest price left")
 	if err == "":
-		err = _T.assert_eq(RunConfig.petals, 0, "and the balance is spent to the penny")
+		err = _T.assert_true(_purse_is_empty(),
+			"and the wallet is spent to the penny: %s" % RunConfig.wallet)
 	if err == "":
 		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PEST, pest, &"sampler"),
 			"the pest can wear what was bought for it")
@@ -560,17 +915,19 @@ func test_set_skin_persists_once_the_skin_is_bought() -> String:
 			err = _T.assert_true(bytes.contains("\nu2 "),
 				"and the wardrobe is its own line with both purchases on it: %s" % bytes)
 		if err == "":
-			err = _T.assert_true(bytes.contains("\np0\n"),
-				"with the spent balance beside it: %s" % bytes)
+			err = _T.assert_true(bytes.contains(
+					"\n" + RunConfig.compose_wallet_line(Currency.empty_wallet()) + "\n"),
+				"with the spent wallet beside it: %s" % bytes)
 	if err == "":
 		# All the way back off disk, not just out of memory.
 		RunConfig.selected_skins = {}
 		RunConfig.purchased_skins = {}
-		RunConfig.petals = 99
+		RunConfig.wallet = _purse_for_both()
 		RunConfig._load()
 		err = _T.assert_eq(RunConfig.load_status, "loaded", "the file this build wrote is one it reads")
 		if err == "":
-			err = _T.assert_eq(RunConfig.petals, 0, "the balance came back")
+			err = _T.assert_true(_purse_is_empty(),
+				"the spent wallet came back: %s" % RunConfig.wallet)
 		if err == "":
 			err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"plate"),
 				"and so did the plant's purchase")
@@ -591,7 +948,8 @@ func test_set_skin_persists_once_the_skin_is_bought() -> String:
 ## returns the choice with no re-picking.
 func test_selected_skin_falls_back_to_default_when_the_skin_is_not_owned() -> String:
 	var stashed: Dictionary = _stash_shop_state()
-	_stage_shop("user://test_skins_fallback.save", Skins.PLANT_SKIN_COST)
+	_stage_shop("user://test_skins_fallback.save",
+		_purse_for(Skins.PRICES[Skins.KIND_PLANT] as Dictionary))
 	var plant: StringName = PlantCatalog.ids()[0]
 	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
 		"plate is bought and chosen while it is owned")
@@ -609,7 +967,7 @@ func test_selected_skin_falls_back_to_default_when_the_skin_is_not_owned() -> St
 				+ "throwing away a preference the player still holds")
 	if err == "":
 		# And it comes back the moment the family is bought for that row again.
-		RunConfig.petals = Skins.PLANT_SKIN_COST
+		RunConfig.wallet = _purse_for(Skins.PRICES[Skins.KIND_PLANT] as Dictionary)
 		err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"buying it again is a purchase, not a refusal, since it is no longer owned")
 		if err == "":
@@ -840,7 +1198,7 @@ func test_a_v9_save_loads_forward_with_no_skins_selected() -> String:
 	var stashed_selections: Dictionary = RunConfig.selected_skins.duplicate()
 	var stashed_milestones: Dictionary = RunConfig.earned_milestones.duplicate()
 	var stashed_purchases: Dictionary = RunConfig.purchased_skins.duplicate(true)
-	var stashed_petals: int = RunConfig.petals
+	var stashed_wallet: Dictionary = RunConfig.wallet.duplicate(true)
 	var stashed_campaign: int = RunConfig.campaign_high_score
 	var stashed_endless: int = RunConfig.endless_high_score
 	var stashed_status: String = RunConfig.load_status
@@ -888,10 +1246,11 @@ func test_a_v9_save_loads_forward_with_no_skins_selected() -> String:
 			err = _T.assert_true(rewritten.contains("\ns0\n"),
 				"and carries the empty skins line explicitly, not by omission: %s" % rewritten)
 		if err == "":
-			err = _T.assert_true(rewritten.contains("\ns0\np0\nu0\n"),
-				("and the two v11 lines under it, in that order and above the binding "
-					+ "count -- a field written after the count would be read as a "
-					+ "binding: %s") % rewritten)
+			err = _T.assert_true(rewritten.contains("\ns0\n%s\nu0\n"
+					% RunConfig.compose_wallet_line(Currency.empty_wallet())),
+				("and the wallet and wardrobe lines under it, in that order and above "
+					+ "the binding count -- a field written after the count would be "
+					+ "read as a binding: %s") % rewritten)
 
 	for suffix: String in ["", ".tmp", ".bak"]:
 		if FileAccess.file_exists(path + suffix):
@@ -900,7 +1259,7 @@ func test_a_v9_save_loads_forward_with_no_skins_selected() -> String:
 	RunConfig.selected_skins = stashed_selections
 	RunConfig.earned_milestones = stashed_milestones
 	RunConfig.purchased_skins = stashed_purchases
-	RunConfig.petals = stashed_petals
+	RunConfig.wallet = stashed_wallet
 	RunConfig.campaign_high_score = stashed_campaign
 	RunConfig.endless_high_score = stashed_endless
 	RunConfig.load_status = stashed_status
@@ -914,7 +1273,7 @@ func test_a_v9_save_loads_forward_with_no_skins_selected() -> String:
 ## The selection surviving is the whole of the v10 -> v11 migration: it is kept on disk,
 ## reads back as DEFAULT_SKIN while nothing is owned, and returns the day the player buys
 ## that family for that row. See `RunConfig.selected_skin()`.
-func test_a_v10_save_loads_forward_with_no_petals_and_no_purchases() -> String:
+func test_a_v10_save_loads_forward_with_an_empty_wallet_and_no_purchases() -> String:
 	var path := "user://test_skins_v10_forward.save"
 	var stashed: Dictionary = _stash_shop_state()
 	var stashed_campaign: int = RunConfig.campaign_high_score
@@ -941,16 +1300,16 @@ func test_a_v10_save_loads_forward_with_no_petals_and_no_purchases() -> String:
 	f.close()
 
 	RunConfig.save_path = path
-	RunConfig.petals = 99
+	RunConfig.wallet = Currency.add(Currency.empty_wallet(), Currency.PETALS, 99)
 	RunConfig.purchased_skins = {"plant:leftover": ["sampler"]}
 	RunConfig._load()
 	var err: String = _T.assert_eq(RunConfig.load_status, "migrated",
 		"a v10 file loads and is rewritten forward rather than refused, got %s"
 			% RunConfig.load_status)
 	if err == "":
-		err = _T.assert_eq(RunConfig.petals, 0,
-			"a build with no shop earned no petals -- not 99 inherited from this "
-				+ "process, and not a crash")
+		err = _T.assert_eq(RunConfig.wallet, Currency.empty_wallet(),
+			("a build with no shop earned nothing in any currency -- not the 99 petals "
+				+ "inherited from this process, and not a crash: %s") % RunConfig.wallet)
 	if err == "":
 		err = _T.assert_eq(RunConfig.purchased_skins, {},
 			"and bought nothing -- the load REPLACED the in-memory wardrobe rather "
@@ -974,7 +1333,8 @@ func test_a_v10_save_loads_forward_with_no_petals_and_no_purchases() -> String:
 		var rewritten: String = FileAccess.get_file_as_string(path)
 		err = _T.assert_eq(rewritten,
 			("v%d\n1234\n5678\nm1:campaign_cleared\ncb0 sfx0 mus0 spd0 svol0 mvol0\n"
-				+ "d0\ns1 %s=plate\np0\nu0\n0\n") % [RunConfig.SAVE_VERSION, key],
+				+ "d0\ns1 %s=plate\nw3 compost=0 heartwood=0 petals=0\nu0\n0\n")
+				% [RunConfig.SAVE_VERSION, key],
 			("and the file on disk is now a current-version file, byte for byte, "
 				+ "with the skin renamed on the way through: %s") % rewritten)
 	if err == "":
@@ -1216,7 +1576,8 @@ func test_a_load_with_no_file_on_disk_reads_the_mirror() -> String:
 	var stashed_store: Variant = SaveMirror.force_store
 	var stashed: Dictionary = _stash_shop_state()
 	var stashed_campaign: int = RunConfig.campaign_high_score
-	_stage_shop("user://test_skins_mirror.save", Skins.PLANT_SKIN_COST)
+	_stage_shop("user://test_skins_mirror.save",
+		_purse_for(Skins.PRICES[Skins.KIND_PLANT] as Dictionary))
 	SaveMirror.force_store = {}
 	RunConfig.campaign_high_score = 4242
 	var plant: StringName = PlantCatalog.ids()[0]
@@ -1234,7 +1595,7 @@ func test_a_load_with_no_file_on_disk_reads_the_mirror() -> String:
 		for suffix: String in ["", ".tmp"]:
 			if FileAccess.file_exists(RunConfig.save_path + suffix):
 				DirAccess.remove_absolute(RunConfig.save_path + suffix)
-		RunConfig.petals = 77
+		RunConfig.wallet = Currency.add(Currency.empty_wallet(), Currency.PETALS, 77)
 		RunConfig.purchased_skins = {}
 		RunConfig.campaign_high_score = 0
 		RunConfig._load()
@@ -1244,7 +1605,8 @@ func test_a_load_with_no_file_on_disk_reads_the_mirror() -> String:
 		err = _T.assert_true(RunConfig.owns_skin(Skins.KIND_PLANT, plant, &"plate"),
 			"the purchase came back off the mirror")
 	if err == "":
-		err = _T.assert_eq(RunConfig.petals, 0, "and so did the spent balance")
+		err = _T.assert_true(_purse_is_empty(),
+			"and so did the spent wallet: %s" % RunConfig.wallet)
 	if err == "":
 		err = _T.assert_eq(RunConfig.campaign_high_score, 4242,
 			"and the high score that shared the file")
@@ -1280,7 +1642,8 @@ func test_a_load_with_no_file_on_disk_reads_the_mirror() -> String:
 ## started answering false.
 func test_a_placed_plant_wears_its_chosen_skins_drawing_and_no_tint() -> String:
 	var stashed: Dictionary = _stash_shop_state()
-	_stage_shop("user://test_skins_plant_tint.save", Skins.PLANT_SKIN_COST)
+	_stage_shop("user://test_skins_plant_tint.save",
+		_purse_for(Skins.PRICES[Skins.KIND_PLANT] as Dictionary))
 	var kind: StringName = PlantCatalog.ids()[0]
 	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, kind, &"plate"),
 		"plate is bought for the plant this test places")
@@ -1319,7 +1682,8 @@ func test_a_placed_plant_wears_its_chosen_skins_drawing_and_no_tint() -> String:
 ## on every FAMILIES row -- see `Skins`'s own header.
 func test_a_spawned_pest_wears_its_chosen_skins_tint_until_a_mutation_lands() -> String:
 	var stashed: Dictionary = _stash_shop_state()
-	_stage_shop("user://test_skins_pest_tint.save", Skins.PEST_SKIN_COST)
+	_stage_shop("user://test_skins_pest_tint.save",
+		_purse_for(Skins.PRICES[Skins.KIND_PEST] as Dictionary))
 	var species: StringName = Pest.APHID
 	var err: String = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PEST, species, &"sampler"),
 		"sampler is bought for the species this test spawns")
@@ -1445,7 +1809,7 @@ func test_pressing_a_row_button_advances_the_selection_and_persists_it() -> Stri
 	# Pressing the row button reaches RunConfig.set_skin(), which saves -- redirected
 	# to scratch, the same discipline every other test here that can reach _save()
 	# follows.
-	_stage_shop("user://test_skins_screen_press.save", 0)
+	_stage_shop("user://test_skins_screen_press.save", Currency.empty_wallet())
 	var plant: StringName = PlantCatalog.ids()[0]
 	var owned: Array[String] = []
 	for row: Dictionary in Skins.buyable_families():

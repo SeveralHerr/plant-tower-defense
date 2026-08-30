@@ -93,6 +93,13 @@ const EXPECTED_SIZE := {
 	"pest_hopper_dead": 64,
 	"pest_locust": 64,
 	"pest_locust_dead": 64,
+	# The Cutworm's HEAD, and the only pest row here that is not a whole animal. The
+	# other fourteen cells of it are swept along `Board.spine()` inside `Cutworm._draw`
+	# from `radius_at`, so there is no sprite to size -- 953 px of body on a 64 px canvas
+	# is not a drawing, it is a filmstrip. The head is a sprite because it is the one part
+	# that has a face, and 64 keeps it on the same canvas as every bug it walks past.
+	# No `_dead` twin: the boss does not leave a corpse sprite, it stops being drawn.
+	"pest_cutworm": 64,
 	"seed_packet": 64,
 	"sticky_sundew": 64,
 	"sunflower": 64,

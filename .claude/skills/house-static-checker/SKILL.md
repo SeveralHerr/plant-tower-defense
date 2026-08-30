@@ -117,6 +117,34 @@ absence-in-prose variant: `.claude/cycle/references/why.md` §3, rule 2.
 rule. This repo has already been bitten the other way round: a test scanned source for a
 token and matched the comment explaining why the token was absent.
 
+**A GDScript string literal may contain a REAL LINE BREAK, and a blanker that ends a
+literal at the newline inverts every bracket after it.** MEASURED 2026-08-29,
+`format_concat_check.py`. `test/unit/test_placement.gd:6423` writes its separator as an
+actual break:
+
+```gdscript
+	for line: String in text.split("
+"):
+```
+
+End the literal at the break and the closing quote on the next line reads as an *opening*
+one — from there every `(` and `)` is counted with the sense reversed, and that file's
+depth never returned to zero again. The visible symptom was **nine findings on one line,
+five hundred lines further down**, each handed a term that began mid-statement. Nothing in
+that output looked like a lexing bug; it looked like a rule that was too loose, and the
+first instinct was to tighten the rule.
+
+Two rules fall out, and the second is the general one:
+
+- A literal runs to its matching quote **however many lines that takes**, and a quote with
+  no partner **raises** rather than being guessed at — an unlexable file is one the tool
+  verified nothing about, which is exit 2, not a clean pass. (Handle `"""` as its own
+  delimiter while you are there; `""` followed by a third quote is not an empty string
+  beside a stray one.)
+- **When findings cluster — several on one line, or many in one file — suspect the
+  LEXER before the rule.** A correct rule fed a desynced token stream produces exactly
+  that shape, and a rule loosened to quiet it is a rule that will now miss real defects.
+
 **When you need both the code AND the string contents, blank for the code and slice the
 RAW text at the same offsets.** Blanking preserves offsets precisely so this is possible,
 and the moment a checker cares about what a literal *says* — not just that one is there —
@@ -500,6 +528,22 @@ breakage they exist to catch.
 Replace them with a **direct unit test of the transform** on a handful of controlled
 inputs, where the expected output is written out by hand. Nine lines of known-in,
 known-out beats any statistic over the real corpus.
+
+**And a fixture cannot stand in for that table, because a fixture exercises the transform
+only THROUGH the rule — and the rule can be right about a file the transform read
+wrongly.** MEASURED 2026-08-29, `format_concat_check.py`: of eight mutations, the two that
+broke the *blanker* (end a literal at the line break; accept an unterminated literal) both
+**SURVIVED** the full set of `.gd` fixtures — including a fixture written specifically to
+contain a literal spanning a line break. The desync it caused simply did not reach a `%`
+inside that small file, and a fixture large enough to make it reach one is a fixture nobody
+will write. Seven known-in/known-out lines for `blank()` killed both immediately, each
+naming the input it disagreed on.
+
+So: **any checker with a lexing, blanking or normalising stage owes that stage its own
+known-in/known-out table**, separate from the fixtures, and the mutation sweep must include
+mutations aimed at the stage rather than only at the rule. Write the expected strings by
+hand and expect to get one or two wrong the first time — two of the seven here were off by
+a single space, which is the table doing its job on the person writing it.
 
 ## Registering it
 

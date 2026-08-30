@@ -52,8 +52,11 @@ extends RefCounted
 ## the one the player can steer is the one worth keeping.
 ##
 ## Milestones did not lose their reward, they gained a second: `RunConfig.MILESTONE_PETALS`
-## petals apiece, once, so the achievement still feeds the wardrobe — it just buys a skin
-## the player picks instead of dictating one.
+## petals and `Currency.MILESTONE_HEARTWOOD` heartwood apiece, once, so the achievement
+## still feeds the wardrobe — it just buys a skin the player picks instead of dictating
+## one. Heartwood is the reason that still matters at the new scale: milestones and
+## campaign victories are the ONLY two things that pay it, so the seven achievements are
+## worth about a plant skin and a half of the scarcest term in every price.
 ##
 ## THE THREE IDS WERE RENAMED AT v12, AND THE RENAME IS A SAVE MIGRATION — see
 ## `RunConfig.VERSION_WITH_STYLE_SKINS` and `RENAMED_FAMILIES` below. They were `golden`,
@@ -86,15 +89,16 @@ extends RefCounted
 ## desaturates three deliberate hues into one muddy one, which is the mistake
 ## `PlantMutation.SPORT_MODULATE` was changed to stop making.
 ##
-## That is also why the two costs differ. Pricing a drawing and a multiplier the same
-## would have charged the same for two different things.
+## That is also why the two prices differ. Pricing a drawing and a multiplier the same
+## would have charged the same for two different things — see `PRICES`, which keeps the
+## 5:3 the two old single numbers had and moves only the scale.
 
 const KIND_PLANT := &"plant"
 const KIND_PEST := &"pest"
 
 ## The skin worn from a fresh save, and by any target the player has not bought one
 ## for: `Color.WHITE`, i.e. the sprite's own art with nothing multiplied over it.
-## Always owned — see `is_owned()` — free — see `cost_for()` — and the only skin
+## Always owned — see `is_owned()` — free — see `price_for()` — and the only skin
 ## `RunConfig.selected_skin()` ever falls back to.
 const DEFAULT_SKIN := &"default"
 
@@ -104,16 +108,57 @@ const DEFAULT_SKIN := &"default"
 ## `texture_path()` for what a literal would have cost.
 const SKIN_SUFFIX := "_skin_"
 
-## Petals a skin costs, by what the purchase actually buys. A plant skin is a
-## generated drawing with its own geometry; a pest skin is a tint. Pricing them the
-## same would have charged the same for two different things.
+## What a skin costs, by what the purchase actually buys and in all three currencies
+## (plant-tower-defense-il1y). A plant skin is a generated drawing with its own
+## geometry; a pest skin is a tint. Pricing them the same would have charged the same
+## for two different things, so the pest row is three fifths of the plant row — the
+## same 5:3 the two single numbers here used to be, kept because the RATIO was always
+## the tuning and only the scale was wrong.
 ##
-## The RATIO is the tuning, not the absolute: a run pays one petal per wave cleared
-## and ten per first-time milestone, so a full campaign is roughly two plant skins.
-## Five and three keep a pest skin reachable inside a single good run while a plant
-## skin is something a player saves toward across two.
-const PLANT_SKIN_COST: int = 5
-const PEST_SKIN_COST: int = 3
+## ## The scale, and why it moved by twenty-four times
+##
+## These were 5 and 3 PETALS, against a campaign that pays 27 petals for its 27 waves
+## and ten more for each first-time milestone. A player who finished the campaign once
+## could buy five plant skins on the way home, and the whole fourteen-row wardrobe was
+## about two runs' work — a shop with nothing left to want by the third run.
+##
+## Multiplying that one number would have been a single grind lengthened. Instead a
+## skin costs three things that are earned three different ways (`Currency`), and the
+## three are set to RUN OUT TOGETHER rather than one binding long before the rest:
+##
+##                plant   per campaign won   campaigns
+##     petals      120     27                 4.4
+##     compost     150     ~35 (715 pests)    4.3
+##     heartwood     5     1 (+1/milestone)   5.0
+##
+## So a plant skin is about five campaign victories from a standing start, and no
+## single way of playing shortens that: endless pays petals and compost quickly and
+## pays no heartwood at all, and a defensive run that kills everything still needs the
+## wins. The seven milestones are worth 70 petals and 7 heartwood once, which is what
+## makes the FIRST skin land two or three campaigns in rather than five — the intended
+## shape, since a shop whose first purchase is five runs away is a shop nobody opens
+## twice.
+##
+## ## Keyed by kind, and keyed by currency id
+##
+## A per-FAMILY price would be three numbers to re-argue every time the table gains a
+## family; a per-kind price is one fact — a drawing or a multiplier — decided by
+## whether the target is a plant or a pest. And every inner key is a `Currency` id
+## rather than a literal, so a currency added to that table without a price here is a
+## row `test_every_kind_is_priced_in_every_currency` fails on rather than a term that
+## silently costs nothing.
+const PRICES: Dictionary = {
+	KIND_PLANT: {
+		Currency.PETALS: 120,
+		Currency.COMPOST: 150,
+		Currency.HEARTWOOD: 5,
+	},
+	KIND_PEST: {
+		Currency.PETALS: 72,
+		Currency.COMPOST: 90,
+		Currency.HEARTWOOD: 3,
+	},
+}
 
 ## Every family id this project has retired, and what it is called now. Read by
 ## `RunConfig`'s v11 -> v12 migration (`VERSION_WITH_STYLE_SKINS`) and by nothing else at
@@ -302,23 +347,35 @@ static func has_art(id: StringName) -> bool:
 	return bool(family(id).get("art", false))
 
 
-## What `family` costs for a target of this `kind`, in petals.
+## What `family` costs for a target of this `kind`: a `Currency` id -> amount
+## Dictionary, the same shape `RunConfig.wallet` is, so `Currency.covers()` can compare
+## the two directly.
 ##
-## Keyed on the KIND rather than on the row, because the price is a fact about what
-## the purchase gets you — a drawing or a multiplier — and that is decided by whether
-## the target is a plant or a pest, not by which of the three families it is. A
-## per-row price would also mean three numbers to re-argue every time a family joins
-## the table.
+## Keyed on the KIND rather than on the family row, because the price is a fact about
+## what the purchase gets you — a drawing or a multiplier — and that is decided by
+## whether the target is a plant or a pest, not by which of the three families it is.
 ##
-## Zero for DEFAULT_SKIN, which nobody buys, and zero for a family this build does not
-## know. The second is not a free skin: `RunConfig.buy_skin()` refuses an unknown
-## family at the door, before it ever asks the price, exactly as `set_skin()` refuses
-## an unknown target. Answering 0 here rather than erroring keeps this readable from a
-## shop row built off a save from a newer build.
-static func cost_for(kind: StringName, id: StringName) -> int:
+## EMPTY for DEFAULT_SKIN, which nobody buys, and empty for a family this build does
+## not know. Empty is FREE — `Currency.covers()` answers true for it — and that is
+## deliberate rather than an oversight, for the reason the old integer answered 0:
+## `RunConfig.buy_skin()` refuses both cases at the door, before it ever asks the
+## price, exactly as `set_skin()` refuses an unknown target. Answering here rather than
+## erroring keeps this readable from a shop row built off a save from a newer build,
+## and the refusal that matters stays in one place instead of two.
+##
+## The Dictionary is DUPLICATED on the way out. `PRICES` is a const, but a const
+## Dictionary in GDScript is a shared reference, not a frozen value: a caller that
+## mutated what it got back would edit the price table for the rest of the session.
+static func price_for(kind: StringName, id: StringName) -> Dictionary:
 	if id == DEFAULT_SKIN or not has_family(id):
-		return 0
-	return PEST_SKIN_COST if kind == KIND_PEST else PLANT_SKIN_COST
+		return {}
+	var row: Variant = PRICES.get(kind, {})
+	if not (row is Dictionary):
+		return {}
+	var out: Dictionary = {}
+	for key: Variant in (row as Dictionary).keys():
+		out[String(key)] = int((row as Dictionary)[key])
+	return out
 
 
 ## Every family the shop draws a buy button for: FAMILIES minus DEFAULT_SKIN.

@@ -120,6 +120,41 @@ Neither is a crisis. Both are the cost of an animation that owns its own destina
   hides it is the sprite it is about, and that relationship exists in no number either
   object holds. Read [[palette-against-the-background]] for the same failure in colour.
 
+## A second property is a second reset, and a second way to be half-armed
+
+A cue that grows a channel — a fade that also swells, a slide that also tints — has two
+places to get wrong that a one-property cue does not.
+
+**The stop path must clear EVERY property the cue writes.** `_set_next_wave_pulse_active`
+(`game/hud.gd`) reset `modulate` from the day it was written; when the breath grew a
+`scale` channel (plant-tower-defense-2b8r) that same line was suddenly half a reset, and a
+button killed mid-breath would have sat 10% swollen over its neighbour for a whole live
+wave. The reset is not "put the animated value back", it is "put back everything the tween
+is allowed to touch", and it is the one part of an animation headless CAN assert — see the
+scale assertion beside the modulate one in
+`test_the_next_wave_button_pulses_once_it_is_pressable`.
+
+**Two `tween_property` calls in a row are two BEATS, not one.** A Godot `Tween` is
+sequential by default, so writing the second property as another plain
+`tween_property` plays the size after the brightness. `parallel()` binds it to the step
+before it and `chain()` makes the next step wait for all of them:
+
+```gdscript
+t.tween_property(button, "modulate", peak_modulate, SECONDS)
+t.parallel().tween_property(button, "scale", peak_scale, SECONDS)
+t.chain().tween_property(button, "modulate", Color.WHITE, SECONDS)
+t.parallel().tween_property(button, "scale", Vector2.ONE, SECONDS)
+```
+
+Headless cannot see this: the arming is identical either way and no gate pumps the frames
+that would show the beats separating. Photograph it (`screenshot-the-game` drives `Game`
+from a throwaway scene and prints the property per frame) or it is unverified.
+
+**Also pin the peak to a number, not to the amplitude constant.** `next_wave_pulse_peak()`
+exists so a test can hold the endpoint at all, and its test asserts `>= 1.08`, not
+`== 1.0 + NEXT_WAVE_PULSE_SWELL` — the second survives the constant being set to zero,
+which is exactly the "cue too small to see" regression the bead was filed about.
+
 ## Two smaller things worth knowing
 
 **A `create_tween()` census is the wrong set.** Cycle 70 closed a bead "verified unbuilt" by

@@ -919,6 +919,31 @@ const WAVES: Array[Array] = [
 		{"species": &"aphid", "count": 24, "gap": 0.28, "lead": 2.0},
 		{"species": &"beetle", "count": 7, "gap": 1.00, "lead": 1.5},
 	],
+	# 27 -- THE CUTWORM, ALONE (plant-tower-defense-rn4p). The new finale.
+	#
+	# ONE PEST. Not "one pest and a swarm": the boss's body already occupies fifteen of
+	# the road's thirty-two cells, so anything walking with it would be walking INSIDE
+	# it, and every kernel aimed down the lane would be spent on whichever of the two
+	# the targeting happened to prefer. The wave IS the animal.
+	#
+	# WHY THIS ROW BREAKS THE SHAPE OF EVERY ROW ABOVE, stated rather than left to be
+	# rediscovered:
+	#   * peak_simultaneous_pests is 1 of 40. Every other coda row spends the road
+	#     budget; this one spends none of it, and that is the point -- the difficulty is
+	#     one body's length, not the count.
+	#   * _raw_threat sums count x health, so this row reads 1800 against wave 26's 424.
+	#     That number is HONEST about what walks in and WRONG about what the garden has
+	#     to do, because `Cutworm.ZONE_HIDE` means most of what the board fires lands at
+	#     0.15. See `boss_solo_wave` and `test_the_second_act_never_lets_the_threat_curve
+	#     _fall`, which is why the monotonic sweep skips this row rather than pretending
+	#     the two numbers are comparable.
+	#   * it carries no mutation roll worth speaking of and no brood headroom.
+	#
+	# The drought rule already exempts it (weather_for asks wave_carries_boss, and the
+	# `boss` flag is on the SPECIES row), so nothing here has to say so.
+	[
+		{"species": &"cutworm", "count": 1, "gap": 1.00, "lead": 0.5},
+	],
 ]
 
 var current_wave: int = 0
@@ -1016,6 +1041,61 @@ static func weather_for(wave: int) -> StringName:
 ## local tell. A flag on the species cannot fail that way: a boss added without one
 ## is a boss nobody ever claimed was one.
 static func wave_carries_boss(wave: int) -> bool:
+	if wave < 1 or wave > WAVES.size():
+		return false
+	return _carries_boss(wave)
+
+
+## Is this wave ONE boss and nothing else?
+##
+## The Cutworm's wave (plant-tower-defense-rn4p) and, so far, only it. It exists because
+## a solo-boss row is not comparable to a swarm row on the two measures this file's own
+## invariants are built from, and a check that treats them as comparable is wrong in a
+## way that looks like a balance bug:
+##
+##   * `peak_simultaneous_pests` is 1. `test_only_the_campaign_finale_spends_the_whole
+##     _road_budget` reads "no wave is fuller than the finale", which a solo finale makes
+##     false for every wave in the table at once.
+##   * `_raw_threat` is `count x health`, so this row prices at 1800 against wave 26's
+##     424 — honest about what walks in, and wrong about what the garden has to do, since
+##     `Cutworm.ZONE_HIDE` means most of what the board fires at it lands at 0.15. The
+##     monotonic threat sweep would read a 4x spike followed by a cliff back into
+##     endless, and neither number describes a difficulty the player experiences.
+##
+## So this is the exemption, named once, asked by the checks that need it — rather than
+## a wave number written into three tests.
+static func boss_solo_wave(wave: int) -> bool:
+	if wave < 1 or wave > WAVES.size():
+		return false
+	var groups: Array = WAVES[wave - 1]
+	if groups.size() != 1:
+		return false
+	var only: Dictionary = groups[0]
+	return int(only["count"]) == 1 and Pest.is_boss(StringName(only["species"]))
+
+
+## The last campaign wave that is a SWARM — i.e. the last one whose headcount and
+## `count x health` are comparable with every wave before it.
+##
+## This is the wave the seam checks have always meant by "the finale", and it was the
+## finale until the Cutworm was appended after it. Kept as a derivation off
+## `boss_solo_wave` rather than as the number 26, so appending another solo boss (or
+## removing this one) moves every check that reads it at once.
+##
+## THE SEAM IS WHAT THIS PROTECTS. `health_scale_for` makes the endless ramp a MULTIPLE
+## of the campaign's last value, so endless wave `WAVES.size() + 1` has to out-price the
+## campaign's last swarm or the difficulty falls off a cliff the moment the table runs
+## out. Measured against the Cutworm's row that comparison is meaningless — 1800 points
+## of one body against 424 points of forty — which is the whole argument written out on
+## `boss_solo_wave`.
+static func last_swarm_wave() -> int:
+	for wave: int in range(WAVES.size(), 0, -1):
+		if not boss_solo_wave(wave):
+			return wave
+	return 0
+
+
+static func _carries_boss(wave: int) -> bool:
 	if wave < 1 or wave > WAVES.size():
 		return false
 	for group: Dictionary in WAVES[wave - 1]:
@@ -1557,6 +1637,19 @@ static func mutation_chance_for(wave: int) -> float:
 ## not an allowance belonging to endless, so the campaign spending part of it is
 ## the intent rather than a leak — see SECOND_ACT_START_WAVE for the price.
 static func health_scale_for(wave: int) -> float:
+	# THROUGH THE WHOLE TABLE, the Cutworm's solo row included (plant-tower-defense-rn4p).
+	#
+	# Clamping the ramp at `last_swarm_wave()` was tried and refused. It would have kept
+	# the kernel-price boundaries at 1/10/19 and the endless health cap at wave 40, but it
+	# buys that by making wave 27 the one campaign wave that does NOT step 3% — which
+	# breaks the ramp's own defining claim (`test_the_second_act_starts_where_it_says_it
+	# _does` sweeps every adjacent pair for exactly that step) in order to protect a
+	# sentence about where the boundaries fall. The claim is worth more than the sentence.
+	#
+	# So the ramp behaves here the way it has behaved at every previous growth of the
+	# table: one more row is one more step. The consequences are stated rather than
+	# hidden -- a fourth kernel-price boundary at wave 27, and every endless landmark one
+	# wave later because they are all `WAVES.size() + n`. Both are asserted.
 	var climbed: int = clampi(wave, SECOND_ACT_START_WAVE, WAVES.size()) - SECOND_ACT_START_WAVE
 	var campaign: float = pow(1.0 + CAMPAIGN_HEALTH_STEP, float(climbed))
 	var over: int = wave - WAVES.size()
