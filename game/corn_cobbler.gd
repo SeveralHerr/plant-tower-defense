@@ -21,7 +21,8 @@ const RANGE: float = 176.0
 ##     fired `t` off the line passes a pest on the line at Kernel.HIT_RADIUS / sin t,
 ##     so +/-7 deg stopped connecting at 148 px — inside RANGE (176). Between 148 px
 ##     and the edge of its own ring, the 20-seed level did *zero* damage to the pest
-##     it was aiming at, where level 1 did 1.25 dps.
+##     it was aiming at, where level 1 was landing its one kernel at every range in
+##     that ring.
 ##   * Level 3 re-spaced to +/-26, +/-13, 0. The outer pair stops connecting at 41 px
 ##     and the inner pair at 80 px, so past 80 px only the middle kernel ever landed:
 ##     1.61 dps against the 2.78 dps the *cheaper* level 2 was doing. The most
@@ -97,8 +98,65 @@ const KERNEL_STEP_DEGREES: float = 13.0
 ## for_level)` generically. It looks missing because `upgrade_cost()` answers only the
 ## next step and reads like the whole of the subject. Do not add a third name for it.
 ## ---------------------------------------------------------------------------------
+## ---------------------------------------------------------------------------------
+## THE WINDOW THE LEVEL-1 ROW HAS TO SIT IN
+##
+## Level 1 is the FREE STARTER (`PlantCatalog.free_starter`), so it is the one damage
+## source every run is guaranteed to own. FIVE other things in this game were set by
+## measuring against it, every one of them asserted, and the reason this comment is long
+## is that a retune here fails in five different files:
+##
+##   * `Pest.SPECIES[NURSE]`'s aura must sit ABOVE one level-1 cob and BELOW two of them
+##     (`test_the_nurse_beetles_aura_out_paces_one_starter_cob_and_loses_to_two`).
+##   * A Nettle must lose to a cob PER SEED
+##     (`test_the_nettle_never_out_earns_a_cob_per_seed`).
+##   * A Dandelion must stay under 1.5x a level-1 cob against ONE pest
+##     (`test_the_dandelion_is_priced_against_the_four_plants_it_stands_beside`).
+##   * The coverage map's promise: a pest that spends its whole walk on covered ground
+##     gets touched (`test_the_coverage_map_keeps_its_promise_to_a_pest_that_never_
+##     leaves_covered_ground`). This is a THROUGHPUT claim, so it is the first thing a
+##     slower cob breaks.
+##   * The campaign stays winnable by the strongest built-in garden, on every corpus
+##     board x difficulty (`test_playtest_sweep.gd`'s gated full matrix -- NOT the fast
+##     tier, which plays one sample board and passes straight through the failure).
+##
+## THE RATE COLUMN MOVED AND THE DAMAGE COLUMN DID NOT, and that is worth the paragraph
+## because the obvious way to make a plant weaker is the one that does not work.
+##
+## `damage` is the game's UNIT OF ACCOUNT. An aphid's 3.0 health is three kernels and is
+## asserted as three (`test_the_swarm_outgrows_the_plant_the_player_starts_with`, whose
+## ramp to four and five is the second act's whole shape); `Pest.SPECIES[SHIELD]`'s
+## shell_absorb of 1.5 is the only value that stops EVERY kernel at EVERY level while
+## letting a centred Dandelion seed through; `Dandelion.SEED_DAMAGE` is 3.0 so a centre
+## hit kills an aphid outright and a rim hit does not. Cut the kernel and every one of
+## those has to be re-cut to match -- which is a cut to pest health, i.e. exactly the
+## change that CANCELS this one and leaves the game playing identically. A weaker
+## starter has to mean pests that are relatively tougher, so the pests do not move and
+## neither does the kernel. The rate is the axis with no second reader.
+##
+## WHY 0.90 AND NOT SLOWER, WHICH IS THE QUESTION THIS COMMENT EXISTS FOR. 0.90 is not a
+## taste; it is the last value before two independent gates start going red, and both
+## numbers below were measured on this branch rather than reasoned about.
+##
+##   * At 1.14 (a 30% cut in dps, which is what was actually asked for) the gated full
+##     playtest matrix FAILS: `short straight` on `harsh` stops being winnable at all --
+##     the thickened garden dies on wave 21 of 27 with five lives gone. Main passes the
+##     same matrix. A starter this slow does not make the game harder, it makes one
+##     difficulty impossible.
+##   * The coverage promise starts flaking above 0.90. Sweeping the level-1 interval and
+##     running that one test: 0.80 pass, 0.85 pass, 0.90 pass, 0.95 FAIL, 1.00 pass,
+##     1.05 FAIL, 1.14 FAIL. It is noisy -- a cob shoots the pest furthest along, so
+##     which of eleven equally-covered pests never gets a turn is timing -- but the
+##     noise floor plainly rises with the reload, and 0.90 is the top of the contiguous
+##     range that holds.
+##
+## So the ladder's first rung is a 20% rate change now (0.90 -> 0.72) where it was 10%,
+## which was under what a player watching a cob can see; the rung used to read as "the
+## same plant, slightly more damage" with the widening spread doing all the work.
+## Anything past 0.90 buys more of that feeling and starts costing correctness.
+## ---------------------------------------------------------------------------------
 const LEVELS: Array[Dictionary] = [
-	{"name": "single", "kernels": 1, "spread_degrees": 0.0, "interval": 0.80, "damage": 1.0, "upgrade_cost": 20},
+	{"name": "single", "kernels": 1, "spread_degrees": 0.0, "interval": 0.90, "damage": 1.0, "upgrade_cost": 20},
 	{"name": "triple", "kernels": 3, "spread_degrees": 26.0, "interval": 0.72, "damage": 1.2, "upgrade_cost": 45},
 	{"name": "bunch", "kernels": 5, "spread_degrees": 52.0, "interval": 0.62, "damage": 1.4, "upgrade_cost": 0},
 ]
@@ -156,7 +214,7 @@ const SPREAD_ARC_RIM_WIDTH: float = PIP_RIM_WIDTH
 ## it, just dimmed, not disappear until the reload completes.
 const READY_ALPHA_FLOOR: float = 0.35
 ## Repaint granularity for the readiness fade — discipline borrowed from
-## Sunflower's `_drawn_fill_height`: a 0.6-0.8s reload does not need a fresh
+## Sunflower's `_drawn_fill_height`: a 0.62-0.9s reload does not need a fresh
 ## frame for every sub-percent of progress, only for the visible steps a fade
 ## across READY_ALPHA_FLOOR..1.0 actually paints.
 const READINESS_STEPS: int = 24

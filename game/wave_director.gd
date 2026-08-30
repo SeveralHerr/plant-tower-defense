@@ -745,7 +745,7 @@ const WAVES: Array[Array] = [
 	# wave rather than a harder one. 17 asks whether the garden can hold a lane for
 	# forty seconds; a Nurse in it asks whether it can hold one for forty seconds
 	# while something puts back 2.0 health a second into whatever it is shooting.
-	# A garden of level-1 cobs (1.25 dps each, so one loses that race outright) has
+	# A garden of level-1 cobs (1.11 dps each, so one loses that race outright) has
 	# been getting away with breadth all campaign, and this is the row that says no.
 	#
 	# WHAT IT COST: -3 beetles, +1 Nurse. 48 points of base health out and 48 back

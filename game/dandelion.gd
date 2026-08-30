@@ -44,7 +44,7 @@ extends Plant
 ## Balance summary, against the four it stands beside:
 ##
 ##   plant           cost  reach  what it does to a pest
-##   Corn Cobbler      10    176  1 pest, 1.25 dps (level 1), forever
+##   Corn Cobbler      10    176  1 pest, 1.11 dps (level 1), forever
 ##   Chomp Flower      15     74  1 pest, held then killed, mouth busy meanwhile
 ##   Seed Sunflower    25      0  nothing; pays for the others
 ##   Sticky Sundew     30    118  every pest in the patch, slowed 45%, no damage
@@ -345,8 +345,15 @@ static func volley_cycle_seconds() -> float:
 ## Pure: sustained damage per second against `pests_in_blast` pests standing dead
 ## centre. This is the number the plant is priced on and the claim its header
 ## makes, so it is executable rather than a comment: at 1 it must stay in the
-## neighbourhood of a level-1 Corn Cobbler's 1.25, and at 3 it must beat anything
+## neighbourhood of a level-1 Corn Cobbler's 1.11, and at 3 it must beat anything
 ## else in the catalogue.
+##
+## THE HEADROOM HALVED when that cob was slowed and this plant did not move: 1.48
+## against a ceiling of 1.67, where it used to be 1.48 against 1.88. Still passing and
+## deliberately left alone — the lever here would be REGROW_DELAY and not SEED_DAMAGE
+## (3.0 is exactly an aphid's health, which is what makes a centre hit kill and a rim hit
+## not) — but this is the band with the least room left in it, so a further corn retune
+## is felt here first.
 static func sustained_dps(pests_in_blast: int) -> float:
 	var cycle: float = volley_cycle_seconds()
 	if cycle <= 0.0:

@@ -32,17 +32,31 @@ extends Plant
 ## decision every other plant makes and a sharper version of it.
 const RANGE: float = 112.0
 
-## What one sting takes off, and how often. 3.0 / 0.7 = 4.29 dps.
+## What one sting takes off, and how often. 2.6 / 0.7 = 3.71 dps.
 ##
 ## The number is set against the cheapest thing it stands beside rather than picked. A
-## level-1 CornCobbler at this range lands one kernel for 1.0 damage every 0.80s
-## (`game/corn_cobbler.gd:49`) — 1.25 dps for 10 seeds, i.e. 0.125 dps per seed. A Nettle is
-## 4.29 dps for 40 seeds, i.e. 0.107. **So it is worse per seed than corn against any pest
+## level-1 CornCobbler at this range lands one kernel for 1.0 damage every 0.90s
+## (`CornCobbler.LEVELS`) — 1.11 dps for 10 seeds, i.e. 0.111 dps per seed. A Nettle is
+## 3.71 dps for 40 seeds, i.e. 0.093. **So it is worse per seed than corn against any pest
 ## corn can also hit**, and it can only hit some of them. That is the property that keeps a
 ## specialist from being a strict upgrade, and
 ## `test_the_nettle_never_out_earns_a_cob_per_seed` pins it rather than leaving it in a
 ## comment where a retune can quietly falsify it.
-const STING_DAMAGE: float = 3.0
+##
+## IT WAS 3.0 AND CAME DOWN WITH CORN. The starter cob's reload was slowed (see the
+## window comment over `CornCobbler.LEVELS` for the whole of why), which took its
+## per-seed rate from 0.125 to 0.111. A Nettle left at 3.0 would have gone from losing
+## that comparison by 14% to losing it by 4% — still passing, and sitting close enough to
+## the line that the next retune in either file crosses it without anyone intending to.
+## 2.6 keeps the specialist the same distance behind the generalist it was always meant
+## to be behind.
+##
+## THE DAMAGE AND NOT THE INTERVAL, deliberately. `Sfx.NETTLE_STING`'s debounce reasoning
+## is written against `STING_INTERVAL` being 0.7s, down to a 221 ms floor under four
+## Mints (`game/sfx.gd`); moving the interval to fix a per-seed ratio would have quietly
+## retuned an audio floor two files away for a reason that has nothing to do with sound.
+## The damage column is the one with no second reader.
+const STING_DAMAGE: float = 2.6
 const STING_INTERVAL: float = 0.7
 
 ## A solid full ring at RANGE — the grammar's REACH row (`game/OVERLAY_GRAMMAR.md`), the same

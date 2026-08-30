@@ -166,7 +166,7 @@ const SPECIES: Dictionary = {
 	## The numbers, and what each is for:
 	##   * hop_period 2.0s, hop_crouch_fraction 0.70 — a 1.4s CROUCH followed by a
 	##     0.6s LEAP, on repeat for the whole crossing. 1.4s clears
-	##     `CornCobbler.LEVELS[0]["interval"]` (0.80s) with room to spare, so a
+	##     `CornCobbler.LEVELS[0]["interval"]` (0.90s) with room to spare, so a
 	##     level-1 cob already locked on gets at least one whole shot cycle inside
 	##     every crouch regardless of where in the cycle it happened to arm; 0.6s
 	##     does NOT clear it, which is what makes the leap a real denial rather than
@@ -183,11 +183,11 @@ const SPECIES: Dictionary = {
 	##     is no faster than a beetle averaged over a full lane; the difficulty is
 	##     entirely in the rhythm, not in a bigger number, the same restraint the
 	##     Shield Bug's SPECIES entry argues for its own speed.
-	##   * health 5.0 — a solo level-1 cob (1.25 dps rated) only gets meaningful
+	##   * health 5.0 — a solo level-1 cob (1.11 dps rated) only gets meaningful
 	##     dwell time during the CROUCH 70% of the cycle, so its effective rate
-	##     against this species is close to 0.70 * 1.25 = 0.875/s. 5.0 / 0.875 is
-	##     about 5.7s of crouch-equivalent time, roughly three hop cycles (6.0s) —
-	##     comparable to the aphid's ~2.4s (3.0 / 1.25) but stretched by the
+	##     against this species is close to 0.70 * 1.11 = 0.778/s. 5.0 / 0.778 is
+	##     about 6.4s of crouch-equivalent time, a bit over three hop cycles (6.0s) —
+	##     comparable to the aphid's ~2.7s (3.0 / 1.11) but stretched by the
 	##     species' own mechanic rather than by a bigger health pool.
 	##   * seeds 4 — between the aphid's 3 and the Shield Bug's 6, and chosen
 	##     against `CompostMeter.husk_value_for` the same way every species since
@@ -302,14 +302,24 @@ const SPECIES: Dictionary = {
 	## and no split at all. The difficulty is the aura and the aura only.
 	##
 	## The numbers, and what each is for:
-	##   * heal_amount 3.0 every heal_period 1.5 s — i.e. 2.0 health a second put
+	##   * heal_amount 3.0 every heal_period 1.7 s — i.e. 1.76 health a second put
 	##     back into every OTHER living pest inside heal_radius. That rate is picked
 	##     against the one damage source every player is guaranteed to own:
-	##     `CornCobbler.single_target_dps(1, d)` is 1 kernel x 1.0 damage / 0.80 s =
-	##     1.25/s at every distance in its ring. So ONE level-1 cob loses the race
+	##     `CornCobbler.single_target_dps(1, d)` is 1 kernel x 1.0 damage / 0.90 s =
+	##     1.11/s at every distance in its ring. So ONE level-1 cob loses the race
 	##     outright and never finishes anything inside the aura, TWO of them win it
-	##     at a net 0.5/s, and one MAXED cob at the rim of its own ring (2.26/s)
-	##     just clears it. The band is the decision: trickle damage spread thin over
+	##     at a net 0.46/s, and one MAXED cob at the rim of its own ring (2.26/s)
+	##     just clears it.
+	##
+	##     THE PERIOD MOVED BECAUSE CORN MOVED, and it kept the ratio rather than the
+	##     number: this aura is 1.59x a starter cob's dps, where it was 1.60x before.
+	##     It was 1.5 s for a 2.0/s aura set against a 1.25/s starter; slowing that
+	##     starter to 1.11/s (see the window comment over `CornCobbler.LEVELS`) would
+	##     have left two cobs making 2.22/s against 2.0/s — still inside the band by
+	##     1%, which is not a band, it is a coincidence waiting to be retuned through.
+	##     The PULSE stayed at 3.0 and the PERIOD moved, rather than the other way
+	##     round, because one pulse being exactly one aphid's health is its own
+	##     asserted claim — see the legibility note below. The band is the decision: trickle damage spread thin over
 	##     a lane does nothing here, and the same seeds concentrated do. Both ends
 	##     are asserted in test_combat against the cob's own table rather than
 	##     written down, so a balance pass on corn fails loudly instead of quietly
@@ -389,7 +399,7 @@ const SPECIES: Dictionary = {
 		"boss": true,
 		"heal_radius": 160.0,
 		"heal_amount": 3.0,
-		"heal_period": 1.5,
+		"heal_period": 1.7,
 	},
 	## The boss (plant-tower-defense-74a). Deliberately NOT a fourth mutation and
 	## deliberately not "a beetle with more health": what makes a queen a
@@ -1486,7 +1496,7 @@ static func heal_period(which: StringName) -> float:
 
 ## The number the whole species is balanced on: health a second put back into one
 ## pest standing inside the aura. Pure, and the thing to compare against a plant's
-## dps — `CornCobbler.single_target_dps(1, d)` is 1.25, and this sits above it and
+## dps — `CornCobbler.single_target_dps(1, d)` is 1.11, and this sits above it and
 ## below twice it deliberately. See the NURSE entry.
 ##
 ## A pulse rate of zero answers 0.0 rather than dividing by it, so this is safe to

@@ -304,7 +304,14 @@ func test_kernels_launch_from_the_cob_on_an_offset_layer() -> String:
 	var before: Dictionary = {}
 	for k: Node in host.get_tree().get_nodes_in_group("kernels"):
 		before[k.get_instance_id()] = true
-	corn._act(1.0, pests)
+	# ONE WHOLE RELOAD, read off the cob rather than the 1.0 that stood here. The
+	# settle frames above run `_act` themselves, so the cooldown is already armed by the
+	# time this line runs and the tick has to clear a full `fire_interval()` -- which a
+	# hard-coded 1.0 did only while level 1's interval happened to be under it. At 1.14,
+	# tried and rejected for this cob, that literal turned this into "the cob fired:
+	# Expected 0 > 0" -- a failure about the fixture that reads exactly like the aiming
+	# regression the test is actually for.
+	corn._act(corn.fire_interval() + 0.01, pests)
 	var fired: Array[Kernel] = []
 	for k: Node in host.get_tree().get_nodes_in_group("kernels"):
 		if not before.has(k.get_instance_id()) and k is Kernel:
