@@ -1279,20 +1279,25 @@ func take_damage(amount: float) -> void:
 	if is_destroyed():
 		return
 	health = maxf(0.0, health - amount)
-	# A hungry pest calls this every physics frame, so this would be sixty plays
-	# a second if it were not gated — Sfx.REPEAT_MS[PLANT_BITTEN] is what turns
-	# that stream of calls into a repeating nibble, which is why the call site
-	# here stays unguarded. The bar below only appears once a plant is bitten,
-	# and a bar the player is not looking at is not a warning.
+	# A hungry pest USED to call this every physics frame, and Sfx.REPEAT_MS[PLANT_BITTEN]
+	# was the only thing turning sixty calls a second into an audible nibble. It calls
+	# once per chop now (Pest.chop_period(), ~1.07s), so the sound is the bite rather
+	# than a gated sample of it — and the call site here still stays unguarded, because
+	# the gate is now what keeps a CROWD of pests arriving at one bed in the same breath
+	# from playing one sample four times as loud. The bar below only appears once a plant
+	# is bitten, and a bar the player is not looking at is not a warning.
 	if amount > 0.0:
 		Sfx.play(Sfx.PLANT_BITTEN)
-		# THE line that keeps regrowth out of a fight. A pest mid-meal calls this
-		# every frame, so the quiet clock never leaves zero while it is eating and
-		# regrowth_in_step() therefore returns zero for every one of those frames.
+		# THE line that keeps regrowth out of a fight. A pest mid-meal calls this once
+		# per chop rather than every frame, so the quiet clock actually RUNS between
+		# bites — what keeps regrowth_in_step() at zero for the whole meal is that
+		# REGROWTH_DELAY (6s) is more than five times Pest.chop_period(), which is the
+		# margin test_a_hungry_pest_eats_a_bed_in_exactly_the_time_it_always_did pins.
 		# A 0-damage call is not a bite and does not reset it.
 		_quiet_time = 0.0
-		# Re-armed rather than accumulated: a hungry pest calls this every physics frame,
-		# so a plant mid-meal shudders continuously and decays out once the biting stops.
+		# Re-armed rather than accumulated: one clean jolt per chop, decaying out over
+		# FLINCH_SECONDS (0.32s) well before the next one lands. See the FLINCH_RADIANS
+		# header for why that is a jolt and the old per-frame version was a hum.
 		_flinch_left = FLINCH_SECONDS
 	_refresh_health_bar()
 	if health <= 0.0:
